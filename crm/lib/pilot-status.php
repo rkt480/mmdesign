@@ -477,7 +477,7 @@ function pilot_status_extract_incoming_messages(array $payload): array
         $incoming = pilot_status_extract_single_incoming_message($item);
         $event = strtolower((string) ($incoming['event'] ?: pilot_status_first_payload_value($payload, [['event'], ['type'], ['eventType']])));
 
-        if ($event !== '' && !str_contains($event, 'received') && !str_contains($event, 'incoming')) {
+        if ($event !== '' && !str_contains($event, 'received') && !str_contains($event, 'incoming') && !str_contains($event, 'reply')) {
             continue;
         }
 
