@@ -332,25 +332,30 @@ function pilot_status_payload_is_from_me(array $payload): bool
 function pilot_status_extract_text(array $payload): string
 {
     return pilot_status_first_payload_value($payload, [
+        ['text', 'body'],
         ['text'],
         ['body'],
         ['message'],
         ['content'],
+        ['message', 'text', 'body'],
         ['message', 'text'],
         ['message', 'body'],
         ['message', 'content'],
         ['message', 'conversation'],
-        ['message', 'text', 'body'],
+        ['data', 'text', 'body'],
         ['data', 'text'],
         ['data', 'body'],
         ['data', 'message'],
         ['data', 'content'],
+        ['data', 'message', 'text', 'body'],
         ['data', 'message', 'text'],
         ['data', 'message', 'body'],
         ['data', 'message', 'content'],
         ['data', 'message', 'conversation'],
+        ['payload', 'text', 'body'],
         ['payload', 'text'],
         ['payload', 'body'],
+        ['payload', 'message', 'text', 'body'],
         ['payload', 'message', 'text'],
         ['payload', 'message', 'body'],
     ]);
@@ -359,18 +364,23 @@ function pilot_status_extract_text(array $payload): string
 function pilot_status_extract_name(array $payload): string
 {
     return pilot_status_first_payload_value($payload, [
+        ['_contacts', 0, 'profile', 'name'],
+        ['contacts', 0, 'profile', 'name'],
+        ['profile', 'name'],
         ['name'],
         ['pushName'],
         ['senderName'],
         ['contactName'],
         ['contact', 'name'],
         ['contact', 'pushName'],
+        ['contact', 'phone_number'],
         ['message', 'pushName'],
         ['message', 'senderName'],
         ['data', 'name'],
         ['data', 'pushName'],
         ['data', 'senderName'],
         ['data', 'contact', 'name'],
+        ['data', 'contacts', 0, 'profile', 'name'],
     ]);
 }
 
@@ -384,6 +394,11 @@ function pilot_status_extract_single_incoming_message(array $payload): array
 
     foreach ([
         ['from'],
+        ['wa_id'],
+        ['contacts', 0, 'wa_id'],
+        ['_contacts', 0, 'wa_id'],
+        ['contact', 'phone_number'],
+        ['platform_id'],
         ['sender'],
         ['number'],
         ['phone'],
@@ -453,16 +468,52 @@ function pilot_status_extract_incoming_messages(array $payload): array
 {
     $items = [];
 
-    foreach ([['messages'], ['data', 'messages'], ['payload', 'messages'], ['events']] as $path) {
-        $value = pilot_status_read_path($payload, $path);
+    // Check Meta Cloud API nested structure: entry > changes > value > messages
+    if (isset($payload['entry']) && is_array($payload['entry'])) {
+        foreach ($payload['entry'] as $entry) {
+            if (!is_array($entry)) continue;
+            $changes = $entry['changes'] ?? [];
+            if (!is_array($changes)) continue;
+            foreach ($changes as $change) {
+                if (!is_array($change)) continue;
+                $value = $change['value'] ?? [];
+                if (!is_array($value)) continue;
 
-        if (!is_array($value)) {
-            continue;
+                $messages = $value['messages'] ?? [];
+                if (is_array($messages)) {
+                    $contacts = $value['contacts'] ?? [];
+                    $metadata = $value['metadata'] ?? [];
+                    foreach ($messages as $msg) {
+                        if (is_array($msg)) {
+                            $msg['_contacts'] = $contacts;
+                            $msg['_metadata'] = $metadata;
+                            $items[] = $msg;
+                        }
+                    }
+                }
+            }
         }
+    }
 
-        foreach ($value as $item) {
-            if (is_array($item)) {
-                $items[] = $item;
+    if ($items === []) {
+        foreach ([
+            ['messages'],
+            ['data', 'messages'],
+            ['payload', 'messages'],
+            ['events'],
+            ['data', 'events'],
+            ['payload', 'events'],
+        ] as $path) {
+            $value = pilot_status_read_path($payload, $path);
+
+            if (!is_array($value)) {
+                continue;
+            }
+
+            foreach ($value as $item) {
+                if (is_array($item)) {
+                    $items[] = $item;
+                }
             }
         }
     }
@@ -472,12 +523,35 @@ function pilot_status_extract_incoming_messages(array $payload): array
     }
 
     $messages = [];
+    $connectedNumber = pilot_status_normalize_phone_candidate(
+        pilot_status_first_payload_value($payload, [
+            ['metadata', 'display_phone_number'],
+            ['display_phone_number'],
+            ['connected_number'],
+            ['business_number'],
+        ])
+    );
 
     foreach ($items as $item) {
         $incoming = pilot_status_extract_single_incoming_message($item);
-        $event = strtolower((string) ($incoming['event'] ?: pilot_status_first_payload_value($payload, [['event'], ['type'], ['eventType']])));
 
-        if ($event !== '' && !str_contains($event, 'received') && !str_contains($event, 'incoming') && !str_contains($event, 'reply')) {
+        if ($connectedNumber !== '' && $incoming['number'] === $connectedNumber) {
+            $altNumber = pilot_status_first_payload_value($item, [
+                ['_contacts', 0, 'wa_id'],
+                ['contacts', 0, 'wa_id'],
+                ['from'],
+                ['wa_id'],
+                ['contact', 'phone_number'],
+            ]);
+            $normalizedAlt = pilot_status_normalize_phone_candidate((string)$altNumber);
+            if ($normalizedAlt !== '' && $normalizedAlt !== $connectedNumber) {
+                $incoming['number'] = $normalizedAlt;
+            }
+        }
+
+        $event = strtolower((string) ($incoming['event'] ?: pilot_status_first_payload_value($payload, [['event'], ['eventType']])));
+
+        if ($event !== '' && in_array($event, ['sent', 'delivered', 'read', 'failed', 'message.sent', 'message.delivered', 'message.read', 'message.failed', 'message_sent', 'message_delivered', 'message_read', 'message_failed'], true)) {
             continue;
         }
 
