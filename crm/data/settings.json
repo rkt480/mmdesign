@@ -1,0 +1,13 @@
+{
+    "whatsapp_number": "554288187793",
+    "whatsapp_provider": "pilot_status",
+    "meta_whatsapp_graph_version": "20.0",
+    "meta_whatsapp_phone_number_id": "1247031851816971",
+    "meta_whatsapp_business_account_id": "",
+    "meta_whatsapp_verify_token": "",
+    "meta_whatsapp_coex_enabled": false,
+    "pilot_status_base_url": "https:\/\/api.pilotstatus.com.br\/v1",
+    "pilot_status_webhook_secret": "",
+    "meta_whatsapp_access_token": "PubliAI@2026",
+    "pilot_status_api_key": "ps_7412330570e58dbe3ced509527fa9e6f00c09ecdc3829f68"
+}

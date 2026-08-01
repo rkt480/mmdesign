@@ -1,0 +1,519 @@
+const cards = document.querySelectorAll(".kanban-card");
+const dropzones = document.querySelectorAll(".kanban-dropzone");
+const kanbanBoard = document.querySelector(".kanban-board");
+const detailButtons = document.querySelectorAll("[data-toggle-details]");
+const dialogButtons = document.querySelectorAll("[data-open-dialog]");
+const csrfToken = document.querySelector("meta[name='csrf-token']")?.content || "";
+
+let draggedCard = null;
+let boardScrollFrame = null;
+let boardScrollSpeed = 0;
+const modalOrigins = new WeakMap();
+
+function updateColumnCounts() {
+  document.querySelectorAll(".kanban-column").forEach((column) => {
+    const count = column.querySelectorAll(".kanban-card").length;
+    const counter = column.querySelector(".kanban-column-header strong");
+
+    if (counter) {
+      counter.textContent = count;
+    }
+  });
+}
+
+async function persistLeadStatus(leadId, status, orders) {
+  const response = await fetch("./api/update-status.php", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-CSRF-Token": csrfToken,
+    },
+    body: JSON.stringify({ id: leadId, status, orders }),
+  });
+
+  if (!response.ok) {
+    const message = await response.text();
+    throw new Error(message || "Não foi possível mover o lead.");
+  }
+
+  const data = await response.json();
+
+  if (data.meta && data.meta.ok === false && data.meta.skipped !== true) {
+    console.warn("Meta CAPI não confirmou o evento.", data.meta);
+  }
+}
+
+function getCardAfterPointer(zone, clientY) {
+  const cardsInZone = [...zone.querySelectorAll(".kanban-card:not(.is-dragging)")];
+
+  return cardsInZone.find((card) => {
+    const rect = card.getBoundingClientRect();
+    return clientY < rect.top + rect.height / 2;
+  }) || null;
+}
+
+function getLeadOrder(zone) {
+  return [...zone.querySelectorAll(".kanban-card")].map((card) => card.dataset.leadId);
+}
+
+function stopBoardAutoScroll() {
+  boardScrollSpeed = 0;
+
+  if (boardScrollFrame !== null) {
+    cancelAnimationFrame(boardScrollFrame);
+    boardScrollFrame = null;
+  }
+}
+
+function scrollBoardStep() {
+  if (!kanbanBoard || boardScrollSpeed === 0) {
+    stopBoardAutoScroll();
+    return;
+  }
+
+  kanbanBoard.scrollLeft += boardScrollSpeed;
+  boardScrollFrame = requestAnimationFrame(scrollBoardStep);
+}
+
+function updateBoardAutoScroll(clientX) {
+  if (!kanbanBoard || !draggedCard) {
+    stopBoardAutoScroll();
+    return;
+  }
+
+  const rect = kanbanBoard.getBoundingClientRect();
+  const edgeSize = Math.min(120, rect.width * 0.22);
+  const leftDistance = clientX - rect.left;
+  const rightDistance = rect.right - clientX;
+  const maxSpeed = 18;
+
+  if (leftDistance >= 0 && leftDistance < edgeSize) {
+    boardScrollSpeed = -Math.ceil(((edgeSize - leftDistance) / edgeSize) * maxSpeed);
+  } else if (rightDistance >= 0 && rightDistance < edgeSize) {
+    boardScrollSpeed = Math.ceil(((edgeSize - rightDistance) / edgeSize) * maxSpeed);
+  } else {
+    boardScrollSpeed = 0;
+  }
+
+  if (boardScrollSpeed !== 0 && boardScrollFrame === null) {
+    boardScrollFrame = requestAnimationFrame(scrollBoardStep);
+  }
+
+  if (boardScrollSpeed === 0) {
+    stopBoardAutoScroll();
+  }
+}
+
+cards.forEach((card) => {
+  card.addEventListener("dragstart", () => {
+    draggedCard = card;
+    card.classList.add("is-dragging");
+  });
+
+  card.addEventListener("dragend", () => {
+    card.classList.remove("is-dragging");
+    draggedCard = null;
+    stopBoardAutoScroll();
+  });
+});
+
+if (kanbanBoard) {
+  kanbanBoard.addEventListener("dragover", (event) => {
+    updateBoardAutoScroll(event.clientX);
+  });
+
+  kanbanBoard.addEventListener("dragleave", (event) => {
+    if (!kanbanBoard.contains(event.relatedTarget)) {
+      stopBoardAutoScroll();
+    }
+  });
+}
+
+dropzones.forEach((zone) => {
+  zone.addEventListener("dragover", (event) => {
+    event.preventDefault();
+    updateBoardAutoScroll(event.clientX);
+    zone.classList.add("is-over");
+  });
+
+  zone.addEventListener("dragleave", () => {
+    zone.classList.remove("is-over");
+  });
+
+  zone.addEventListener("drop", async (event) => {
+    event.preventDefault();
+    zone.classList.remove("is-over");
+    stopBoardAutoScroll();
+
+    if (!draggedCard) {
+      return;
+    }
+
+    const movedCard = draggedCard;
+    const previousParent = movedCard.parentElement;
+    const previousNextSibling = movedCard.nextElementSibling;
+    const previousStatus = previousParent.dataset.status;
+    const targetStatus = zone.dataset.status;
+    const leadId = movedCard.dataset.leadId;
+    const cardAfterPointer = getCardAfterPointer(zone, event.clientY);
+
+    zone.insertBefore(movedCard, cardAfterPointer);
+    updateColumnCounts();
+
+    try {
+      const orders = {
+        [targetStatus]: getLeadOrder(zone),
+      };
+
+      if (previousParent !== zone) {
+        orders[previousStatus] = getLeadOrder(previousParent);
+      }
+
+      await persistLeadStatus(leadId, targetStatus, orders);
+      const statusInput = movedCard.querySelector("input[name='status']");
+
+      if (statusInput) {
+        statusInput.value = targetStatus;
+      }
+    } catch (error) {
+      previousParent.insertBefore(
+        movedCard,
+        previousNextSibling?.parentElement === previousParent ? previousNextSibling : null
+      );
+      updateColumnCounts();
+      alert("Não foi possível mover o lead. Tente novamente.");
+      console.error(error);
+    }
+  });
+});
+
+function findModalCard(panel) {
+  const storedCard = modalOrigins.get(panel);
+
+  if (storedCard) {
+    return storedCard;
+  }
+
+  const leadId = panel.dataset.modalLeadId;
+  return leadId ? document.querySelector(`.kanban-card[data-lead-id="${leadId}"]`) : null;
+}
+
+function closeLeadModal(panel) {
+  const card = findModalCard(panel);
+
+  panel.hidden = true;
+  document.body.classList.remove("modal-open");
+
+  if (card) {
+    card.classList.remove("has-open-modal");
+    card.appendChild(panel);
+
+    const cardButton = card.querySelector(".lead-actions [data-toggle-details]");
+
+    if (cardButton) {
+      cardButton.textContent = "Detalhes";
+    }
+  }
+}
+
+function openLeadModal(card, panel, button) {
+  closeUtilityDialogs();
+  document.querySelectorAll(".lead-details-panel:not([hidden])").forEach(closeLeadModal);
+
+  modalOrigins.set(panel, card);
+  document.body.appendChild(panel);
+  panel.hidden = false;
+  card.classList.add("has-open-modal");
+  document.body.classList.add("modal-open");
+  button.textContent = "Ocultar";
+  renderTagPreviews(panel);
+}
+
+detailButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    const panel = button.closest(".lead-details-panel");
+
+    if (button.classList.contains("modal-close") && panel) {
+      closeLeadModal(panel);
+      return;
+    }
+
+    const card = button.closest(".kanban-card");
+    const cardPanel = card?.querySelector(".lead-details-panel");
+
+    if (!card || !cardPanel) {
+      return;
+    }
+
+    if (cardPanel.hidden) {
+      openLeadModal(card, cardPanel, button);
+    } else {
+      closeLeadModal(cardPanel);
+    }
+  });
+});
+
+function closeUtilityDialogs() {
+  document.querySelectorAll(".utility-dialog:not([hidden])").forEach((dialog) => {
+    dialog.hidden = true;
+  });
+
+  if (document.querySelectorAll(".lead-details-panel:not([hidden])").length === 0) {
+    document.body.classList.remove("modal-open");
+  }
+}
+
+dialogButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    const dialogName = button.dataset.openDialog;
+    const dialog = dialogName ? document.querySelector(`.utility-dialog[data-dialog="${dialogName}"]`) : null;
+
+    if (!dialog) {
+      return;
+    }
+
+    document.querySelectorAll(".lead-details-panel:not([hidden])").forEach((panel) => {
+      closeLeadModal(panel);
+    });
+    closeUtilityDialogs();
+    dialog.hidden = false;
+    document.body.classList.add("modal-open");
+    renderTagPreviews(dialog);
+
+    const firstField = dialog.querySelector("input, select, textarea, button[type='submit']");
+
+    if (firstField) {
+      firstField.focus();
+    }
+  });
+});
+
+function parseTagInput(value) {
+  const uniqueTags = new Map();
+
+  value.split(/[,;\n]+/).forEach((part) => {
+    const tag = part.trim();
+
+    if (!tag) {
+      return;
+    }
+
+    uniqueTags.set(tag.toLocaleLowerCase("pt-BR"), tag.slice(0, 40));
+  });
+
+  return Array.from(uniqueTags.values());
+}
+
+function renderTagPreview(input) {
+  const tagField = input.closest(".tag-field") || input.parentElement;
+  const preview = tagField?.querySelector("[data-tags-preview]");
+
+  if (!preview) {
+    return;
+  }
+
+  const tags = parseTagInput(input.value);
+  preview.innerHTML = "";
+  preview.hidden = tags.length === 0;
+
+  tags.forEach((tag) => {
+    const chip = document.createElement("span");
+    chip.textContent = tag;
+    preview.appendChild(chip);
+  });
+}
+
+function renderTagPreviews(scope = document) {
+  scope.querySelectorAll("[data-tags-input]").forEach(renderTagPreview);
+}
+
+function parseCurrencyDigits(value) {
+  const normalized = String(value || "").replace(/[^\d,]/g, "");
+
+  if (!normalized) {
+    return { reais: "", cents: "00" };
+  }
+
+  const parts = normalized.split(",");
+  const reais = (parts[0] || "").replace(/\D/g, "");
+  const cents = (parts[1] || "").replace(/\D/g, "").slice(0, 2).padEnd(2, "0");
+
+  return { reais, cents };
+}
+
+function formatCurrencyBRLFromParts(reaisDigits, centsDigits = "00") {
+  const reais = String(reaisDigits || "").replace(/\D/g, "");
+
+  if (!reais) {
+    return "";
+  }
+
+  const cents = String(centsDigits || "00").replace(/\D/g, "").slice(0, 2).padEnd(2, "0");
+  const amount = Number(`${reais}.${cents}`);
+
+  return amount.toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  });
+}
+
+function setCursorToEnd(input) {
+  requestAnimationFrame(() => {
+    const end = input.value.length;
+    input.setSelectionRange(end, end);
+  });
+}
+
+function syncCurrencyInput(input, reais, cents = "00") {
+  input.dataset.currencyReais = String(reais || "").replace(/\D/g, "").replace(/^0+(?=\d)/, "");
+  input.dataset.currencyCents = String(cents || "00").replace(/\D/g, "").slice(0, 2).padEnd(2, "0");
+  input.value = formatCurrencyBRLFromParts(input.dataset.currencyReais, input.dataset.currencyCents);
+  setCursorToEnd(input);
+}
+
+document.querySelectorAll("[data-currency-input]").forEach((input) => {
+  const initial = parseCurrencyDigits(input.value);
+  syncCurrencyInput(input, initial.reais, initial.cents);
+
+  input.addEventListener("beforeinput", (event) => {
+    const type = event.inputType || "";
+    let reais = input.dataset.currencyReais || "";
+    let cents = input.dataset.currencyCents || "00";
+
+    if (type === "insertText" && /^\d$/.test(event.data || "")) {
+      event.preventDefault();
+      reais = (reais + event.data).replace(/^0+(?=\d)/, "");
+    } else if (type === "deleteContentBackward") {
+      event.preventDefault();
+      reais = reais.slice(0, -1);
+    } else if (type === "deleteContentForward") {
+      event.preventDefault();
+      reais = "";
+      cents = "00";
+    } else if (type === "insertFromPaste") {
+      return;
+    } else {
+      event.preventDefault();
+      return;
+    }
+
+    syncCurrencyInput(input, reais, cents);
+  });
+
+  input.addEventListener("paste", (event) => {
+    event.preventDefault();
+    const text = event.clipboardData?.getData("text") || "";
+    const parsed = parseCurrencyDigits(text);
+    syncCurrencyInput(input, parsed.reais, parsed.cents);
+  });
+
+  input.addEventListener("input", () => {
+    const parsed = parseCurrencyDigits(input.value);
+    syncCurrencyInput(input, parsed.reais, parsed.cents);
+  });
+
+  input.addEventListener("blur", () => {
+    const reais = input.dataset.currencyReais || "";
+    const cents = input.dataset.currencyCents || "00";
+    syncCurrencyInput(input, reais, cents);
+  });
+});
+
+function formatCpf(value) {
+  const digits = String(value || "").replace(/\D/g, "").slice(0, 11);
+  let formatted = digits.slice(0, 3);
+  if (digits.length > 3) formatted += `.${digits.slice(3, 6)}`;
+  if (digits.length > 6) formatted += `.${digits.slice(6, 9)}`;
+  if (digits.length > 9) formatted += `-${digits.slice(9, 11)}`;
+  return formatted;
+}
+
+document.querySelectorAll("[data-cpf-input]").forEach((input) => {
+  input.value = formatCpf(input.value);
+  input.addEventListener("input", () => {
+    input.value = formatCpf(input.value);
+  });
+});
+
+document.querySelectorAll("[data-tags-input]").forEach((input) => {
+  renderTagPreview(input);
+  input.addEventListener("input", () => {
+    renderTagPreview(input);
+  });
+});
+
+document.querySelectorAll("[data-tag-option]").forEach((button) => {
+  button.addEventListener("click", () => {
+    const tag = button.dataset.tagOption || "";
+    const tagField = button.closest(".tag-field");
+    const input = tagField?.querySelector("[data-tags-input]");
+
+    if (!tag || !input) {
+      return;
+    }
+
+    const tags = parseTagInput(input.value);
+    const alreadyExists = tags.some((item) => item.toLocaleLowerCase("pt-BR") === tag.toLocaleLowerCase("pt-BR"));
+
+    if (!alreadyExists) {
+      tags.push(tag);
+      input.value = tags.join(", ");
+    }
+
+    renderTagPreview(input);
+    input.focus();
+  });
+});
+
+document.querySelectorAll("[data-close-dialog]").forEach((button) => {
+  button.addEventListener("click", closeUtilityDialogs);
+});
+
+document.querySelectorAll(".utility-dialog").forEach((dialog) => {
+  dialog.addEventListener("click", (event) => {
+    if (event.target === dialog) {
+      closeUtilityDialogs();
+    }
+  });
+});
+
+document.querySelectorAll(".lead-details-panel").forEach((panel) => {
+  panel.addEventListener("click", (event) => {
+    if (event.target !== panel) {
+      return;
+    }
+
+    closeLeadModal(panel);
+  });
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape") {
+    return;
+  }
+
+  document.querySelectorAll(".lead-details-panel:not([hidden])").forEach((panel) => {
+    closeLeadModal(panel);
+  });
+  closeUtilityDialogs();
+});
+
+document.querySelectorAll(".lead-modal-tabs [data-lead-tab]").forEach((tabButton) => {
+  tabButton.addEventListener("click", () => {
+    const modal = tabButton.closest(".lead-modal-card");
+    const target = tabButton.dataset.leadTab;
+
+    if (!modal || !target) {
+      return;
+    }
+
+    modal.querySelectorAll("[data-lead-tab]").forEach((button) => {
+      button.classList.toggle("active", button === tabButton);
+    });
+
+    modal.querySelectorAll("[data-lead-panel]").forEach((panel) => {
+      panel.hidden = panel.dataset.leadPanel !== target;
+      panel.classList.toggle("active", panel.dataset.leadPanel === target);
+    });
+  });
+});
