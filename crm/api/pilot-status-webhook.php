@@ -11,13 +11,32 @@ require_once dirname(__DIR__) . '/lib/meta-capi.php';
 header('Content-Type: application/json; charset=utf-8');
 header('X-Content-Type-Options: nosniff');
 
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+$rawBody = file_get_contents('php://input') ?: '';
+$headers = function_exists('getallheaders') ? getallheaders() : [];
+
+pilot_status_log('Webhook hit recebido.', [
+    'method' => $_SERVER['REQUEST_METHOD'] ?? '',
+    'uri' => $_SERVER['REQUEST_URI'] ?? '',
+    'headers' => $headers,
+    'query' => $_GET,
+    'body' => $rawBody,
+]);
+
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET') {
+    $challenge = $_GET['hub_challenge'] ?? $_GET['challenge'] ?? $_GET['echo'] ?? null;
+    if ($challenge !== null) {
+        echo (string)$challenge;
+        exit;
+    }
+}
+
+if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
     http_response_code(405);
     echo json_encode(['ok' => false, 'error' => 'Método não permitido.']);
     exit;
 }
 
-$body = file_get_contents('php://input') ?: '';
+$body = $rawBody;
 $payload = json_decode($body !== '' ? $body : '{}', true);
 
 if (!is_array($payload)) {
