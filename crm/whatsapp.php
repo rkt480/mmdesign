@@ -270,12 +270,14 @@ foreach ($leads as $lead) {
         continue;
     }
 
+    $conversationKey = crm_whatsapp_number_variants($whatsapp)[0] ?? $whatsapp;
+
     $leadProvider = whatsapp_page_provider_for_lead($lead);
     $messages = whatsapp_page_messages_for_lead($lead);
     $leadDate = whatsapp_page_latest_lead_date($lead);
 
-    if (!isset($conversationGroups[$whatsapp])) {
-        $conversationGroups[$whatsapp] = [
+    if (!isset($conversationGroups[$conversationKey])) {
+        $conversationGroups[$conversationKey] = [
             'lead' => $lead,
             'lead_ids' => [],
             'provider' => $leadProvider,
@@ -285,24 +287,24 @@ foreach ($leads as $lead) {
         ];
     }
 
-    $conversationGroups[$whatsapp]['lead_ids'][] = (string) ($lead['id'] ?? '');
-    $conversationGroups[$whatsapp]['messages'] = array_merge($conversationGroups[$whatsapp]['messages'], $messages);
+    $conversationGroups[$conversationKey]['lead_ids'][] = (string) ($lead['id'] ?? '');
+    $conversationGroups[$conversationKey]['messages'] = array_merge($conversationGroups[$conversationKey]['messages'], $messages);
 
     if (
-        whatsapp_page_timestamp($leadDate) > whatsapp_page_timestamp((string) $conversationGroups[$whatsapp]['last_at'])
+        whatsapp_page_timestamp($leadDate) > whatsapp_page_timestamp((string) $conversationGroups[$conversationKey]['last_at'])
     ) {
-        $conversationGroups[$whatsapp]['lead'] = $lead;
-        $conversationGroups[$whatsapp]['last_at'] = $leadDate;
+        $conversationGroups[$conversationKey]['lead'] = $lead;
+        $conversationGroups[$conversationKey]['last_at'] = $leadDate;
     }
 
     if (
         $leadProvider !== 'crm'
         && (
-            (string) $conversationGroups[$whatsapp]['provider'] === 'crm'
-            || whatsapp_page_timestamp($leadDate) >= whatsapp_page_timestamp((string) $conversationGroups[$whatsapp]['last_at'])
+            (string) $conversationGroups[$conversationKey]['provider'] === 'crm'
+            || whatsapp_page_timestamp($leadDate) >= whatsapp_page_timestamp((string) $conversationGroups[$conversationKey]['last_at'])
         )
     ) {
-        $conversationGroups[$whatsapp]['provider'] = $leadProvider;
+        $conversationGroups[$conversationKey]['provider'] = $leadProvider;
     }
 }
 

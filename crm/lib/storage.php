@@ -1044,17 +1044,7 @@ function crm_read_leads(): array
 
 function crm_normalize_lead_whatsapp(string $phone): string
 {
-    $digits = preg_replace('/\D+/', '', $phone) ?? '';
-
-    if ($digits === '') {
-        return '';
-    }
-
-    if (str_starts_with($digits, '55')) {
-        return $digits;
-    }
-
-    return '55' . $digits;
+    return crm_whatsapp_number_variants($phone)[0] ?? '';
 }
 
 function crm_normalize_cpf(string $cpf): string
@@ -1080,16 +1070,18 @@ function crm_format_cpf(string $cpf): string
 
 function crm_find_lead_by_whatsapp(string $whatsapp): ?array
 {
-    $normalized = crm_normalize_lead_whatsapp($whatsapp);
+    $variants = crm_whatsapp_number_variants($whatsapp);
 
-    if ($normalized === '') {
+    if ($variants === []) {
         return null;
     }
 
     $stmt = crm_db()->query('SELECT * FROM leads ORDER BY created_at DESC');
 
     foreach ($stmt->fetchAll() as $lead) {
-        if (crm_normalize_lead_whatsapp((string) ($lead['whatsapp'] ?? '')) === $normalized) {
+        $leadVariants = crm_whatsapp_number_variants((string) ($lead['whatsapp'] ?? ''));
+
+        if (array_intersect($variants, $leadVariants) !== []) {
             return $lead;
         }
     }

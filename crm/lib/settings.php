@@ -43,6 +43,30 @@ function crm_normalize_whatsapp_number(string $number): string
     return str_starts_with($digits, '55') ? $digits : '55' . $digits;
 }
 
+function crm_whatsapp_number_variants(string $number): array
+{
+    $digits = preg_replace('/\D+/', '', $number) ?? '';
+
+    if ($digits === '') {
+        return [];
+    }
+
+    if (!str_starts_with($digits, '55')) {
+        $digits = '55' . $digits;
+    }
+
+    $variants = [$digits];
+
+    if (strlen($digits) === 12 && preg_match('/^55\d{2}[6-9]\d{7}$/', $digits) === 1) {
+        array_unshift($variants, substr($digits, 0, 4) . '9' . substr($digits, 4));
+    }
+    if (strlen($digits) === 13 && preg_match('/^55\d{2}9[6-9]\d{7}$/', $digits) === 1) {
+        $variants[] = substr($digits, 0, 4) . substr($digits, 5);
+    }
+
+    return array_values(array_unique($variants));
+}
+
 function crm_whatsapp_number(): string
 {
     $settings = crm_read_settings();
