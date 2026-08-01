@@ -1,0 +1,485 @@
+<?php
+
+declare(strict_types=1);
+
+require_once __DIR__ . '/storage.php';
+require_once __DIR__ . '/settings.php';
+require_once __DIR__ . '/lead-notification.php';
+
+function meta_whatsapp_settings(): array
+{
+    $settings = crm_meta_whatsapp_settings();
+    $config = [];
+    $configFile = dirname(__DIR__) . '/config.php';
+
+    if (is_file($configFile)) {
+        $loaded = require $configFile;
+        $config = is_array($loaded) ? ($loaded['meta_whatsapp'] ?? []) : [];
+    }
+
+    $configAccessToken = trim((string) ($config['access_token'] ?? ''));
+    $configVerifyToken = trim((string) ($config['verify_token'] ?? ''));
+    $configAppSecret = trim((string) ($config['app_secret'] ?? ''));
+
+    if ($settings['access_token'] === '' && $configAccessToken !== '') {
+        $settings['access_token'] = $configAccessToken;
+    }
+
+    if ($settings['verify_token'] === '' && $configVerifyToken !== '') {
+        $settings['verify_token'] = $configVerifyToken;
+    }
+
+    if ($settings['app_secret'] === '' && $configAppSecret !== '') {
+        $settings['app_secret'] = $configAppSecret;
+    }
+
+    return $settings;
+}
+
+function meta_whatsapp_is_configured(): bool
+{
+    $settings = meta_whatsapp_settings();
+
+    return $settings['phone_number_id'] !== '' && $settings['access_token'] !== '';
+}
+
+function meta_whatsapp_log(string $message, array $context = []): void
+{
+    $dir = dirname(__DIR__) . '/data';
+
+    if (!is_dir($dir)) {
+        @mkdir($dir, 0755, true);
+    }
+
+    $line = '[' . date('Y-m-d H:i:s') . '] ' . $message;
+
+    if ($context !== []) {
+        $line .= ' ' . json_encode($context, JSON_UNESCAPED_UNICODE);
+    }
+
+    @file_put_contents($dir . '/meta-whatsapp.log', $line . PHP_EOL, FILE_APPEND | LOCK_EX);
+}
+
+function meta_whatsapp_graph_url(string $endpoint): string
+{
+    $settings = meta_whatsapp_settings();
+    $version = 'v' . crm_normalize_meta_graph_version((string) $settings['graph_version']);
+
+    return 'https://graph.facebook.com/' . $version . '/' . ltrim($endpoint, '/');
+}
+
+function meta_whatsapp_request(string $endpoint, array $payload, int $timeout = 20): array
+{
+    $settings = meta_whatsapp_settings();
+    $token = trim((string) $settings['access_token']);
+
+    if ($token === '') {
+        return ['ok' => false, 'error' => 'Token da Meta Cloud API não configurado.'];
+    }
+
+    $ch = curl_init(meta_whatsapp_graph_url($endpoint));
+
+    if ($ch === false) {
+        return ['ok' => false, 'error' => 'Não foi possível iniciar o cURL da Meta Cloud API.'];
+    }
+
+    curl_setopt_array($ch, [
+        CURLOPT_POST => true,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_HTTPHEADER => [
+            'Accept: application/json',
+            'Authorization: Bearer ' . $token,
+            'Content-Type: application/json',
+        ],
+        CURLOPT_POSTFIELDS => json_encode($payload, JSON_UNESCAPED_UNICODE),
+        CURLOPT_TIMEOUT => $timeout,
+    ]);
+
+    $body = curl_exec($ch);
+    $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curlError = curl_error($ch);
+    curl_close($ch);
+
+    if ($body === false || $curlError !== '') {
+        return ['ok' => false, 'error' => $curlError ?: 'Erro desconhecido no cURL da Meta Cloud API.'];
+    }
+
+    $decoded = json_decode((string) $body, true);
+
+    if ($httpCode < 200 || $httpCode >= 300) {
+        meta_whatsapp_log('Meta Cloud API erro HTTP.', [
+            'endpoint' => $endpoint,
+            'http_code' => $httpCode,
+            'response' => $decoded,
+        ]);
+
+        return ['ok' => false, 'error' => 'Meta Cloud API HTTP ' . $httpCode . ': ' . $body, 'response' => $decoded];
+    }
+
+    return ['ok' => true, 'response' => $decoded];
+}
+
+function meta_whatsapp_upload_media(string $filePath, string $mimeType): array
+{
+    $settings = meta_whatsapp_settings();
+    $token = trim((string) $settings['access_token']);
+    $phoneNumberId = trim((string) $settings['phone_number_id']);
+
+    if ($token === '' || $phoneNumberId === '') {
+        return ['ok' => false, 'error' => 'Meta Cloud API ainda não está configurada.'];
+    }
+
+    if (!is_file($filePath) || !is_readable($filePath)) {
+        return ['ok' => false, 'error' => 'Arquivo de mídia indisponível para envio.'];
+    }
+
+    $ch = curl_init(meta_whatsapp_graph_url($phoneNumberId . '/media'));
+
+    if ($ch === false) {
+        return ['ok' => false, 'error' => 'Não foi possível iniciar o upload na Meta Cloud API.'];
+    }
+
+    curl_setopt_array($ch, [
+        CURLOPT_POST => true,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_HTTPHEADER => [
+            'Accept: application/json',
+            'Authorization: Bearer ' . $token,
+        ],
+        CURLOPT_POSTFIELDS => [
+            'messaging_product' => 'whatsapp',
+            'type' => $mimeType,
+            'file' => new CURLFile($filePath, $mimeType, basename($filePath)),
+        ],
+        CURLOPT_TIMEOUT => 60,
+    ]);
+
+    $body = curl_exec($ch);
+    $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curlError = curl_error($ch);
+    curl_close($ch);
+
+    if ($body === false || $curlError !== '') {
+        return ['ok' => false, 'error' => $curlError ?: 'Erro desconhecido no upload da Meta Cloud API.'];
+    }
+
+    $decoded = json_decode((string) $body, true);
+
+    if ($httpCode < 200 || $httpCode >= 300 || !is_array($decoded) || trim((string) ($decoded['id'] ?? '')) === '') {
+        meta_whatsapp_log('Meta Cloud API erro no upload de mídia.', [
+            'http_code' => $httpCode,
+            'response' => $decoded,
+        ]);
+
+        return ['ok' => false, 'error' => 'Meta Cloud API HTTP ' . $httpCode . ': ' . $body, 'response' => $decoded];
+    }
+
+    return ['ok' => true, 'response' => $decoded];
+}
+
+function meta_whatsapp_send_text(string $number, string $text): array
+{
+    $settings = meta_whatsapp_settings();
+    $phoneNumberId = trim((string) $settings['phone_number_id']);
+    $to = crm_normalize_whatsapp_number($number);
+
+    if ($phoneNumberId === '') {
+        return ['ok' => false, 'error' => 'Phone Number ID da Meta Cloud API não configurado.'];
+    }
+
+    if ($to === '') {
+        return ['ok' => false, 'error' => 'WhatsApp inválido.'];
+    }
+
+    return meta_whatsapp_request($phoneNumberId . '/messages', [
+        'messaging_product' => 'whatsapp',
+        'recipient_type' => 'individual',
+        'to' => $to,
+        'type' => 'text',
+        'text' => [
+            'preview_url' => false,
+            'body' => $text,
+        ],
+    ]);
+}
+
+function meta_whatsapp_send_media(
+    string $number,
+    string $filePath,
+    string $mimeType,
+    string $mediaType,
+    string $caption = '',
+    string $fileName = ''
+): array {
+    $settings = meta_whatsapp_settings();
+    $to = crm_normalize_whatsapp_number($number);
+
+    if ($to === '') {
+        return ['ok' => false, 'error' => 'WhatsApp inválido.'];
+    }
+
+    if (!in_array($mediaType, ['image', 'audio', 'document'], true)) {
+        return ['ok' => false, 'error' => 'Tipo de mídia não suportado.'];
+    }
+
+    $upload = meta_whatsapp_upload_media($filePath, $mimeType);
+
+    if (($upload['ok'] ?? false) !== true) {
+        return $upload;
+    }
+
+    $mediaId = trim((string) ($upload['response']['id'] ?? ''));
+    $mediaPayload = ['id' => $mediaId];
+
+    if ($mediaType === 'image' && trim($caption) !== '') {
+        $mediaPayload['caption'] = trim($caption);
+    }
+
+    if ($mediaType === 'document') {
+        if (trim($caption) !== '') {
+            $mediaPayload['caption'] = trim($caption);
+        }
+
+        if (trim($fileName) !== '') {
+            $mediaPayload['filename'] = trim($fileName);
+        }
+    }
+
+    return meta_whatsapp_request($settings['phone_number_id'] . '/messages', [
+        'messaging_product' => 'whatsapp',
+        'recipient_type' => 'individual',
+        'to' => $to,
+        'type' => $mediaType,
+        $mediaType => $mediaPayload,
+    ]);
+}
+
+function meta_whatsapp_render_internal_notification(array $lead): string
+{
+    $config = [];
+    $configFile = dirname(__DIR__) . '/config.php';
+
+    if (is_file($configFile)) {
+        $loaded = require $configFile;
+        $config = is_array($loaded) ? ($loaded['whatsapp'] ?? []) : [];
+    }
+
+    return crm_render_lead_notification($lead, (string) ($config['internal_notification_message'] ?? ''));
+}
+
+function meta_whatsapp_render_custom_message(string $message, array $lead): string
+{
+    $replacements = [
+        '{{name}}' => (string) ($lead['name'] ?? ''),
+        '{{company}}' => (string) ($lead['company'] ?? ''),
+        '{{segment}}' => (string) ($lead['segment'] ?? ''),
+    ];
+
+    return strtr($message, $replacements);
+}
+
+function meta_whatsapp_send_lead_notification(array $lead): array
+{
+    if (!meta_whatsapp_is_configured()) {
+        crm_update_whatsapp_status((string) $lead['id'], 'nao_configurado', 'Meta Cloud API ainda não configurada.');
+        return ['ok' => false, 'error' => 'Meta Cloud API ainda não configurada.'];
+    }
+
+    $number = crm_whatsapp_number();
+
+    if ($number === '') {
+        crm_update_whatsapp_status((string) $lead['id'], 'notifica_sem_numero', 'Número interno do WhatsApp não configurado.');
+        return ['ok' => false, 'error' => 'Número interno do WhatsApp não configurado.'];
+    }
+
+    $result = meta_whatsapp_send_text($number, meta_whatsapp_render_internal_notification($lead));
+
+    if (($result['ok'] ?? false) === true) {
+        crm_update_whatsapp_status((string) $lead['id'], 'notifica_enviada');
+        return $result;
+    }
+
+    crm_update_whatsapp_status((string) $lead['id'], 'notifica_falhou', (string) ($result['error'] ?? 'Falha ao enviar.'));
+    return $result;
+}
+
+function meta_whatsapp_send_followup(array $queueItem): array
+{
+    if (!meta_whatsapp_is_configured()) {
+        return ['ok' => false, 'error' => 'Meta Cloud API ainda não configurada.'];
+    }
+
+    $number = crm_normalize_whatsapp_number((string) ($queueItem['whatsapp'] ?? ''));
+
+    if ($number === '') {
+        return ['ok' => false, 'error' => 'WhatsApp inválido.'];
+    }
+
+    return meta_whatsapp_send_text($number, meta_whatsapp_render_custom_message((string) $queueItem['message'], $queueItem));
+}
+
+function meta_whatsapp_validate_webhook_challenge(): bool
+{
+    $settings = meta_whatsapp_settings();
+    $mode = (string) ($_GET['hub_mode'] ?? $_GET['hub.mode'] ?? '');
+    $token = (string) ($_GET['hub_verify_token'] ?? $_GET['hub.verify_token'] ?? '');
+    $challenge = (string) ($_GET['hub_challenge'] ?? $_GET['hub.challenge'] ?? '');
+
+    if ($mode !== 'subscribe' || $challenge === '' || $settings['verify_token'] === '') {
+        return false;
+    }
+
+    if (!hash_equals((string) $settings['verify_token'], $token)) {
+        return false;
+    }
+
+    header('Content-Type: text/plain; charset=utf-8');
+    echo $challenge;
+    return true;
+}
+
+function meta_whatsapp_validate_webhook_signature(string $body): bool
+{
+    $settings = meta_whatsapp_settings();
+    $secret = trim((string) $settings['app_secret']);
+
+    if ($secret === '') {
+        return true;
+    }
+
+    $received = trim((string) ($_SERVER['HTTP_X_HUB_SIGNATURE_256'] ?? ''));
+
+    if (!str_starts_with($received, 'sha256=')) {
+        return false;
+    }
+
+    $expected = 'sha256=' . hash_hmac('sha256', $body, $secret);
+
+    return hash_equals($expected, $received);
+}
+
+function meta_whatsapp_extract_incoming_messages(array $payload): array
+{
+    $messages = [];
+
+    foreach (($payload['entry'] ?? []) as $entry) {
+        if (!is_array($entry)) {
+            continue;
+        }
+
+        foreach (($entry['changes'] ?? []) as $change) {
+            if (!is_array($change)) {
+                continue;
+            }
+
+            $value = $change['value'] ?? [];
+
+            if (!is_array($value)) {
+                continue;
+            }
+
+            $contacts = [];
+
+            foreach (($value['contacts'] ?? []) as $contact) {
+                if (!is_array($contact)) {
+                    continue;
+                }
+
+                $waId = crm_normalize_whatsapp_number((string) ($contact['wa_id'] ?? ''));
+
+                if ($waId !== '') {
+                    $contacts[$waId] = trim((string) ($contact['profile']['name'] ?? ''));
+                }
+            }
+
+            foreach (($value['messages'] ?? []) as $message) {
+                if (!is_array($message)) {
+                    continue;
+                }
+
+                $number = crm_normalize_whatsapp_number((string) ($message['from'] ?? ''));
+
+                if ($number === '') {
+                    continue;
+                }
+
+                $text = '';
+
+                if (($message['type'] ?? '') === 'text') {
+                    $text = trim((string) ($message['text']['body'] ?? ''));
+                } elseif (isset($message['button']['text'])) {
+                    $text = trim((string) $message['button']['text']);
+                } elseif (isset($message['interactive']['button_reply']['title'])) {
+                    $text = trim((string) $message['interactive']['button_reply']['title']);
+                } elseif (isset($message['interactive']['list_reply']['title'])) {
+                    $text = trim((string) $message['interactive']['list_reply']['title']);
+                }
+
+                $messages[] = [
+                    'id' => (string) ($message['id'] ?? ''),
+                    'number' => $number,
+                    'name' => $contacts[$number] ?? '',
+                    'text' => $text,
+                    'type' => (string) ($message['type'] ?? ''),
+                    'timestamp' => (string) ($message['timestamp'] ?? ''),
+                ];
+            }
+        }
+    }
+
+    return $messages;
+}
+
+function meta_whatsapp_extract_statuses(array $payload): array
+{
+    $statuses = [];
+
+    foreach (($payload['entry'] ?? []) as $entry) {
+        if (!is_array($entry)) {
+            continue;
+        }
+
+        foreach (($entry['changes'] ?? []) as $change) {
+            if (!is_array($change)) {
+                continue;
+            }
+
+            $value = $change['value'] ?? [];
+
+            if (!is_array($value)) {
+                continue;
+            }
+
+            foreach (($value['statuses'] ?? []) as $status) {
+                if (!is_array($status)) {
+                    continue;
+                }
+
+                $errors = [];
+
+                foreach (($status['errors'] ?? []) as $error) {
+                    if (!is_array($error)) {
+                        continue;
+                    }
+
+                    $errors[] = [
+                        'code' => (int) ($error['code'] ?? 0),
+                        'title' => (string) ($error['title'] ?? ''),
+                        'message' => (string) ($error['message'] ?? ''),
+                        'details' => (string) ($error['error_data']['details'] ?? ''),
+                    ];
+                }
+
+                $statuses[] = [
+                    'id' => (string) ($status['id'] ?? ''),
+                    'status' => (string) ($status['status'] ?? ''),
+                    'recipient_id' => crm_normalize_whatsapp_number((string) ($status['recipient_id'] ?? '')),
+                    'timestamp' => (string) ($status['timestamp'] ?? ''),
+                    'errors' => $errors,
+                ];
+            }
+        }
+    }
+
+    return $statuses;
+}
