@@ -4180,10 +4180,6 @@ textarea:focus {
   font-weight: 700;
 }
 
-.whatsapp-crm-page .wa-unread-indicator {
-  display: none !important;
-}
-
 .whatsapp-crm-page .wa-chat-meta em,
 .whatsapp-crm-page .wa-provider-badge {
   min-height: 24px;
