@@ -312,6 +312,11 @@ button {
   border-radius: 20px;
 }
 
+.push-onboarding[hidden],
+.push-onboarding .push-control[hidden] {
+  display: none !important;
+}
+
 .push-onboarding strong {
   display: block;
   margin-bottom: 4px;
@@ -1335,6 +1340,24 @@ textarea:focus {
   padding: 0 16px 16px;
 }
 
+.access-schedule-settings {
+  gap: 10px;
+}
+
+.access-schedule-settings h3 {
+  margin: 0;
+}
+
+.access-time-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.access-schedule-settings .commercial-help {
+  margin: 0;
+}
+
 .commercial-delete-form {
   display: flex;
   justify-content: flex-end;
@@ -2001,6 +2024,10 @@ textarea:focus {
 
   .commercial-user-row summary {
     grid-template-columns: 42px minmax(0, 1fr);
+  }
+
+  .access-time-fields {
+    grid-template-columns: 1fr;
   }
 
   .support-grid {
@@ -5604,5 +5631,88 @@ textarea:focus {
     max-height: none;
     overflow: visible;
     padding: 10px;
+  }
+}
+
+@media (max-width: 1024px) {
+  /* Composer mobile: actions stay together and the field occupies only the
+     flexible center of the row. */
+  .whatsapp-crm-page .wa-composer {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+  }
+
+  .whatsapp-crm-page .wa-composer-tools {
+    display: flex;
+    width: auto;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 2px;
+  }
+
+  .whatsapp-crm-page .wa-composer-main {
+    display: grid;
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  .whatsapp-crm-page .wa-composer textarea {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    min-height: 46px;
+    padding: 12px 14px;
+    font-size: 0.9rem;
+  }
+
+  .whatsapp-crm-page .wa-composer .wa-tool-button,
+  .whatsapp-crm-page .wa-composer .wa-record-button,
+  .whatsapp-crm-page .wa-composer .wa-send-button {
+    width: 40px;
+    min-width: 40px;
+    height: 40px;
+    min-height: 40px;
+    flex: 0 0 40px;
+  }
+
+  .whatsapp-crm-page .wa-composer .wa-record-button[hidden],
+  .whatsapp-crm-page .wa-composer .wa-send-button[hidden] {
+    display: none;
+  }
+
+  .whatsapp-crm-page .wa-emoji-menu {
+    bottom: 50px;
+    left: 0;
+  }
+}
+
+@media (max-width: 380px) {
+  .whatsapp-crm-page .wa-composer {
+    gap: 4px;
+    padding-inline: 8px;
+  }
+
+  .whatsapp-crm-page .wa-composer-tools {
+    gap: 0;
+  }
+
+  .whatsapp-crm-page .wa-composer .wa-tool-button,
+  .whatsapp-crm-page .wa-composer .wa-record-button,
+  .whatsapp-crm-page .wa-composer .wa-send-button {
+    width: 36px;
+    min-width: 36px;
+    height: 36px;
+    min-height: 36px;
+  }
+
+  .whatsapp-crm-page .wa-composer .wa-tool-button svg,
+  .whatsapp-crm-page .wa-composer .wa-record-button svg,
+  .whatsapp-crm-page .wa-composer .wa-send-button svg {
+    width: 20px;
+    height: 20px;
   }
 }

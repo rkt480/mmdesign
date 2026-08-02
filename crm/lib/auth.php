@@ -80,7 +80,9 @@ function crm_require_login(): void
         exit;
     }
 
-    if (crm_current_user() === null) {
+    $currentUser = crm_current_user();
+
+    if ($currentUser === null) {
         crm_logout();
 
         if (crm_request_expects_json()) {
@@ -93,11 +95,26 @@ function crm_require_login(): void
         header('Location: ' . crm_login_path());
         exit;
     }
+
+    if (!crm_user_access_is_allowed($currentUser)) {
+        crm_logout();
+
+        if (crm_request_expects_json()) {
+            http_response_code(403);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode(['ok' => false, 'error' => 'Seu acesso está fora do horário permitido.']);
+            exit;
+        }
+
+        header('Location: ' . crm_login_path() . '?blocked=1');
+        exit;
+    }
 }
 
 function crm_attempt_login(string $user, string $password): bool
 {
     crm_start_session();
+    unset($_SESSION['crm_login_blocked_message']);
     $config = crm_config();
     $dbUser = null;
 
@@ -116,6 +133,11 @@ function crm_attempt_login(string $user, string $password): bool
             && password_verify($password, (string) ($config['admin_password_hash'] ?? ''));
 
         if (!$active || (!$validPassword && !$validConfiguredAdminPassword)) {
+            return false;
+        }
+
+        if (!crm_user_access_is_allowed($dbUser)) {
+            $_SESSION['crm_login_blocked_message'] = crm_user_access_block_message($dbUser);
             return false;
         }
 
@@ -245,6 +267,62 @@ function crm_current_user(): ?array
         'active' => 1,
         'participates_in_rotation' => 0,
     ];
+}
+
+function crm_normalize_user_access_time(string $time, string $default): string
+{
+    $time = trim($time);
+
+    if (preg_match('/^(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/', $time) !== 1) {
+        return $default;
+    }
+
+    return substr($time, 0, 5) . ':00';
+}
+
+function crm_user_access_schedule_enabled(array $user): bool
+{
+    return (int) ($user['access_schedule_enabled'] ?? 1) === 1;
+}
+
+function crm_user_access_is_allowed(array $user, ?DateTimeImmutable $now = null): bool
+{
+    if ((string) ($user['role'] ?? '') !== 'vendedor' || !crm_user_access_schedule_enabled($user)) {
+        return true;
+    }
+
+    // Loading the application config also applies the CRM timezone before reading the clock.
+    crm_config();
+
+    $start = crm_normalize_user_access_time((string) ($user['access_start_time'] ?? ''), '09:00:00');
+    $end = crm_normalize_user_access_time((string) ($user['access_end_time'] ?? ''), '18:00:00');
+
+    // A malformed or equal interval must not lock the seller out permanently.
+    if ($start >= $end) {
+        return true;
+    }
+
+    $now ??= new DateTimeImmutable('now', new DateTimeZone(date_default_timezone_get()));
+    $current = $now->format('H:i:s');
+
+    return $current >= $start && $current < $end;
+}
+
+function crm_user_access_block_message(array $user): string
+{
+    $start = substr(crm_normalize_user_access_time((string) ($user['access_start_time'] ?? ''), '09:00:00'), 0, 5);
+    $end = substr(crm_normalize_user_access_time((string) ($user['access_end_time'] ?? ''), '18:00:00'), 0, 5);
+
+    return sprintf('Seu acesso está bloqueado neste momento. O horário permitido é das %s às %s.', $start, $end);
+}
+
+function crm_login_blocked_message(): string
+{
+    crm_start_session();
+    $message = (string) ($_SESSION['crm_login_blocked_message'] ?? '');
+    unset($_SESSION['crm_login_blocked_message']);
+
+    return $message;
 }
 
 function crm_current_user_role(): string

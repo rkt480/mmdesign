@@ -7,11 +7,14 @@ require_once __DIR__ . '/lib/auth.php';
 crm_send_security_headers();
 
 if (crm_is_logged_in()) {
+    crm_require_login();
     header('Location: index.php');
     exit;
 }
 
-$error = '';
+$error = ($_GET['blocked'] ?? '') === '1'
+    ? 'Seu acesso está fora do horário permitido. Tente novamente no próximo dia pela manhã.'
+    : '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $user = trim((string) ($_POST['user'] ?? ''));
@@ -26,8 +29,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header('Location: index.php');
         exit;
     } else {
-        crm_record_login_failure($user);
-        $error = 'Usuário ou senha inválidos.';
+        $blockedMessage = crm_login_blocked_message();
+
+        if ($blockedMessage !== '') {
+            $error = $blockedMessage;
+        } else {
+            crm_record_login_failure($user);
+            $error = 'Usuário ou senha inválidos.';
+        }
     }
 }
 ?>
