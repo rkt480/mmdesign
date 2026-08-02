@@ -118,6 +118,133 @@ function meta_whatsapp_request(string $endpoint, array $payload, int $timeout = 
     return ['ok' => true, 'response' => $decoded];
 }
 
+function meta_whatsapp_management_request(string $endpoint, string $method, array $payload = [], int $timeout = 30): array
+{
+    $settings = meta_whatsapp_settings();
+    $token = trim((string) $settings['access_token']);
+
+    if ($token === '') {
+        return ['ok' => false, 'error' => 'Token da Meta Cloud API não configurado.'];
+    }
+
+    $url = meta_whatsapp_graph_url($endpoint);
+
+    if (strtoupper($method) === 'GET' && $payload !== []) {
+        $url .= '?' . http_build_query($payload);
+    }
+
+    $ch = curl_init($url);
+
+    if ($ch === false) {
+        return ['ok' => false, 'error' => 'Não foi possível iniciar a requisição de gerenciamento da Meta.'];
+    }
+
+    $options = [
+        CURLOPT_CUSTOMREQUEST => strtoupper($method),
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_HTTPHEADER => [
+            'Accept: application/json',
+            'Authorization: Bearer ' . $token,
+            'Content-Type: application/json',
+        ],
+        CURLOPT_TIMEOUT => $timeout,
+    ];
+
+    if (strtoupper($method) !== 'GET') {
+        $options[CURLOPT_POSTFIELDS] = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    }
+
+    curl_setopt_array($ch, $options);
+    $body = curl_exec($ch);
+    $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curlError = curl_error($ch);
+    curl_close($ch);
+
+    if ($body === false || $curlError !== '') {
+        return ['ok' => false, 'error' => $curlError ?: 'Erro desconhecido na Meta Cloud API.'];
+    }
+
+    $decoded = json_decode((string) $body, true);
+
+    if ($httpCode < 200 || $httpCode >= 300) {
+        meta_whatsapp_log('Meta Management API erro HTTP.', [
+            'endpoint' => $endpoint,
+            'method' => $method,
+            'http_code' => $httpCode,
+            'response' => $decoded,
+        ]);
+
+        return ['ok' => false, 'error' => 'Meta Cloud API HTTP ' . $httpCode . ': ' . $body, 'response' => $decoded];
+    }
+
+    return ['ok' => true, 'response' => is_array($decoded) ? $decoded : $body];
+}
+
+function meta_whatsapp_template_components(array $template): array
+{
+    $components = [];
+    $header = trim((string) ($template['header_text'] ?? ''));
+
+    if ($header !== '') {
+        $components[] = ['type' => 'HEADER', 'format' => 'TEXT', 'text' => $header];
+    }
+
+    $components[] = ['type' => 'BODY', 'text' => trim((string) ($template['body_text'] ?? ''))];
+    $footer = trim((string) ($template['footer_text'] ?? ''));
+
+    if ($footer !== '') {
+        $components[] = ['type' => 'FOOTER', 'text' => $footer];
+    }
+
+    return $components;
+}
+
+function meta_whatsapp_create_template(array $template): array
+{
+    $settings = meta_whatsapp_settings();
+    $wabaId = trim((string) $settings['business_account_id']);
+
+    if ($wabaId === '') {
+        return ['ok' => false, 'error' => 'Business Account ID (WABA ID) não configurado.'];
+    }
+
+    return meta_whatsapp_management_request($wabaId . '/message_templates', 'POST', [
+        'name' => trim((string) ($template['name'] ?? '')),
+        'language' => trim((string) ($template['language'] ?? 'pt_BR')) ?: 'pt_BR',
+        'category' => strtoupper(trim((string) ($template['category'] ?? 'UTILITY'))) ?: 'UTILITY',
+        'components' => meta_whatsapp_template_components($template),
+    ]);
+}
+
+function meta_whatsapp_update_template(string $templateId, array $template): array
+{
+    $templateId = trim($templateId);
+
+    if ($templateId === '') {
+        return ['ok' => false, 'error' => 'ID do template na Meta não configurado.'];
+    }
+
+    return meta_whatsapp_management_request($templateId, 'POST', [
+        'category' => strtoupper(trim((string) ($template['category'] ?? 'UTILITY'))) ?: 'UTILITY',
+        'components' => meta_whatsapp_template_components($template),
+    ]);
+}
+
+function meta_whatsapp_list_templates(): array
+{
+    $settings = meta_whatsapp_settings();
+    $wabaId = trim((string) $settings['business_account_id']);
+
+    if ($wabaId === '') {
+        return ['ok' => false, 'error' => 'Business Account ID (WABA ID) não configurado.'];
+    }
+
+    return meta_whatsapp_management_request($wabaId . '/message_templates', 'GET', [
+        'fields' => 'id,name,status,language,category',
+        'limit' => 100,
+    ]);
+}
+
 function meta_whatsapp_upload_media(string $filePath, string $mimeType): array
 {
     $settings = meta_whatsapp_settings();
@@ -200,6 +327,50 @@ function meta_whatsapp_send_text(string $number, string $text): array
             'body' => $text,
         ],
     ]);
+}
+
+function meta_whatsapp_send_template(string $number, array $template, array $variables = []): array
+{
+    $settings = meta_whatsapp_settings();
+    $to = crm_normalize_whatsapp_number($number);
+    $name = trim((string) ($template['name'] ?? ''));
+    $language = trim((string) ($template['language'] ?? 'pt_BR')) ?: 'pt_BR';
+
+    if ($to === '') {
+        return ['ok' => false, 'error' => 'WhatsApp inválido.'];
+    }
+
+    if ($name === '') {
+        return ['ok' => false, 'error' => 'Template sem nome configurado.'];
+    }
+
+    $components = [];
+    $bodyVariables = [];
+
+    foreach ($variables as $value) {
+        $bodyVariables[] = ['type' => 'text', 'text' => trim((string) $value)];
+    }
+
+    if ($bodyVariables !== []) {
+        $components[] = ['type' => 'body', 'parameters' => $bodyVariables];
+    }
+
+    $payload = [
+        'messaging_product' => 'whatsapp',
+        'recipient_type' => 'individual',
+        'to' => $to,
+        'type' => 'template',
+        'template' => [
+            'name' => $name,
+            'language' => ['code' => $language],
+        ],
+    ];
+
+    if ($components !== []) {
+        $payload['template']['components'] = $components;
+    }
+
+    return meta_whatsapp_request($settings['phone_number_id'] . '/messages', $payload);
 }
 
 function meta_whatsapp_send_media(

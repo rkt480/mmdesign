@@ -56,6 +56,25 @@ CREATE TABLE IF NOT EXISTS crm_settings (
   updated_at DATETIME NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS whatsapp_templates (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(512) NOT NULL UNIQUE,
+  language VARCHAR(20) NOT NULL DEFAULT 'pt_BR',
+  category VARCHAR(30) NOT NULL DEFAULT 'UTILITY',
+  header_text TEXT NULL,
+  body_text TEXT NOT NULL,
+  footer_text TEXT NULL,
+  status VARCHAR(30) NOT NULL DEFAULT 'draft',
+  meta_template_id VARCHAR(100) NULL,
+  meta_status VARCHAR(40) NULL,
+  meta_rejection_reason TEXT NULL,
+  active TINYINT(1) NOT NULL DEFAULT 1,
+  created_by INT NULL,
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL,
+  INDEX idx_whatsapp_templates_active (active, status, updated_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS crm_users (
   id INT AUTO_INCREMENT PRIMARY KEY,
   name VARCHAR(160) NOT NULL,

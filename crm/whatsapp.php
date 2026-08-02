@@ -7,6 +7,7 @@ require_once __DIR__ . '/lib/storage.php';
 require_once __DIR__ . '/lib/settings.php';
 require_once __DIR__ . '/lib/forms.php';
 require_once __DIR__ . '/lib/whatsapp.php';
+require_once __DIR__ . '/lib/whatsapp-templates.php';
 
 crm_require_login();
 
@@ -110,6 +111,16 @@ function whatsapp_page_short_text(string $text, int $limit = 92): string
     }
 
     return strlen($text) > $limit ? substr($text, 0, $limit - 3) . '...' : $text;
+}
+
+function whatsapp_template_status_label_for_conversation(array $template): string
+{
+    return match (strtoupper(trim((string) ($template['meta_status'] ?? '')))) {
+        'APPROVED' => 'aprovado',
+        'PENDING' => 'em análise',
+        'REJECTED' => 'rejeitado',
+        default => 'rascunho',
+    };
 }
 
 function whatsapp_page_timestamp(string $date): int
@@ -399,6 +410,28 @@ if ($requestedLeadId !== '') {
 $activeLead = is_array($requestedLead) ? $requestedLead : (is_array($activeConversation) ? $activeConversation['lead'] : null);
 $activeMessages = is_array($activeConversation) ? $activeConversation['messages'] : [];
 $activeProvider = is_array($activeConversation) ? (string) $activeConversation['provider'] : $provider;
+$whatsappTemplates = crm_read_whatsapp_templates(true);
+$hasApprovedWhatsAppTemplate = false;
+
+foreach ($whatsappTemplates as $template) {
+    if (crm_whatsapp_template_is_sendable($template)) {
+        $hasApprovedWhatsAppTemplate = true;
+        break;
+    }
+}
+
+$wa24hOpen = is_array($activeLead) && crm_whatsapp_is_in_24h_window($activeLead);
+$waWindowLabel = is_array($activeLead) ? crm_whatsapp_window_label($activeLead) : '';
+$waTemplateData = [];
+
+foreach ($whatsappTemplates as $template) {
+    $waTemplateData[(string) $template['id']] = [
+        'name' => (string) ($template['name'] ?? ''),
+        'status' => strtoupper((string) ($template['meta_status'] ?? '')),
+        'body' => (string) ($template['body_text'] ?? ''),
+        'variables' => crm_whatsapp_template_variables((string) ($template['body_text'] ?? '')),
+    ];
+}
 ?>
 <!doctype html>
 <html lang="pt-BR">
@@ -423,6 +456,14 @@ $activeProvider = is_array($activeConversation) ? (string) $activeConversation['
               <path d="M10.7 8.2h6.2a4 4 0 0 1 4 4v2.7a4 4 0 0 1-4 4h-2.5L11 21v-2.1h-.3a4 4 0 0 1-4-4v-2.7a4 4 0 0 1 4-4Z" />
             </svg>
           </a>
+          <?php if ($canManageSettings): ?>
+            <a href="whatsapp-templates.php" title="Templates WhatsApp" aria-label="Templates WhatsApp">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M5 4.5h14v15H5z" />
+                <path d="M8 8h8M8 12h8M8 16h5" />
+              </svg>
+            </a>
+          <?php endif; ?>
           <?php if ($canManageSales): ?>
             <a href="dashboard.php" title="Dashboard do gestor" aria-label="Dashboard do gestor">
               <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -544,7 +585,25 @@ $activeProvider = is_array($activeConversation) ? (string) $activeConversation['
             <?php endforeach; ?>
           </div>
 
-          <form class="wa-composer" method="post" action="send-chat-message.php" enctype="multipart/form-data" data-wa-composer>
+          <div class="wa-window-banner <?= $wa24hOpen ? 'is-open' : 'is-closed' ?>">
+            <span class="wa-window-icon"><?= $wa24hOpen ? '✓' : '!' ?></span>
+            <div><strong><?= $wa24hOpen ? 'Resposta livre liberada' : 'Janela de 24 horas encerrada' ?></strong><span><?= htmlspecialchars($waWindowLabel) ?></span></div>
+          </div>
+
+          <section class="wa-template-picker" data-wa-template-picker>
+            <div class="wa-template-picker-heading"><div><p class="eyebrow">API oficial</p><strong>Enviar template aprovado</strong></div><span>Meta</span></div>
+            <form method="post" action="send-whatsapp-template.php" data-wa-template-form>
+              <input type="hidden" name="_csrf_token" value="<?= htmlspecialchars(crm_csrf_token()) ?>" />
+              <input type="hidden" name="lead_id" value="<?= htmlspecialchars((string) ($activeLead['id'] ?? '')) ?>" />
+              <input type="hidden" name="provider_filter" value="<?= htmlspecialchars($providerFilter) ?>" />
+              <div class="wa-template-picker-row"><select name="template_id" data-wa-template-select required><option value="">Selecione um template</option><?php foreach ($whatsappTemplates as $template): $isApproved = crm_whatsapp_template_is_sendable($template); ?><option value="<?= (int) $template['id'] ?>" <?= !$isApproved ? 'disabled' : '' ?>><?= htmlspecialchars((string) $template['name']) ?> · <?= htmlspecialchars(whatsapp_template_status_label_for_conversation($template)) ?></option><?php endforeach; ?></select><button type="submit" data-wa-template-send disabled>Enviar template</button></div>
+              <div class="wa-template-variable-fields" data-wa-template-fields hidden></div>
+              <p class="wa-template-preview" data-wa-template-preview hidden></p>
+            </form>
+            <?php if ($provider !== 'meta_cloud'): ?><small class="wa-template-picker-note">Selecione Meta Cloud API nas configurações para enviar templates oficiais.</small><?php elseif (count($whatsappTemplates) === 0): ?><small class="wa-template-picker-note">Nenhum template cadastrado. <a href="whatsapp-templates.php">Criar template</a></small><?php elseif (!$hasApprovedWhatsAppTemplate): ?><small class="wa-template-picker-note">Seus templates ainda precisam ser aprovados pela Meta. Use “Sincronizar status” na biblioteca depois da análise.</small><?php endif; ?>
+          </section>
+
+          <form class="wa-composer <?= $wa24hOpen ? '' : 'is-locked' ?>" method="post" action="send-chat-message.php" enctype="multipart/form-data" data-wa-composer <?= $wa24hOpen ? '' : 'aria-disabled="true"' ?> <?= $wa24hOpen ? '' : 'hidden' ?>>
             <div class="wa-composer-tools">
               <button class="wa-tool-button" type="button" title="Anexar imagem, áudio ou documento" data-wa-attach aria-label="Anexar imagem, áudio ou documento">
                 <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -788,6 +847,64 @@ $activeProvider = is_array($activeConversation) ? (string) $activeConversation['
       </aside>
     </main>
     <script>
+      const waTemplateData = <?= json_encode($waTemplateData, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+
+      const templatePicker = document.querySelector("[data-wa-template-picker]");
+      if (templatePicker) {
+        const templateSelect = templatePicker.querySelector("[data-wa-template-select]");
+        const templateFields = templatePicker.querySelector("[data-wa-template-fields]");
+        const templatePreview = templatePicker.querySelector("[data-wa-template-preview]");
+        const templateSend = templatePicker.querySelector("[data-wa-template-send]");
+        const templateForm = templatePicker.querySelector("[data-wa-template-form]");
+
+        const renderTemplatePicker = () => {
+          const selected = waTemplateData[templateSelect.value];
+          templateFields.replaceChildren();
+          templatePreview.hidden = true;
+          templateSend.disabled = !selected || selected.status !== "APPROVED";
+
+          if (!selected) {
+            templateFields.hidden = true;
+            return;
+          }
+
+          templateFields.hidden = false;
+          const values = {};
+          (selected.variables || []).forEach((variableNumber) => {
+            const label = document.createElement("label");
+            label.textContent = `Variável {{${variableNumber}}}`;
+            const input = document.createElement("input");
+            input.type = "text";
+            input.name = `variables[${variableNumber}]`;
+            input.placeholder = variableNumber === 1 ? "Ex.: nome do contato" : "Informe o valor";
+            input.required = true;
+            input.addEventListener("input", () => {
+              values[variableNumber] = input.value;
+              templatePreview.textContent = selected.body.replace(/\{\{\s*(\d+)\s*\}\}/g, (_, number) => values[number] || `{{${number}}}`);
+              templatePreview.hidden = false;
+            });
+            label.appendChild(input);
+            templateFields.appendChild(label);
+          });
+
+          if ((selected.variables || []).length === 0) {
+            templatePreview.textContent = selected.body;
+            templatePreview.hidden = false;
+          }
+        };
+
+        templateSelect?.addEventListener("change", renderTemplatePicker);
+        templateForm?.addEventListener("submit", (event) => {
+          if (!templateSelect.value || templateSend.disabled) {
+            event.preventDefault();
+            window.alert("Selecione um template aprovado pela Meta.");
+            return;
+          }
+          templateSend.disabled = true;
+          templateSend.textContent = "Enviando…";
+        });
+      }
+
       document.querySelectorAll(".wa-message-surface").forEach((surface) => {
         surface.scrollTop = surface.scrollHeight;
       });

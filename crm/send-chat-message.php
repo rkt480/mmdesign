@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/lib/auth.php';
 require_once __DIR__ . '/lib/storage.php';
 require_once __DIR__ . '/lib/whatsapp.php';
+require_once __DIR__ . '/lib/whatsapp-templates.php';
 
 crm_require_login();
 
@@ -47,6 +48,11 @@ $lead = crm_find_lead($leadId);
 
 if ($lead === null) {
     header('Location: whatsapp.php?send_error=' . rawurlencode('Contato não encontrado.'));
+    exit;
+}
+
+if (crm_whatsapp_provider() === 'meta_cloud' && !crm_whatsapp_is_in_24h_window($lead)) {
+    header('Location: ' . $redirect . '&send_error=' . rawurlencode('A janela de 24 horas está encerrada. Envie um template aprovado pela Meta.'));
     exit;
 }
 

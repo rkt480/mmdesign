@@ -109,6 +109,27 @@ function crm_ensure_crm_schema(PDO $pdo): void
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
     );
 
+    $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS whatsapp_templates (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            name VARCHAR(512) NOT NULL UNIQUE,
+            language VARCHAR(20) NOT NULL DEFAULT "pt_BR",
+            category VARCHAR(30) NOT NULL DEFAULT "UTILITY",
+            header_text TEXT NULL,
+            body_text TEXT NOT NULL,
+            footer_text TEXT NULL,
+            status VARCHAR(30) NOT NULL DEFAULT "draft",
+            meta_template_id VARCHAR(100) NULL,
+            meta_status VARCHAR(40) NULL,
+            meta_rejection_reason TEXT NULL,
+            active TINYINT(1) NOT NULL DEFAULT 1,
+            created_by INT NULL,
+            created_at DATETIME NOT NULL,
+            updated_at DATETIME NOT NULL,
+            INDEX idx_whatsapp_templates_active (active, status, updated_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
+    );
+
     crm_migrate_legacy_settings($pdo);
 
     $pdo->exec(
@@ -181,6 +202,98 @@ function crm_ensure_crm_schema(PDO $pdo): void
     }
 
     $checked = true;
+}
+
+function crm_read_whatsapp_templates(bool $activeOnly = false): array
+{
+    $where = $activeOnly ? ' WHERE active = 1' : '';
+    $stmt = crm_db()->query(
+        'SELECT * FROM whatsapp_templates' . $where . ' ORDER BY active DESC, updated_at DESC, name ASC'
+    );
+
+    return $stmt->fetchAll();
+}
+
+function crm_find_whatsapp_template(int $id): ?array
+{
+    $stmt = crm_db()->prepare('SELECT * FROM whatsapp_templates WHERE id = :id LIMIT 1');
+    $stmt->execute(['id' => $id]);
+    $template = $stmt->fetch();
+
+    return is_array($template) ? $template : null;
+}
+
+function crm_save_whatsapp_template(array $template): int
+{
+    $id = (int) ($template['id'] ?? 0);
+    $name = trim((string) ($template['name'] ?? ''));
+    $language = trim((string) ($template['language'] ?? 'pt_BR')) ?: 'pt_BR';
+    $category = strtoupper(trim((string) ($template['category'] ?? 'UTILITY')));
+    $body = trim((string) ($template['body_text'] ?? ''));
+    $now = date('Y-m-d H:i:s');
+
+    if ($id > 0) {
+        $stmt = crm_db()->prepare(
+            'UPDATE whatsapp_templates
+             SET name = :name, language = :language, category = :category,
+                 header_text = :header_text, body_text = :body_text, footer_text = :footer_text,
+                 status = :status, updated_at = :updated_at
+             WHERE id = :id'
+        );
+        $stmt->execute([
+            'id' => $id,
+            'name' => $name,
+            'language' => $language,
+            'category' => $category,
+            'header_text' => trim((string) ($template['header_text'] ?? '')) ?: null,
+            'body_text' => $body,
+            'footer_text' => trim((string) ($template['footer_text'] ?? '')) ?: null,
+            'status' => trim((string) ($template['status'] ?? 'draft')) ?: 'draft',
+            'updated_at' => $now,
+        ]);
+
+        return $id;
+    }
+
+    $stmt = crm_db()->prepare(
+        'INSERT INTO whatsapp_templates
+         (name, language, category, header_text, body_text, footer_text, status, created_by, created_at, updated_at)
+         VALUES (:name, :language, :category, :header_text, :body_text, :footer_text, :status, :created_by, :created_at, :updated_at)'
+    );
+    $stmt->execute([
+        'name' => $name,
+        'language' => $language,
+        'category' => $category,
+        'header_text' => trim((string) ($template['header_text'] ?? '')) ?: null,
+        'body_text' => $body,
+        'footer_text' => trim((string) ($template['footer_text'] ?? '')) ?: null,
+        'status' => trim((string) ($template['status'] ?? 'draft')) ?: 'draft',
+        'created_by' => (int) ($template['created_by'] ?? 0) ?: null,
+        'created_at' => $now,
+        'updated_at' => $now,
+    ]);
+
+    return (int) crm_db()->lastInsertId();
+}
+
+function crm_update_whatsapp_template_meta(int $id, array $meta): bool
+{
+    $stmt = crm_db()->prepare(
+        'UPDATE whatsapp_templates
+         SET status = :status, meta_template_id = :meta_template_id,
+             meta_status = :meta_status, meta_rejection_reason = :meta_rejection_reason,
+             updated_at = :updated_at
+         WHERE id = :id'
+    );
+
+    return $stmt->execute([
+        'id' => $id,
+        'status' => trim((string) ($meta['status'] ?? 'draft')) ?: 'draft',
+        'meta_template_id' => trim((string) ($meta['meta_template_id'] ?? '')) ?: null,
+        'meta_status' => trim((string) ($meta['meta_status'] ?? '')) ?: null,
+        'meta_rejection_reason' => trim((string) ($meta['meta_rejection_reason'] ?? '')) ?: null,
+        'updated_at' => date('Y-m-d H:i:s'),
+    ]);
 }
 
 function crm_ensure_user_columns(PDO $pdo): void
