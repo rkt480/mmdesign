@@ -183,7 +183,7 @@ function lead_money_input(array $lead, string $field): string
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="csrf-token" content="<?= htmlspecialchars(crm_csrf_token()) ?>" />
     <title>CRM de Contatos | <?= htmlspecialchars((string) $config['company_name']) ?></title>
-    <link rel="stylesheet" href="./assets/crm.css?v=20260722-kanban-inline-repeat" />
+    <link rel="stylesheet" href="./assets/crm.css?v=20260802-template-navigation" />
   </head>
   <body class="leads-page">
     <div class="app-shell">
@@ -199,6 +199,14 @@ function lead_money_input(array $lead, string $field): string
               <path d="M10.7 8.2h6.2a4 4 0 0 1 4 4v2.7a4 4 0 0 1-4 4h-2.5L11 21v-2.1h-.3a4 4 0 0 1-4-4v-2.7a4 4 0 0 1 4-4Z" />
             </svg>
           </a>
+          <?php if ($canManageSettings): ?>
+            <a href="whatsapp-templates.php" title="Templates WhatsApp" aria-label="Templates WhatsApp">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M5 4.5h14v15H5z" />
+                <path d="M8 8h8M8 12h8M8 16h5" />
+              </svg>
+            </a>
+          <?php endif; ?>
           <?php if ($canManageSales): ?>
             <a href="dashboard.php" title="Dashboard do gestor" aria-label="Dashboard do gestor">
               <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -234,6 +242,7 @@ function lead_money_input(array $lead, string $field): string
             <?php endif; ?>
             <?php if ($canManageSettings): ?>
               <a href="commercial.php">Comercial</a>
+              <a href="whatsapp-templates.php">Templates</a>
               <a href="settings.php">Configurações</a>
             <?php endif; ?>
           </nav>
@@ -245,6 +254,9 @@ function lead_money_input(array $lead, string $field): string
             <h1>Contatos</h1>
           </div>
           <nav>
+            <?php if ($canManageSettings): ?>
+              <a href="whatsapp-templates.php">Templates WhatsApp</a>
+            <?php endif; ?>
             <?php if ($canManageSales): ?>
               <a href="followups.php">Criar fluxo</a>
             <?php endif; ?>
