@@ -328,9 +328,15 @@ foreach ($conversationGroups as $whatsapp => $conversation) {
     $lastMessage = end($messages);
     $lastAt = is_array($lastMessage) ? (string) $lastMessage['at'] : (string) $conversation['last_at'];
     $preview = is_array($lastMessage) ? (string) $lastMessage['text'] : 'Sem mensagens registradas ainda.';
+    $lastDirection = is_array($lastMessage) ? (string) ($lastMessage['direction'] ?? '') : '';
+    $lastMessageKey = is_array($lastMessage)
+        ? implode('|', [$lastDirection, $lastAt, $preview])
+        : '';
     $conversation['messages'] = $messages;
     $conversation['last_at'] = $lastAt;
     $conversation['preview'] = $preview;
+    $conversation['last_direction'] = $lastDirection;
+    $conversation['last_message_key'] = $lastMessageKey;
 
     $providerCounts['all']++;
 
@@ -467,6 +473,9 @@ $activeProvider = is_array($activeConversation) ? (string) $activeConversation['
               class="wa-chat-item <?= $isActive ? 'active' : '' ?>"
               href="whatsapp.php?provider=<?= htmlspecialchars($providerFilter) ?>&lead=<?= htmlspecialchars($leadId) ?>"
               data-wa-chat
+              data-wa-lead-id="<?= htmlspecialchars($leadId) ?>"
+              data-wa-last-key="<?= htmlspecialchars(hash('sha256', (string) ($conversation['last_message_key'] ?? ''))) ?>"
+              data-wa-last-direction="<?= htmlspecialchars((string) ($conversation['last_direction'] ?? '')) ?>"
               data-search="<?= htmlspecialchars(strtolower($leadName . ' ' . (string) ($lead['whatsapp'] ?? '') . ' ' . (string) $conversation['preview'])) ?>"
             >
               <span class="wa-avatar"><?= htmlspecialchars(strtoupper(substr(trim($leadName) ?: 'C', 0, 1))) ?></span>
@@ -476,6 +485,7 @@ $activeProvider = is_array($activeConversation) ? (string) $activeConversation['
               </span>
               <span class="wa-chat-meta">
                 <time><?= htmlspecialchars(whatsapp_page_time_label((string) $conversation['last_at'])) ?></time>
+                <span class="wa-unread-indicator" data-wa-unread hidden>Nova</span>
                 <em class="<?= htmlspecialchars(whatsapp_page_provider_badge_class((string) $conversation['provider'])) ?>">
                   <?= htmlspecialchars(whatsapp_page_provider_label((string) $conversation['provider'])) ?>
                 </em>
@@ -771,9 +781,13 @@ $activeProvider = is_array($activeConversation) ? (string) $activeConversation['
         surface.scrollTop = surface.scrollHeight;
       });
 
-      const searchInput = document.querySelector("[data-wa-search]");
+      const bindConversationSearch = () => {
+        const searchInput = document.querySelector("[data-wa-search]");
 
-      if (searchInput) {
+        if (!searchInput) {
+          return;
+        }
+
         searchInput.addEventListener("input", () => {
           const query = searchInput.value.trim().toLocaleLowerCase("pt-BR");
 
@@ -781,7 +795,107 @@ $activeProvider = is_array($activeConversation) ? (string) $activeConversation['
             chat.hidden = query !== "" && !chat.dataset.search.includes(query);
           });
         });
-      }
+      };
+
+      bindConversationSearch();
+
+      // O webhook grava a mensagem no servidor, mas esta página é renderizada
+      // no PHP. Consulte-a periodicamente para exibir novas mensagens sem que
+      // o atendente precise clicar novamente no contato.
+      let refreshInFlight = false;
+      const conversationHasUnsavedContent = () => {
+        const composer = document.querySelector("[data-wa-composer]");
+        const messageInput = composer?.querySelector("[data-wa-message]");
+        const mediaInput = composer?.querySelector("[data-wa-media]");
+
+        return Boolean(messageInput?.value.trim() || mediaInput?.files?.length);
+      };
+
+      const updateUnreadTitle = () => {
+        const unreadCount = document.querySelectorAll("[data-wa-unread]:not([hidden])").length;
+        document.title = unreadCount > 0 ? `(${unreadCount}) Nova mensagem | Publi CRM` : "WhatsApp | Publi CRM";
+      };
+
+      const decorateUnreadConversations = (currentList, refreshedList) => {
+        const previousChats = new Map();
+
+        currentList?.querySelectorAll("[data-wa-chat]").forEach((chat) => {
+          previousChats.set(chat.dataset.waLeadId || chat.href, {
+            lastKey: chat.dataset.waLastKey || "",
+            unread: chat.querySelector("[data-wa-unread]")?.hidden === false,
+          });
+        });
+
+        refreshedList?.querySelectorAll("[data-wa-chat]").forEach((chat) => {
+          const previous = previousChats.get(chat.dataset.waLeadId || chat.href);
+          const lastKeyChanged = !previous || previous.lastKey !== (chat.dataset.waLastKey || "");
+          const isIncoming = chat.dataset.waLastDirection === "incoming";
+          const isActive = chat.classList.contains("active");
+          const shouldShowUnread = !isActive && (previous?.unread || (lastKeyChanged && isIncoming));
+          const indicator = chat.querySelector("[data-wa-unread]");
+
+          if (indicator) {
+            indicator.hidden = !shouldShowUnread;
+          }
+
+          chat.classList.toggle("has-unread", shouldShowUnread);
+        });
+      };
+
+      const refreshConversation = async () => {
+        if (refreshInFlight || document.visibilityState !== "visible" || conversationHasUnsavedContent()) {
+          return;
+        }
+
+        refreshInFlight = true;
+
+        try {
+          const url = new URL(window.location.href);
+          url.searchParams.set("_wa_refresh", String(Date.now()));
+          const response = await fetch(url, {
+            headers: { "X-Requested-With": "XMLHttpRequest", Accept: "text/html" },
+            cache: "no-store",
+          });
+
+          if (!response.ok) {
+            return;
+          }
+
+          const html = await response.text();
+          const refreshedDocument = new DOMParser().parseFromString(html, "text/html");
+          const currentList = document.querySelector(".wa-chat-list");
+          const refreshedList = refreshedDocument.querySelector(".wa-chat-list");
+
+          if (currentList && refreshedList && currentList.innerHTML !== refreshedList.innerHTML) {
+            decorateUnreadConversations(currentList, refreshedList);
+            currentList.replaceWith(refreshedList);
+            bindConversationSearch();
+            updateUnreadTitle();
+          }
+
+          const currentSurface = document.querySelector(".wa-message-surface");
+          const refreshedSurface = refreshedDocument.querySelector(".wa-message-surface");
+
+          if (currentSurface && refreshedSurface && currentSurface.innerHTML !== refreshedSurface.innerHTML) {
+            const wasAtBottom = currentSurface.scrollHeight - currentSurface.scrollTop - currentSurface.clientHeight < 80;
+            currentSurface.replaceWith(refreshedSurface);
+
+            if (wasAtBottom) {
+              refreshedSurface.scrollTop = refreshedSurface.scrollHeight;
+            }
+          } else if (!currentSurface && refreshedSurface) {
+            // Se a primeira mensagem chegou enquanto a tela estava sem conversa,
+            // a seleção inicial precisa ser reconstruída pelo servidor.
+            window.location.reload();
+          }
+        } catch (error) {
+          // Uma falha momentânea de rede não deve interromper o atendimento.
+        } finally {
+          refreshInFlight = false;
+        }
+      };
+
+      window.setInterval(refreshConversation, 2000);
 
       document.querySelectorAll(".wa-composer").forEach((form) => {
         const attachButton = form.querySelector("[data-wa-attach]");

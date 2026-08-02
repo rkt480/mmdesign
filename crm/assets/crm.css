@@ -4167,6 +4167,33 @@ textarea:focus {
   font-weight: 800;
 }
 
+.whatsapp-crm-page .wa-chat-item.has-unread {
+  background: rgba(220, 252, 231, 0.72);
+}
+
+.whatsapp-crm-page .wa-chat-item.has-unread .wa-chat-summary strong {
+  color: #047857;
+}
+
+.whatsapp-crm-page .wa-chat-item.has-unread .wa-chat-summary small {
+  color: #065f46;
+  font-weight: 700;
+}
+
+.whatsapp-crm-page .wa-unread-indicator {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 3px 7px;
+  color: #065f46;
+  background: #bbf7d0;
+  border-radius: 999px;
+  font-size: 0.62rem;
+  font-style: normal;
+  font-weight: 850;
+  line-height: 1;
+}
+
 .whatsapp-crm-page .wa-chat-meta em,
 .whatsapp-crm-page .wa-provider-badge {
   min-height: 24px;
