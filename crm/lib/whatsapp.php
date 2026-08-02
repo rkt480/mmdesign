@@ -41,19 +41,6 @@ function crm_whatsapp_send_media(
     return pilot_status_send_media($number, $filePath, $mimeType, $mediaType, $caption, $fileName);
 }
 
-function crm_whatsapp_send_lead_notification(array $lead): array
-{
-    if (crm_whatsapp_provider() === 'meta_cloud') {
-        return meta_whatsapp_send_lead_notification($lead);
-    }
-
-    if (crm_whatsapp_provider() === 'pilot_status') {
-        return pilot_status_send_lead_notification($lead);
-    }
-
-    return pilot_status_send_lead_notification($lead);
-}
-
 function crm_whatsapp_send_followup(array $queueItem): array
 {
     $senderName = trim((string) ($queueItem['assigned_user_name'] ?? ''));

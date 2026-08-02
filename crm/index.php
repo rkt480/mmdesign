@@ -137,18 +137,18 @@ function lead_answer(array $lead, string $field): string
 
 function lead_whatsapp_status_label(array $lead): string
 {
-    $status = (string) ($lead['whatsapp_status'] ?? 'pendente');
+    $status = (string) ($lead['whatsapp_status'] ?? '');
     $labels = [
-        'pendente' => 'Aguardando notificação interna',
-        'notifica_enviada' => 'Notificação interna enviada',
-        'notifica_falhou' => 'Notificação interna falhou',
-        'notifica_sem_numero' => 'Número interno não configurado',
+        'pendente' => 'Nenhuma mensagem enviada',
+        'notifica_enviada' => 'Mensagem enviada',
+        'notifica_falhou' => 'Falha no envio',
+        'notifica_sem_numero' => 'Nenhuma mensagem enviada',
         'nao_configurado' => 'WhatsApp não configurado',
-        'falhou' => 'Falhou',
+        'falhou' => 'Falha no envio',
         'enviado' => 'Mensagem enviada',
     ];
 
-    return $labels[$status] ?? $status;
+    return $labels[$status] ?? ($status !== '' ? $status : 'Nenhuma mensagem enviada');
 }
 
 function lead_visible_tags(array $lead, array $tags): array

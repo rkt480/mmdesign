@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/storage.php';
 require_once __DIR__ . '/settings.php';
-require_once __DIR__ . '/lead-notification.php';
 
 function meta_whatsapp_settings(): array
 {
@@ -254,19 +253,6 @@ function meta_whatsapp_send_media(
     ]);
 }
 
-function meta_whatsapp_render_internal_notification(array $lead): string
-{
-    $config = [];
-    $configFile = dirname(__DIR__) . '/config.php';
-
-    if (is_file($configFile)) {
-        $loaded = require $configFile;
-        $config = is_array($loaded) ? ($loaded['whatsapp'] ?? []) : [];
-    }
-
-    return crm_render_lead_notification($lead, (string) ($config['internal_notification_message'] ?? ''));
-}
-
 function meta_whatsapp_render_custom_message(string $message, array $lead): string
 {
     $replacements = [
@@ -276,31 +262,6 @@ function meta_whatsapp_render_custom_message(string $message, array $lead): stri
     ];
 
     return strtr($message, $replacements);
-}
-
-function meta_whatsapp_send_lead_notification(array $lead): array
-{
-    if (!meta_whatsapp_is_configured()) {
-        crm_update_whatsapp_status((string) $lead['id'], 'nao_configurado', 'Meta Cloud API ainda não configurada.');
-        return ['ok' => false, 'error' => 'Meta Cloud API ainda não configurada.'];
-    }
-
-    $number = crm_whatsapp_number();
-
-    if ($number === '') {
-        crm_update_whatsapp_status((string) $lead['id'], 'notifica_sem_numero', 'Número interno do WhatsApp não configurado.');
-        return ['ok' => false, 'error' => 'Número interno do WhatsApp não configurado.'];
-    }
-
-    $result = meta_whatsapp_send_text($number, meta_whatsapp_render_internal_notification($lead));
-
-    if (($result['ok'] ?? false) === true) {
-        crm_update_whatsapp_status((string) $lead['id'], 'notifica_enviada');
-        return $result;
-    }
-
-    crm_update_whatsapp_status((string) $lead['id'], 'notifica_falhou', (string) ($result['error'] ?? 'Falha ao enviar.'));
-    return $result;
 }
 
 function meta_whatsapp_send_followup(array $queueItem): array
