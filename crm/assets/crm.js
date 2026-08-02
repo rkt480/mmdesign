@@ -708,8 +708,17 @@ async function enablePushNotifications() {
       method: "POST",
       body: JSON.stringify({ endpoint: json.endpoint, keys: json.keys }),
     });
-    await pushRequest("test", { method: "POST", body: "{}" });
-    setPushStatus("Alertas ativos. Enviamos um teste para este dispositivo.");
+    pushEnableButton.hidden = true;
+    pushOnboarding.hidden = true;
+
+    try {
+      await pushRequest("test", { method: "POST", body: "{}" });
+      setPushStatus("Alertas ativos. Enviamos um teste para este dispositivo.");
+    } catch (testError) {
+      console.warn("A inscrição foi salva, mas o alerta de teste falhou.", testError);
+      setPushStatus("Alertas ativos. O teste não pôde ser enviado agora.", true);
+    }
+
     await syncPushState();
   } catch (error) {
     pushEnableButton.disabled = false;
