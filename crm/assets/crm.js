@@ -567,22 +567,64 @@ function base64UrlToUint8Array(value) {
 }
 
 async function pushRequest(action, options = {}) {
-  const response = await fetch(`./api/push.php?action=${encodeURIComponent(action)}`, {
-    ...options,
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-      "X-CSRF-Token": pushCsrfToken,
-      ...(options.headers || {}),
-    },
-  });
-  const data = await response.json().catch(() => ({}));
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), 12000);
 
-  if (!response.ok || data.ok === false) {
-    throw new Error(data.error || "Não foi possível atualizar as notificações.");
+  try {
+    const response = await fetch(`./api/push.php?action=${encodeURIComponent(action)}`, {
+      ...options,
+      signal: controller.signal,
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        "X-CSRF-Token": pushCsrfToken,
+        ...(options.headers || {}),
+      },
+    });
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok || data.ok === false) {
+      throw new Error(data.error || "Não foi possível atualizar as notificações.");
+    }
+
+    return data;
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      throw new Error("O servidor demorou para responder. Tente novamente.");
+    }
+
+    throw error;
+  } finally {
+    window.clearTimeout(timeoutId);
   }
+}
 
-  return data;
+async function pushConfigRequest() {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), 12000);
+
+  try {
+    const response = await fetch("./api/push.php?action=config", {
+      headers: { Accept: "application/json" },
+      signal: controller.signal,
+      cache: "no-store",
+    });
+    const config = await response.json().catch(() => ({}));
+
+    if (!response.ok || config.ok === false) {
+      throw new Error(config.error || "Não foi possível preparar as notificações.");
+    }
+
+    return config;
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      throw new Error("O servidor demorou para preparar as notificações. Tente novamente.");
+    }
+
+    throw error;
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
 }
 
 async function syncPushState() {
@@ -614,19 +656,17 @@ async function syncPushState() {
   }
 
   try {
-    const configResponse = await fetch("./api/push.php?action=config", { headers: { Accept: "application/json" } });
-    const config = await configResponse.json().catch(() => ({}));
-
-    if (!configResponse.ok || config.ok === false) {
-      throw new Error(config.error || "Não foi possível preparar as notificações.");
-    }
+    const config = await pushConfigRequest();
 
     if (!config.configured) {
       pushOnboarding.hidden = true;
       return;
     }
 
-    const registration = await navigator.serviceWorker.ready;
+    const registration = await Promise.race([
+      navigator.serviceWorker.ready,
+      new Promise((_, reject) => window.setTimeout(() => reject(new Error("O aplicativo demorou para iniciar. Tente novamente.")), 12000)),
+    ]);
     const subscription = await registration.pushManager.getSubscription();
     const permission = window.Notification?.permission || "default";
 
@@ -689,40 +729,58 @@ async function enablePushNotifications() {
       throw new Error("Este navegador não oferece suporte a notificações push.");
     }
 
-    const configResponse = await fetch("./api/push.php?action=config", { headers: { Accept: "application/json" } });
-    const config = await configResponse.json().catch(() => ({}));
-
-    if (!configResponse.ok || config.ok === false) {
-      throw new Error(config.error || "Não foi possível preparar as notificações.");
-    }
+    const config = await pushConfigRequest();
 
     if (!config.configured || !config.public_key) {
       throw new Error("O administrador ainda precisa configurar o Web Push.");
     }
 
-    const permission = await window.Notification.requestPermission();
+    const permission = await Promise.race([
+      window.Notification.requestPermission(),
+      new Promise((_, reject) => window.setTimeout(() => reject(new Error("A janela de permissão não respondeu. Tente novamente.")), 60000)),
+    ]);
 
     if (permission !== "granted") {
       throw new Error("A permissão para notificações não foi concedida.");
     }
 
-    const registration = await navigator.serviceWorker.ready;
+    const registration = await Promise.race([
+      navigator.serviceWorker.ready,
+      new Promise((_, reject) => window.setTimeout(() => reject(new Error("O aplicativo demorou para iniciar. Tente novamente.")), 12000)),
+    ]);
     let subscription = await registration.pushManager.getSubscription();
 
     if (!subscription) {
-      subscription = await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: base64UrlToUint8Array(config.public_key),
-      });
+      subscription = await Promise.race([
+        registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: base64UrlToUint8Array(config.public_key),
+        }),
+        new Promise((_, reject) => window.setTimeout(() => reject(new Error("O celular demorou para criar a inscrição. Tente novamente.")), 12000)),
+      ]);
     }
 
     const json = subscription.toJSON();
-    await pushRequest("subscribe", {
-      method: "POST",
-      body: JSON.stringify({ endpoint: json.endpoint, keys: json.keys }),
-    });
+
+    // A permissão e a inscrição local já estão prontas. A partir daqui a
+    // tela não fica presa esperando o servidor ou o alerta de teste.
     pushEnableButton.hidden = true;
     pushOnboarding.hidden = true;
+    pushEnableButton.disabled = false;
+
+    try {
+      await pushRequest("subscribe", {
+        method: "POST",
+        body: JSON.stringify({ endpoint: json.endpoint, keys: json.keys }),
+      });
+    } catch (subscribeError) {
+      console.warn("A inscrição local foi criada, mas não foi sincronizada com o servidor.", subscribeError);
+      pushEnableButton.hidden = false;
+      pushOnboarding.hidden = false;
+      pushEnableButton.textContent = "Tentar novamente";
+      setPushStatus("Permissão concedida, mas não foi possível concluir a sincronização.", true);
+      return;
+    }
 
     try {
       await pushRequest("test", { method: "POST", body: "{}" });
@@ -732,7 +790,6 @@ async function enablePushNotifications() {
       setPushStatus("Alertas ativos. O teste não pôde ser enviado agora.", true);
     }
 
-    await syncPushState();
   } catch (error) {
     pushEnableButton.disabled = false;
     pushEnableButton.textContent = "Ativar notificações";
