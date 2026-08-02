@@ -182,7 +182,10 @@ function lead_money_input(array $lead, string $field): string
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="csrf-token" content="<?= htmlspecialchars(crm_csrf_token()) ?>" />
+    <meta name="theme-color" content="#0b1018" />
     <title>CRM de Contatos | <?= htmlspecialchars((string) $config['company_name']) ?></title>
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="./assets/icon-192.png" />
     <link rel="stylesheet" href="./assets/crm.css?v=20260802-template-navigation" />
   </head>
   <body class="leads-page">
@@ -260,6 +263,10 @@ function lead_money_input(array $lead, string $field): string
             <?php if ($canManageSales): ?>
               <a href="followups.php">Criar fluxo</a>
             <?php endif; ?>
+            <button type="button" class="push-control" data-push-enable hidden>Ativar alertas</button>
+            <button type="button" class="push-control" data-push-test hidden>Testar alerta</button>
+            <button type="button" class="push-control" data-pwa-install hidden>Instalar app</button>
+            <span class="push-status" data-push-status role="status" aria-live="polite"></span>
             <button type="button" data-open-dialog="contact">Criar contato</button>
             <button type="button" class="<?= $filtersActive ? 'is-active' : '' ?>" data-open-dialog="filters">Filtrar</button>
             <?php if ($canManageSettings): ?>

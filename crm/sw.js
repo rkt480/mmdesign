@@ -1,0 +1,84 @@
+const CACHE_NAME = "publi-crm-v1";
+const APP_SHELL = ["./assets/crm.css", "./assets/crm.js", "./assets/icon.svg", "./assets/icon-192.png", "./assets/icon-512.png"];
+
+self.addEventListener("install", (event) => {
+  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)));
+  self.skipWaiting();
+});
+
+self.addEventListener("activate", (event) => {
+  event.waitUntil(
+    caches.keys().then((keys) => Promise.all(
+      keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))
+    ))
+  );
+  self.clients.claim();
+});
+
+self.addEventListener("fetch", (event) => {
+  if (event.request.method !== "GET") {
+    return;
+  }
+
+  const url = new URL(event.request.url);
+
+  if (url.pathname.includes("/api/") || url.pathname.endsWith("/index.php") || url.pathname.endsWith("/login.php")) {
+    return;
+  }
+
+  const isStaticAsset = url.pathname.includes("/assets/") || url.pathname.endsWith("/manifest.webmanifest");
+
+  if (!isStaticAsset) {
+    return;
+  }
+
+  event.respondWith(
+    fetch(event.request).then((response) => {
+      if (response.ok && url.origin === self.location.origin) {
+        const copy = response.clone();
+        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+      }
+      return response;
+    }).catch(() => caches.match(event.request))
+  );
+});
+
+self.addEventListener("push", (event) => {
+  let data = {};
+
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch (error) {
+    data = { body: event.data ? event.data.text() : "Novo evento no CRM." };
+  }
+
+  const title = data.title || "Publi CRM";
+  const options = {
+    body: data.body || "Você tem uma nova atualização.",
+    icon: data.icon || "./assets/icon-192.png",
+    badge: data.badge || "./assets/icon-192.png",
+    tag: data.tag || "crm-notification",
+    renotify: true,
+    data: { url: data.url || "./index.php" },
+  };
+
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const targetUrl = new URL(event.notification.data?.url || "./index.php", self.registration.scope).href;
+
+  event.waitUntil(
+    clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {
+      const existing = clientList.find((client) => "focus" in client);
+
+      if (existing) {
+        existing.navigate(targetUrl);
+        return existing.focus();
+      }
+
+      return clients.openWindow(targetUrl);
+    })
+  );
+});

@@ -517,3 +517,216 @@ document.querySelectorAll(".lead-modal-tabs [data-lead-tab]").forEach((tabButton
     });
   });
 });
+
+const initialLeadId = new URLSearchParams(window.location.search).get("lead");
+
+if (initialLeadId) {
+  const initialLeadCard = [...document.querySelectorAll(".kanban-card")].find((card) => card.dataset.leadId === initialLeadId);
+  const initialLeadButton = initialLeadCard?.querySelector("[data-toggle-details]");
+
+  if (initialLeadCard && initialLeadButton) {
+    initialLeadCard.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
+    window.setTimeout(() => initialLeadButton.click(), 180);
+  }
+}
+
+// PWA, instalação e notificações direcionadas ao vendedor logado.
+const pushEnableButton = document.querySelector("[data-push-enable]");
+const pushTestButton = document.querySelector("[data-push-test]");
+const pushStatus = document.querySelector("[data-push-status]");
+const installButton = document.querySelector("[data-pwa-install]");
+const pushCsrfToken = document.querySelector("meta[name='csrf-token']")?.content || "";
+let deferredInstallPrompt = null;
+
+function setPushStatus(message, isError = false) {
+  if (!pushStatus) {
+    return;
+  }
+
+  pushStatus.textContent = message;
+  pushStatus.classList.toggle("is-error", isError);
+}
+
+function base64UrlToUint8Array(value) {
+  const padding = "=".repeat((4 - (value.length % 4)) % 4);
+  const base64 = (value + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const raw = window.atob(base64);
+  return Uint8Array.from([...raw].map((character) => character.charCodeAt(0)));
+}
+
+async function pushRequest(action, options = {}) {
+  const response = await fetch(`./api/push.php?action=${encodeURIComponent(action)}`, {
+    ...options,
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      "X-CSRF-Token": pushCsrfToken,
+      ...(options.headers || {}),
+    },
+  });
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok || data.ok === false) {
+    throw new Error(data.error || "Não foi possível atualizar as notificações.");
+  }
+
+  return data;
+}
+
+async function syncPushState() {
+  if (!pushEnableButton || !window.isSecureContext || !("serviceWorker" in navigator) || !("PushManager" in window)) {
+    return;
+  }
+
+  try {
+    const configResponse = await fetch("./api/push.php?action=config", { headers: { Accept: "application/json" } });
+    const config = await configResponse.json();
+
+    if (!config.configured) {
+      pushEnableButton.hidden = false;
+      pushEnableButton.disabled = true;
+      pushEnableButton.textContent = "Alertas não configurados";
+      setPushStatus("O administrador ainda precisa configurar o Web Push.", true);
+      return;
+    }
+
+    const registration = await navigator.serviceWorker.ready;
+    const subscription = await registration.pushManager.getSubscription();
+    const permission = window.Notification?.permission || "default";
+    const subscribed = Boolean(subscription && Number(config.subscriptions || 0) > 0);
+
+    pushEnableButton.disabled = false;
+    pushEnableButton.hidden = subscribed;
+    pushTestButton.hidden = !subscribed;
+
+    if (permission === "denied") {
+      pushEnableButton.hidden = false;
+      pushEnableButton.textContent = "Alertas bloqueados";
+      setPushStatus("Permita as notificações nas configurações do navegador.", true);
+    } else if (subscribed) {
+      setPushStatus("Alertas de novos leads ativos.");
+    } else {
+      pushEnableButton.textContent = "Ativar alertas";
+      setPushStatus("Ative os alertas para receber novos leads.");
+    }
+  } catch (error) {
+    pushEnableButton.hidden = false;
+    pushEnableButton.disabled = true;
+    setPushStatus(error.message || "Não foi possível carregar as notificações.", true);
+  }
+}
+
+async function enablePushNotifications() {
+  if (!pushEnableButton) {
+    return;
+  }
+
+  pushEnableButton.disabled = true;
+  pushEnableButton.textContent = "Ativando…";
+
+  try {
+    const isIos = /iPad|iPhone|iPod/i.test(navigator.userAgent);
+    const isStandalone = window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
+
+    if (isIos && !isStandalone) {
+      throw new Error("No iPhone, primeiro use Compartilhar → Adicionar à Tela de Início.");
+    }
+
+    if (!("Notification" in window)) {
+      throw new Error("Este navegador não oferece suporte a notificações push.");
+    }
+
+    const configResponse = await fetch("./api/push.php?action=config", { headers: { Accept: "application/json" } });
+    const config = await configResponse.json();
+
+    if (!config.configured || !config.public_key) {
+      throw new Error("O administrador ainda precisa configurar o Web Push.");
+    }
+
+    const permission = await window.Notification.requestPermission();
+
+    if (permission !== "granted") {
+      throw new Error("A permissão para notificações não foi concedida.");
+    }
+
+    const registration = await navigator.serviceWorker.ready;
+    let subscription = await registration.pushManager.getSubscription();
+
+    if (!subscription) {
+      subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: base64UrlToUint8Array(config.public_key),
+      });
+    }
+
+    const json = subscription.toJSON();
+    await pushRequest("subscribe", {
+      method: "POST",
+      body: JSON.stringify({ endpoint: json.endpoint, keys: json.keys }),
+    });
+    await pushRequest("test", { method: "POST", body: "{}" });
+    setPushStatus("Alertas ativos. Enviamos um teste para este dispositivo.");
+    await syncPushState();
+  } catch (error) {
+    pushEnableButton.disabled = false;
+    pushEnableButton.textContent = "Ativar alertas";
+    setPushStatus(error.message || "Não foi possível ativar os alertas.", true);
+  }
+}
+
+if (pushEnableButton) {
+  pushEnableButton.addEventListener("click", enablePushNotifications);
+}
+
+if (pushTestButton) {
+  pushTestButton.addEventListener("click", async () => {
+    pushTestButton.disabled = true;
+
+    try {
+      await pushRequest("test", { method: "POST", body: "{}" });
+      setPushStatus("Notificação de teste enviada.");
+    } catch (error) {
+      setPushStatus(error.message || "Não foi possível enviar o teste.", true);
+    } finally {
+      pushTestButton.disabled = false;
+    }
+  });
+}
+
+if (installButton) {
+  const isIos = /iPad|iPhone|iPod/i.test(navigator.userAgent);
+  const isStandalone = window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
+
+  if (isIos && !isStandalone) {
+    installButton.hidden = false;
+  }
+
+  window.addEventListener("beforeinstallprompt", (event) => {
+    event.preventDefault();
+    deferredInstallPrompt = event;
+    installButton.hidden = false;
+  });
+
+  installButton.addEventListener("click", async () => {
+    if (!deferredInstallPrompt) {
+      setPushStatus("No iPhone, use Compartilhar → Adicionar à Tela de Início.");
+      return;
+    }
+
+    deferredInstallPrompt.prompt();
+    await deferredInstallPrompt.userChoice;
+    deferredInstallPrompt = null;
+    installButton.hidden = true;
+  });
+
+  window.addEventListener("appinstalled", () => {
+    installButton.hidden = true;
+    deferredInstallPrompt = null;
+  });
+}
+
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("./sw.js", { scope: "./" })
+    .then(syncPushState)
+    .catch((error) => setPushStatus(error.message || "Não foi possível preparar o aplicativo.", true));
+}

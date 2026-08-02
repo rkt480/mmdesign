@@ -84,6 +84,44 @@ function pilot_status_request(string $endpoint, array $payload, int $timeout = 2
     return ['ok' => true, 'response' => is_array($decoded) ? $decoded : $body];
 }
 
+function pilot_status_extract_delivery_event(array $payload): array
+{
+    $event = strtolower(trim((string) ($payload['event'] ?? '')));
+    $deliveryEvents = ['message.sent', 'message.delivered', 'message.read', 'message.failed'];
+
+    if (!in_array($event, $deliveryEvents, true)) {
+        return ['event' => '', 'id' => '', 'error' => ''];
+    }
+
+    $data = is_array($payload['data'] ?? null) ? $payload['data'] : [];
+    $messageId = '';
+
+    foreach (['id', 'internalMessageId', 'message_id', 'messageId'] as $key) {
+        if (is_scalar($data[$key] ?? null) && trim((string) $data[$key]) !== '') {
+            $messageId = trim((string) $data[$key]);
+            break;
+        }
+    }
+
+    if ($messageId === '' && is_scalar($payload['id'] ?? null)) {
+        $messageId = trim((string) $payload['id']);
+    }
+
+    $errorParts = [];
+
+    foreach (['errorMessage', 'error', 'errorCode', 'reason'] as $key) {
+        if (is_scalar($data[$key] ?? null) && trim((string) $data[$key]) !== '') {
+            $errorParts[] = trim((string) $data[$key]);
+        }
+    }
+
+    return [
+        'event' => $event,
+        'id' => $messageId,
+        'error' => implode(' | ', array_values(array_unique($errorParts))),
+    ];
+}
+
 function pilot_status_send_text(string $number, string $text): array
 {
     $to = crm_normalize_whatsapp_number($number);

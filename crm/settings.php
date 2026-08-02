@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/lib/auth.php';
 require_once __DIR__ . '/lib/settings.php';
 require_once __DIR__ . '/lib/whatsapp.php';
+require_once __DIR__ . '/lib/push.php';
 
 crm_require_admin();
 
@@ -28,6 +29,8 @@ $pilotStatusConfigured = crm_pilot_status_is_configured();
 $whatsappConfigured = ($whatsappProvider !== 'meta_cloud' || $metaWhatsAppConfigured)
     && ($whatsappProvider !== 'pilot_status' || $pilotStatusConfigured);
 $emailConfigured = $notificationEmail !== '';
+$pushSettings = crm_push_settings();
+$pushConfigured = crm_push_is_configured();
 $metaConfigured = $metaPixelId !== '' && $metaAccessToken !== '';
 $gtmConfigured = $googleTagManagerId !== '';
 $googleCalendarConfigured = crm_google_calendar_is_configured();
@@ -86,6 +89,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error = 'Informe um e-mail válido para receber as notificações.';
         } else {
             $settings['notification_email'] = $normalizedEmail;
+        }
+    }
+
+    if ($settingsSection === 'push') {
+        $subject = trim((string) ($_POST['push_vapid_subject'] ?? ''));
+
+        if ($subject === '') {
+            $subject = crm_push_default_subject();
+        }
+
+        if (!str_starts_with($subject, 'mailto:') && !str_starts_with($subject, 'https://')) {
+            $error = 'O assunto VAPID deve começar com mailto: ou https://.';
+        } else {
+            try {
+                $keys = crm_push_generate_keys();
+                if ($pushConfigured) {
+                    crm_push_clear_subscriptions();
+                }
+                $settings['push_vapid_public_key'] = $keys['public_key'];
+                $settings['push_vapid_private_key'] = $keys['private_key'];
+                $settings['push_vapid_subject'] = $subject;
+            } catch (Throwable $pushError) {
+                $error = $pushError->getMessage();
+            }
         }
     }
 
@@ -297,6 +324,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         URL do webhook Pilot Status
                         <input type="url" value="<?= htmlspecialchars($pilotStatusWebhookUrl) ?>" readonly />
                       </label>
+                      <small class="settings-help">No painel da Pilot Status, cadastre esta URL e habilite os eventos <code>message.sent</code>, <code>message.delivered</code>, <code>message.read</code> e <code>message.failed</code> para acompanhar o resultado real dos envios.</small>
                     <?php endif; ?>
                   </div>
 
@@ -337,6 +365,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                   <button class="integration-save" type="submit">
                     <span aria-hidden="true">✓</span>
                     Salvar configurações
+                  </button>
+                </form>
+              </section>
+
+              <section class="automation-card integration-card">
+                <header class="integration-card-header">
+                  <span class="integration-icon push-icon" aria-hidden="true">🔔</span>
+                  <div>
+                    <p class="integration-kicker">Aplicativo</p>
+                    <h2>Alertas push</h2>
+                  </div>
+                  <span class="integration-status <?= $pushConfigured ? 'is-active' : '' ?>">
+                    <?= $pushConfigured ? 'Configurado' : 'Aguardando' ?>
+                  </span>
+                </header>
+                <p class="integration-description">Permite que cada vendedor receba no celular um alerta quando um novo lead for atribuído a ele.</p>
+
+                <form class="flow-form" method="post">
+                  <input type="hidden" name="_csrf_token" value="<?= htmlspecialchars(crm_csrf_token()) ?>" />
+                  <input type="hidden" name="settings_section" value="push" />
+                  <label>
+                    Identificação VAPID
+                    <input type="text" name="push_vapid_subject" value="<?= htmlspecialchars($pushSettings['subject']) ?>" placeholder="mailto:admin@seudominio.com.br" autocomplete="email" />
+                  </label>
+                  <small class="settings-help">Use um e-mail ou a URL HTTPS do CRM. As chaves ficam protegidas no banco; gerar novamente invalida as inscrições atuais.</small>
+                  <button class="integration-save" type="submit">
+                    <span aria-hidden="true">✓</span>
+                    <?= $pushConfigured ? 'Gerar novas chaves' : 'Gerar chaves VAPID' ?>
                   </button>
                 </form>
               </section>
