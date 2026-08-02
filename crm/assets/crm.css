@@ -5764,7 +5764,7 @@ textarea:focus {
   }
 
   .leads-page .kanban-card {
-    touch-action: pan-y;
+    touch-action: none;
   }
 
   .leads-page .kanban-card.is-touch-dragging {
