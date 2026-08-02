@@ -537,7 +537,26 @@ function pilot_status_extract_incoming_messages(array $payload): array
             continue;
         }
 
+        if ($connectedNumber !== '' && $incoming['number'] === $connectedNumber) {
+            $altNumber = pilot_status_first_payload_value($item, [
+                ['_contacts', 0, 'wa_id'],
+                ['contacts', 0, 'wa_id'],
+                ['from'],
+                ['wa_id'],
+                ['contact', 'phone_number'],
+            ]);
+            $normalizedAlt = pilot_status_normalize_phone_candidate((string) $altNumber);
+
+            if ($normalizedAlt === '' || $normalizedAlt === $connectedNumber) {
+                continue;
+            }
+        }
+
         if (($incoming['from_me'] ?? false) === true || ($incoming['is_group'] ?? false) === true || (string) ($incoming['number'] ?? '') === '') {
+            continue;
+        }
+
+        if (trim((string) ($incoming['text'] ?? '')) === '') {
             continue;
         }
 

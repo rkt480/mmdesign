@@ -69,7 +69,7 @@ foreach ($incomingMessages as $incoming) {
     $message = trim((string) ($incoming['text'] ?? ''));
     $name = trim((string) ($incoming['name'] ?? ''));
 
-    if ($whatsapp === '') {
+    if ($whatsapp === '' || $message === '') {
         continue;
     }
 
@@ -83,7 +83,7 @@ foreach ($incomingMessages as $incoming) {
         'company' => 'Não informado',
         'segment' => 'WhatsApp',
         'advertises' => 'whatsapp',
-        'message' => $message !== '' ? $message : 'Mensagem recebida pela Pilot Status.',
+        'message' => $message,
         'page' => 'Pilot Status',
         'utm_source' => 'pilot_status',
         'utm_medium' => 'whatsapp',
