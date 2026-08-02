@@ -155,12 +155,15 @@ function whatsapp_page_whatsapp_status(array $lead): string
     $status = (string) ($lead['whatsapp_status'] ?? '');
     $labels = [
         'pendente' => 'Nenhuma mensagem enviada',
+        'aguardando' => 'Aguardando confirmação do WhatsApp',
         'notifica_enviada' => 'Mensagem enviada',
         'notifica_falhou' => 'Falha no envio',
         'notifica_sem_numero' => 'Nenhuma mensagem enviada',
         'nao_configurado' => 'WhatsApp não configurado',
         'falhou' => 'Falha no envio',
         'enviado' => 'Mensagem enviada',
+        'entregue' => 'Mensagem entregue',
+        'lido' => 'Mensagem lida',
     ];
 
     return $labels[$status] ?? ($status !== '' ? $status : 'Nenhuma mensagem enviada');
@@ -239,14 +242,15 @@ function whatsapp_page_messages_for_lead(array $lead): array
                 continue;
             }
 
-            if (preg_match('/^Mensagem enviada via (.+) em ([0-9]{2}\/[0-9]{2}\/[0-9]{4} [0-9]{2}:[0-9]{2}):\n(.+)$/s', $block, $match) === 1) {
+            if (preg_match('/^(?:Mensagem|Mídia) enviada via (.+) em ([0-9]{2}\/[0-9]{2}\/[0-9]{4} [0-9]{2}:[0-9]{2}):\n(.+)$/s', $block, $match) === 1) {
                 $sentProviderLabel = strtolower((string) $match[1]);
+                $sentText = trim((string) $match[3]);
                 $messages[] = [
                     'direction' => 'outgoing',
                     'provider' => str_contains($sentProviderLabel, 'meta') ? 'meta_cloud' : 'pilot_status',
                     'at' => whatsapp_page_parse_br_datetime((string) $match[2]),
-                    'text' => trim((string) $match[3]),
-                    'label' => 'Enviada',
+                    'text' => $sentText,
+                    'label' => str_contains(strtolower($sentText), 'aguardando confirmação') ? 'Aguardando confirmação' : 'Aceita pela API',
                 ];
                 continue;
             }

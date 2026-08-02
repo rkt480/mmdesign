@@ -1,5 +1,7 @@
 Options -Indexes
 
+AddType application/manifest+json .webmanifest
+
 <FilesMatch "^config.*\.php$">
   Require all denied
 </FilesMatch>

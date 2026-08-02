@@ -128,14 +128,24 @@ $result = $hasMedia
     : crm_whatsapp_send_text($number, $messageWithSender, false);
 
 if (($result['ok'] ?? false) === true) {
+    $response = is_array($result['response'] ?? null) ? $result['response'] : [];
+    $pilotStatusMessageId = trim((string) ($response['id'] ?? ''));
+    $pilotStatusQueued = crm_whatsapp_provider() === 'pilot_status';
     $sentDescription = $hasMedia
-        ? ucfirst($mediaType) . " enviada com legenda:\n" . $messageWithSender
+        ? ucfirst($mediaType) . ($mediaType === 'audio' ? ' enviada' : ' enviada com legenda') . ":\n" . $messageWithSender
         : $messageWithSender;
+    $sentDescription .= $pilotStatusQueued
+        ? "\nStatus inicial: aceito pela Pilot Status; aguardando confirmação de entrega."
+        : "\nStatus: aceito pela API.";
+
+    if ($pilotStatusMessageId !== '') {
+        $sentDescription .= "\nPilot Status ID: " . $pilotStatusMessageId;
+    }
     crm_append_lead_note(
         $leadId,
         ($hasMedia ? 'Mídia enviada via ' : 'Mensagem enviada via ') . $providerLabel . ' em ' . date('d/m/Y H:i') . ":\n" . $sentDescription
     );
-    crm_update_whatsapp_status($leadId, 'enviado');
+    crm_update_whatsapp_status($leadId, $pilotStatusQueued ? 'aguardando' : 'enviado');
     header('Location: ' . $redirect . '&sent=1');
     exit;
 }

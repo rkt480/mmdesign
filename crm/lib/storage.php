@@ -192,6 +192,22 @@ function crm_ensure_crm_schema(PDO $pdo): void
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
     );
 
+    $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS crm_push_subscriptions (
+            id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            user_id INT NOT NULL,
+            endpoint_hash CHAR(64) NOT NULL UNIQUE,
+            endpoint VARCHAR(2048) NOT NULL,
+            p256dh VARCHAR(255) NOT NULL,
+            auth VARCHAR(255) NOT NULL,
+            user_agent VARCHAR(500) NULL,
+            created_at DATETIME NOT NULL,
+            updated_at DATETIME NOT NULL,
+            last_used_at DATETIME NULL,
+            INDEX idx_crm_push_user (user_id, updated_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
+    );
+
     crm_ensure_user_columns($pdo);
     crm_seed_default_admin_user($pdo);
     crm_seed_default_kanban_columns($pdo);
@@ -1303,10 +1319,10 @@ function crm_create_lead_once(array $payload): array
     // A consulta seguida do INSERT precisa ser protegida como uma única
     // operação. Webhooks e envios repetidos podem chegar ao mesmo tempo.
     if ($normalizedWhatsapp === '') {
-        return [
-            'lead' => crm_create_lead($payload),
-            'created' => true,
-        ];
+        $lead = crm_create_lead($payload);
+        crm_notify_created_lead_push($lead);
+
+        return ['lead' => $lead, 'created' => true];
     }
 
     $db = crm_db();
@@ -1329,13 +1345,28 @@ function crm_create_lead_once(array $payload): array
             ];
         }
 
-        return [
-            'lead' => crm_create_lead($payload),
-            'created' => true,
-        ];
+        $lead = crm_create_lead($payload);
+        crm_notify_created_lead_push($lead);
+
+        return ['lead' => $lead, 'created' => true];
     } finally {
         $unlockStmt = $db->prepare('SELECT RELEASE_LOCK(:lock_name)');
         $unlockStmt->execute(['lock_name' => $lockName]);
+    }
+}
+
+function crm_notify_created_lead_push(array $lead): void
+{
+    try {
+        require_once __DIR__ . '/push.php';
+        $result = crm_push_notify_lead_created($lead);
+
+        if (($result['ok'] ?? false) !== true && ($result['skipped'] ?? false) !== true) {
+            error_log('Erro ao enviar push do Lead ' . (string) ($lead['id'] ?? '') . ': ' . json_encode($result, JSON_UNESCAPED_UNICODE));
+        }
+    } catch (Throwable $error) {
+        // A notificação não pode impedir o lead de ser salvo no CRM.
+        error_log('Erro ao enviar push do Lead ' . (string) ($lead['id'] ?? '') . ': ' . $error->getMessage());
     }
 }
 
@@ -1388,6 +1419,27 @@ function crm_append_lead_note(string $id, string $note): bool
     ] + $firstContactParams + $accessParams);
 
     return $stmt->rowCount() > 0;
+}
+
+function crm_find_lead_by_pilot_status_message_id(string $messageId): ?array
+{
+    $messageId = trim($messageId);
+
+    if ($messageId === '') {
+        return null;
+    }
+
+    $stmt = crm_db()->prepare(
+        'SELECT *
+        FROM leads
+        WHERE notes LIKE :message_marker
+        ORDER BY updated_at DESC
+        LIMIT 1'
+    );
+    $stmt->execute(['message_marker' => '%Pilot Status ID: ' . $messageId . '%']);
+    $lead = $stmt->fetch();
+
+    return is_array($lead) ? $lead : null;
 }
 
 function crm_update_lead(string $id, array $updates): bool
@@ -2016,7 +2068,7 @@ function crm_update_whatsapp_status(string $id, string $status, ?string $error =
     $stmt->execute([
         'id' => $id,
         'status' => $status,
-        'sent_at' => in_array($status, ['enviado', 'notifica_enviada'], true) ? date('Y-m-d H:i:s') : null,
+        'sent_at' => in_array($status, ['aguardando', 'enviado', 'entregue', 'lido', 'notifica_enviada'], true) ? date('Y-m-d H:i:s') : null,
         'error' => $error,
         'updated_at' => date('Y-m-d H:i:s'),
     ]);

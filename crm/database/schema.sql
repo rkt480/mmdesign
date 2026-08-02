@@ -109,6 +109,20 @@ CREATE TABLE IF NOT EXISTS publi_ai_crm.lead_assignment_logs (
   INDEX idx_lead_assignment_logs_to_user (to_user_id, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS publi_ai_crm.crm_push_subscriptions (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  user_id INT NOT NULL,
+  endpoint_hash CHAR(64) NOT NULL UNIQUE,
+  endpoint VARCHAR(2048) NOT NULL,
+  p256dh VARCHAR(255) NOT NULL,
+  auth VARCHAR(255) NOT NULL,
+  user_agent VARCHAR(500) NULL,
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL,
+  last_used_at DATETIME NULL,
+  INDEX idx_crm_push_user (user_id, updated_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS publi_ai_crm.lead_forms (
   id VARCHAR(32) PRIMARY KEY,
   slug VARCHAR(100) NOT NULL UNIQUE,

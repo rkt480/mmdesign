@@ -50,6 +50,50 @@ if (!pilot_status_validate_webhook($body, $payload)) {
     exit;
 }
 
+$delivery = pilot_status_extract_delivery_event($payload);
+
+if ($delivery['event'] !== '') {
+    $messageId = (string) $delivery['id'];
+    $lead = $messageId !== '' ? crm_find_lead_by_pilot_status_message_id($messageId) : null;
+
+    if ($lead === null) {
+        pilot_status_log('Evento de entrega sem lead correspondente.', ['delivery' => $delivery]);
+        echo json_encode(['ok' => true, 'processed' => false, 'reason' => 'Mensagem não vinculada ao CRM.']);
+        exit;
+    }
+
+    $notes = (string) ($lead['notes'] ?? '');
+    $eventMarker = 'Pilot Status evento: ' . $delivery['event'] . ' | ID: ' . $messageId;
+
+    if (str_contains($notes, $eventMarker)) {
+        echo json_encode(['ok' => true, 'processed' => false, 'duplicate' => true]);
+        exit;
+    }
+
+    $statusMap = [
+        'message.sent' => 'enviado',
+        'message.delivered' => 'entregue',
+        'message.read' => 'lido',
+        'message.failed' => 'falhou',
+    ];
+    $status = $statusMap[$delivery['event']];
+    $statusText = match ($delivery['event']) {
+        'message.sent' => 'Pilot Status confirmou o envio ao WhatsApp.',
+        'message.delivered' => 'WhatsApp confirmou a entrega ao destinatário.',
+        'message.read' => 'WhatsApp confirmou a leitura pelo destinatário.',
+        'message.failed' => 'Pilot Status confirmou falha na entrega' . ($delivery['error'] !== '' ? ': ' . $delivery['error'] : '.'),
+    };
+
+    crm_update_whatsapp_status((string) $lead['id'], $status, $delivery['event'] === 'message.failed' ? $delivery['error'] : null);
+    crm_append_lead_note(
+        (string) $lead['id'],
+        $eventMarker . ' em ' . date('d/m/Y H:i') . ":\n" . $statusText
+    );
+
+    echo json_encode(['ok' => true, 'processed' => true, 'lead_id' => $lead['id'], 'status' => $status]);
+    exit;
+}
+
 $incomingMessages = pilot_status_extract_incoming_messages($payload);
 
 if ($incomingMessages === []) {
