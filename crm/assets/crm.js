@@ -2,6 +2,7 @@ const cards = document.querySelectorAll(".kanban-card");
 const dropzones = document.querySelectorAll(".kanban-dropzone");
 const kanbanBoard = document.querySelector(".kanban-board");
 const detailButtons = document.querySelectorAll("[data-toggle-details]");
+const mobileStatusControls = document.querySelectorAll("[data-mobile-status]");
 const dialogButtons = document.querySelectorAll("[data-open-dialog]");
 const csrfToken = document.querySelector("meta[name='csrf-token']")?.content || "";
 
@@ -104,6 +105,189 @@ function updateBoardAutoScroll(clientX) {
   }
 }
 
+const touchDragState = {
+  card: null,
+  previousParent: null,
+  previousNextSibling: null,
+  pointerId: null,
+  startX: 0,
+  startY: 0,
+  holdTimer: null,
+  active: false,
+};
+
+function isTouchKanbanEvent(event) {
+  return event.pointerType === "touch" && window.matchMedia("(max-width: 880px)").matches;
+}
+
+function isKanbanInteractiveTarget(target) {
+  return Boolean(target?.closest("a, button, select, input, textarea, form, [data-mobile-status]"));
+}
+
+function clearTouchDragTimer() {
+  if (touchDragState.holdTimer !== null) {
+    window.clearTimeout(touchDragState.holdTimer);
+    touchDragState.holdTimer = null;
+  }
+}
+
+function clearTouchDropzoneState() {
+  dropzones.forEach((zone) => zone.classList.remove("is-over"));
+}
+
+function resetTouchDragState() {
+  clearTouchDragTimer();
+  touchDragState.card = null;
+  touchDragState.previousParent = null;
+  touchDragState.previousNextSibling = null;
+  touchDragState.pointerId = null;
+  touchDragState.active = false;
+  document.body.classList.remove("touch-dragging");
+  clearTouchDropzoneState();
+  stopBoardAutoScroll();
+  draggedCard = null;
+}
+
+function restoreTouchCard(card, parent, nextSibling, status) {
+  if (parent) {
+    parent.insertBefore(card, nextSibling?.parentElement === parent ? nextSibling : null);
+  }
+
+  card.querySelectorAll("input[name='status']").forEach((input) => {
+    input.value = status;
+  });
+
+  const mobileStatus = card.querySelector("[data-mobile-status]");
+
+  if (mobileStatus) {
+    mobileStatus.value = status;
+  }
+}
+
+function beginTouchKanbanDrag(event) {
+  if (!isTouchKanbanEvent(event) || isKanbanInteractiveTarget(event.target)) {
+    return;
+  }
+
+  const card = event.currentTarget;
+
+  if (touchDragState.card) {
+    return;
+  }
+
+  touchDragState.card = card;
+  touchDragState.previousParent = card.parentElement;
+  touchDragState.previousNextSibling = card.nextElementSibling;
+  touchDragState.pointerId = event.pointerId;
+  touchDragState.startX = event.clientX;
+  touchDragState.startY = event.clientY;
+  touchDragState.active = false;
+  touchDragState.holdTimer = window.setTimeout(() => {
+    if (touchDragState.card !== card) {
+      return;
+    }
+
+    touchDragState.active = true;
+    draggedCard = card;
+    card.classList.add("is-dragging", "is-touch-dragging");
+    document.body.classList.add("touch-dragging");
+    card.setPointerCapture?.(event.pointerId);
+  }, 280);
+}
+
+function moveTouchKanbanDrag(event) {
+  if (touchDragState.card !== event.currentTarget) {
+    return;
+  }
+
+  if (!touchDragState.active) {
+    const distance = Math.hypot(event.clientX - touchDragState.startX, event.clientY - touchDragState.startY);
+
+    if (distance > 10) {
+      resetTouchDragState();
+    }
+
+    return;
+  }
+
+  event.preventDefault();
+  updateBoardAutoScroll(event.clientX);
+
+  const target = document.elementFromPoint(event.clientX, event.clientY);
+  const zone = target?.closest(".kanban-dropzone");
+
+  if (!zone || !document.body.contains(zone)) {
+    return;
+  }
+
+  clearTouchDropzoneState();
+  zone.classList.add("is-over");
+  const card = touchDragState.card;
+  const cardAfterPointer = getCardAfterPointer(zone, event.clientY);
+
+  if (cardAfterPointer !== card && card.nextElementSibling !== cardAfterPointer) {
+    zone.insertBefore(card, cardAfterPointer);
+    updateColumnCounts();
+  }
+}
+
+async function finishTouchKanbanDrag(event, cancelled = false) {
+  if (touchDragState.card !== event.currentTarget) {
+    return;
+  }
+
+  clearTouchDragTimer();
+
+  if (!touchDragState.active) {
+    resetTouchDragState();
+    return;
+  }
+
+  event.preventDefault();
+  const card = touchDragState.card;
+  const previousParent = touchDragState.previousParent;
+  const previousNextSibling = touchDragState.previousNextSibling;
+  const previousStatus = previousParent?.dataset.status || "";
+  const finalParent = card.parentElement;
+  const finalStatus = finalParent?.dataset.status || previousStatus;
+  const leadId = card.dataset.leadId || "";
+
+  card.classList.remove("is-dragging", "is-touch-dragging");
+  resetTouchDragState();
+
+  if (cancelled || !finalParent || !previousParent) {
+    restoreTouchCard(card, previousParent, previousNextSibling, previousStatus);
+    updateColumnCounts();
+    return;
+  }
+
+  updateColumnCounts();
+
+  try {
+    const orders = { [finalStatus]: getLeadOrder(finalParent) };
+
+    if (previousParent !== finalParent) {
+      orders[previousStatus] = getLeadOrder(previousParent);
+    }
+
+    await persistLeadStatus(leadId, finalStatus, orders);
+    card.querySelectorAll("input[name='status']").forEach((input) => {
+      input.value = finalStatus;
+    });
+
+    const mobileStatus = card.querySelector("[data-mobile-status]");
+
+    if (mobileStatus) {
+      mobileStatus.value = finalStatus;
+    }
+  } catch (error) {
+    restoreTouchCard(card, previousParent, previousNextSibling, previousStatus);
+    updateColumnCounts();
+    alert("Não foi possível mover o lead. Tente novamente.");
+    console.error(error);
+  }
+}
+
 cards.forEach((card) => {
   card.addEventListener("dragstart", () => {
     draggedCard = card;
@@ -115,6 +299,23 @@ cards.forEach((card) => {
     draggedCard = null;
     stopBoardAutoScroll();
   });
+
+  card.addEventListener("pointerdown", beginTouchKanbanDrag);
+  card.addEventListener("pointermove", moveTouchKanbanDrag, { passive: false });
+  card.addEventListener("pointerup", finishTouchKanbanDrag);
+  card.addEventListener("pointercancel", (event) => finishTouchKanbanDrag(event, true));
+});
+
+document.addEventListener("pointerup", (event) => {
+  if (touchDragState.card && touchDragState.pointerId === event.pointerId && !touchDragState.active) {
+    resetTouchDragState();
+  }
+});
+
+document.addEventListener("pointercancel", (event) => {
+  if (touchDragState.card && touchDragState.pointerId === event.pointerId) {
+    resetTouchDragState();
+  }
 });
 
 if (kanbanBoard) {
@@ -175,6 +376,12 @@ dropzones.forEach((zone) => {
       if (statusInput) {
         statusInput.value = targetStatus;
       }
+
+      const mobileStatus = movedCard.querySelector("[data-mobile-status]");
+
+      if (mobileStatus) {
+        mobileStatus.value = targetStatus;
+      }
     } catch (error) {
       previousParent.insertBefore(
         movedCard,
@@ -183,6 +390,60 @@ dropzones.forEach((zone) => {
       updateColumnCounts();
       alert("Não foi possível mover o lead. Tente novamente.");
       console.error(error);
+    }
+  });
+});
+
+function findKanbanDropzone(status) {
+  return [...dropzones].find((zone) => zone.dataset.status === status) || null;
+}
+
+mobileStatusControls.forEach((control) => {
+  control.addEventListener("click", (event) => event.stopPropagation());
+  control.addEventListener("change", async () => {
+    const card = control.closest(".kanban-card");
+    const previousParent = card?.parentElement;
+    const targetZone = findKanbanDropzone(control.value);
+
+    if (!card || !previousParent || !targetZone) {
+      return;
+    }
+
+    const previousStatus = previousParent.dataset.status || "";
+    const targetStatus = control.value;
+
+    if (previousStatus === targetStatus) {
+      return;
+    }
+
+    const previousNextSibling = card.nextElementSibling;
+    const leadId = card.dataset.leadId || "";
+    targetZone.appendChild(card);
+    control.disabled = true;
+    card.classList.add("is-moving");
+    updateColumnCounts();
+
+    try {
+      await persistLeadStatus(leadId, targetStatus, {
+        [previousStatus]: getLeadOrder(previousParent),
+        [targetStatus]: getLeadOrder(targetZone),
+      });
+
+      card.querySelectorAll("input[name='status']").forEach((input) => {
+        input.value = targetStatus;
+      });
+    } catch (error) {
+      previousParent.insertBefore(
+        card,
+        previousNextSibling?.parentElement === previousParent ? previousNextSibling : null
+      );
+      control.value = previousStatus;
+      updateColumnCounts();
+      alert("Não foi possível mover o lead. Tente novamente.");
+      console.error(error);
+    } finally {
+      control.disabled = false;
+      card.classList.remove("is-moving");
     }
   });
 });

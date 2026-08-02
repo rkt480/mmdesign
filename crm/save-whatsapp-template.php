@@ -127,6 +127,39 @@ if (in_array($action, ['sync_meta', 'sync_provider'], true)) {
     exit;
 }
 
+if ($action === 'delete') {
+    if ($id <= 0) {
+        header('Location: whatsapp-templates.php?error=' . rawurlencode('Selecione um template válido para excluir.'));
+        exit;
+    }
+
+    $current = crm_find_whatsapp_template($id);
+
+    if ($current === null) {
+        header('Location: whatsapp-templates.php?error=' . rawurlencode('Template não encontrado.'));
+        exit;
+    }
+
+    $remoteWarning = '';
+    $remoteId = trim((string) ($current['meta_template_id'] ?? ''));
+
+    if ($provider === 'pilot_status' && $remoteId !== '' && pilot_status_is_configured()) {
+        $remoteResult = pilot_status_delete_template($remoteId);
+
+        if (($remoteResult['ok'] ?? false) !== true) {
+            $remoteWarning = ' O template local foi excluído, mas o Pilot Status não confirmou a exclusão remota: ' . (string) ($remoteResult['error'] ?? 'erro desconhecido.') . ' Você pode removê-lo também no painel do Pilot Status.';
+        }
+    }
+
+    if (!crm_delete_whatsapp_template($id)) {
+        header('Location: whatsapp-templates.php?error=' . rawurlencode('Não foi possível excluir o template.'));
+        exit;
+    }
+
+    header('Location: whatsapp-templates.php?deleted=1&remote_warning=' . rawurlencode($remoteWarning));
+    exit;
+}
+
 if (preg_match('/^[a-z0-9_]+$/', $name) !== 1) {
     header('Location: ' . $redirect . '&error=' . rawurlencode('O nome deve conter apenas letras minúsculas, números e sublinhado.'));
     exit;
@@ -163,6 +196,17 @@ if ($provider === 'pilot_status') {
     if (preg_match('/^\s*\{\{\s*[a-zA-Z][a-zA-Z0-9_]*\s*\}\}|\{\{\s*[a-zA-Z][a-zA-Z0-9_]*\s*\}\}\s*$/u', $body) === 1) {
         header('Location: ' . $redirect . '&error=' . rawurlencode('O corpo do template não pode começar ou terminar com uma variável.'));
         exit;
+    }
+
+    if ($submitToProvider && $templateVariables !== []) {
+        $fixedText = trim((string) preg_replace('/\{\{\s*[a-zA-Z][a-zA-Z0-9_]*\s*\}\}/u', ' ', $body));
+        preg_match_all('/[\p{L}\p{N}]+/u', $fixedText, $fixedWords);
+        $minimumFixedWords = count($templateVariables) * 3;
+
+        if (count($fixedWords[0] ?? []) < $minimumFixedWords) {
+            header('Location: ' . $redirect . '&error=' . rawurlencode('A Meta exige mais texto fixo em relação às variáveis. Use pelo menos ' . $minimumFixedWords . ' palavras além de {{nome}} (por exemplo: \"Olá, {{nome}}! Recebemos sua solicitação e nossa equipe continuará o atendimento por aqui.\").'));
+            exit;
+        }
     }
 }
 

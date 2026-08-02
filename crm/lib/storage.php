@@ -315,6 +315,18 @@ function crm_update_whatsapp_template_meta(int $id, array $meta): bool
     ]);
 }
 
+function crm_delete_whatsapp_template(int $id): bool
+{
+    if ($id <= 0) {
+        return false;
+    }
+
+    $stmt = crm_db()->prepare('DELETE FROM whatsapp_templates WHERE id = :id');
+    $stmt->execute(['id' => $id]);
+
+    return $stmt->rowCount() > 0;
+}
+
 function crm_ensure_user_columns(PDO $pdo): void
 {
     $columns = [
