@@ -29,7 +29,6 @@ $pilotStatusConfigured = crm_pilot_status_is_configured();
 $whatsappConfigured = ($whatsappProvider !== 'meta_cloud' || $metaWhatsAppConfigured)
     && ($whatsappProvider !== 'pilot_status' || $pilotStatusConfigured);
 $emailConfigured = $notificationEmail !== '';
-$pushSettings = crm_push_settings();
 $pushConfigured = crm_push_is_configured();
 $metaConfigured = $metaPixelId !== '' && $metaAccessToken !== '';
 $gtmConfigured = $googleTagManagerId !== '';
@@ -377,24 +376,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <h2>Alertas push</h2>
                   </div>
                   <span class="integration-status <?= $pushConfigured ? 'is-active' : '' ?>">
-                    <?= $pushConfigured ? 'Configurado' : 'Aguardando' ?>
+                    <?= $pushConfigured ? 'Configurado' : 'Automático' ?>
                   </span>
                 </header>
-                <p class="integration-description">Permite que cada vendedor receba no celular um alerta quando um novo lead for atribuído a ele.</p>
-
-                <form class="flow-form" method="post">
-                  <input type="hidden" name="_csrf_token" value="<?= htmlspecialchars(crm_csrf_token()) ?>" />
-                  <input type="hidden" name="settings_section" value="push" />
-                  <label>
-                    Identificação VAPID
-                    <input type="text" name="push_vapid_subject" value="<?= htmlspecialchars($pushSettings['subject']) ?>" placeholder="mailto:admin@seudominio.com.br" autocomplete="email" />
-                  </label>
-                  <small class="settings-help">Use um e-mail ou a URL HTTPS do CRM. As chaves ficam protegidas no banco; gerar novamente invalida as inscrições atuais.</small>
-                  <button class="integration-save" type="submit">
-                    <span aria-hidden="true">✓</span>
-                    <?= $pushConfigured ? 'Gerar novas chaves' : 'Gerar chaves VAPID' ?>
-                  </button>
-                </form>
+                <p class="integration-description">As chaves técnicas são geradas automaticamente na primeira ativação. Cada vendedor só precisa permitir as notificações no próprio celular.</p>
+                <small class="settings-help">O navegador ainda exige uma confirmação do vendedor para proteger a privacidade do dispositivo.</small>
               </section>
             </div>
           </section>

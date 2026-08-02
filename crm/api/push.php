@@ -16,7 +16,7 @@ $userId = (int) ($currentUser['id'] ?? 0);
 $action = trim((string) ($_GET['action'] ?? ''));
 
 if ($_SERVER['REQUEST_METHOD'] === 'GET' && $action === 'config') {
-    $pushSettings = crm_push_settings();
+    $pushSettings = crm_push_ensure_configured();
 
     echo json_encode([
         'ok' => true,
