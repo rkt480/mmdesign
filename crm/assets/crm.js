@@ -121,7 +121,7 @@ function isTouchKanbanEvent(event) {
 }
 
 function isKanbanInteractiveTarget(target) {
-  return Boolean(target?.closest("a, button, select, input, textarea, form, [data-mobile-status]"));
+  return Boolean(target?.closest("a, button, select, input, textarea, form, .mobile-status-move, [data-mobile-status]"));
 }
 
 function clearTouchDragTimer() {
@@ -164,6 +164,19 @@ function restoreTouchCard(card, parent, nextSibling, status) {
   }
 }
 
+function activateTouchKanbanDrag(card, pointerId) {
+  if (touchDragState.card !== card || touchDragState.active) {
+    return;
+  }
+
+  touchDragState.active = true;
+  clearTouchDragTimer();
+  draggedCard = card;
+  card.classList.add("is-dragging", "is-touch-dragging");
+  document.body.classList.add("touch-dragging");
+  card.setPointerCapture?.(pointerId);
+}
+
 function beginTouchKanbanDrag(event) {
   if (!isTouchKanbanEvent(event) || isKanbanInteractiveTarget(event.target)) {
     return;
@@ -175,6 +188,8 @@ function beginTouchKanbanDrag(event) {
     return;
   }
 
+  event.preventDefault();
+
   touchDragState.card = card;
   touchDragState.previousParent = card.parentElement;
   touchDragState.previousNextSibling = card.nextElementSibling;
@@ -182,17 +197,10 @@ function beginTouchKanbanDrag(event) {
   touchDragState.startX = event.clientX;
   touchDragState.startY = event.clientY;
   touchDragState.active = false;
+  card.setPointerCapture?.(event.pointerId);
   touchDragState.holdTimer = window.setTimeout(() => {
-    if (touchDragState.card !== card) {
-      return;
-    }
-
-    touchDragState.active = true;
-    draggedCard = card;
-    card.classList.add("is-dragging", "is-touch-dragging");
-    document.body.classList.add("touch-dragging");
-    card.setPointerCapture?.(event.pointerId);
-  }, 280);
+    activateTouchKanbanDrag(card, event.pointerId);
+  }, 180);
 }
 
 function moveTouchKanbanDrag(event) {
@@ -204,10 +212,10 @@ function moveTouchKanbanDrag(event) {
     const distance = Math.hypot(event.clientX - touchDragState.startX, event.clientY - touchDragState.startY);
 
     if (distance > 10) {
-      resetTouchDragState();
+      activateTouchKanbanDrag(touchDragState.card, event.pointerId);
+    } else {
+      return;
     }
-
-    return;
   }
 
   event.preventDefault();
