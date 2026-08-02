@@ -507,7 +507,7 @@ $activeProvider = is_array($activeConversation) ? (string) $activeConversation['
               </span>
               <span class="wa-chat-meta">
                 <time><?= htmlspecialchars(whatsapp_page_time_label((string) $conversation['last_at'])) ?></time>
-                <span class="wa-unread-indicator" data-wa-unread hidden>Nova</span>
+                <span class="wa-unread-indicator" data-wa-unread hidden aria-label="Mensagem não lida"></span>
                 <em class="<?= htmlspecialchars(whatsapp_page_provider_badge_class((string) $conversation['provider'])) ?>">
                   <?= htmlspecialchars(whatsapp_page_provider_label((string) $conversation['provider'])) ?>
                 </em>
