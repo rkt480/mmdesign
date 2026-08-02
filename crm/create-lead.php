@@ -21,7 +21,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($name !== '') {
-        crm_create_lead([
+        crm_create_lead_once([
             'name' => $name,
             'whatsapp' => $_POST['whatsapp'] ?? '',
             'cpf' => $_POST['cpf'] ?? '',
