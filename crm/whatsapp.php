@@ -201,7 +201,7 @@ function whatsapp_page_messages_for_lead(array $lead): array
                     'provider' => 'pilot_status',
                     'at' => whatsapp_page_parse_br_datetime((string) $match[1]),
                     'text' => trim((string) $match[2]),
-                    'label' => 'Recebida pela API oficial',
+                    'label' => 'Recebida',
                 ];
                 continue;
             }
@@ -212,7 +212,7 @@ function whatsapp_page_messages_for_lead(array $lead): array
                     'provider' => 'meta_cloud',
                     'at' => whatsapp_page_parse_br_datetime((string) $match[1]),
                     'text' => trim((string) $match[2]),
-                    'label' => 'Recebida pela Meta Cloud API',
+                    'label' => 'Recebida',
                 ];
                 continue;
             }
@@ -223,7 +223,7 @@ function whatsapp_page_messages_for_lead(array $lead): array
                     'provider' => 'pilot_status',
                     'at' => whatsapp_page_parse_br_datetime((string) $match[1]),
                     'text' => trim((string) $match[2]),
-                    'label' => 'Recebida pela Pilot Status',
+                    'label' => 'Recebida',
                 ];
                 continue;
             }
@@ -235,17 +235,19 @@ function whatsapp_page_messages_for_lead(array $lead): array
                     'provider' => str_contains($sentProviderLabel, 'meta') ? 'meta_cloud' : 'pilot_status',
                     'at' => whatsapp_page_parse_br_datetime((string) $match[2]),
                     'text' => trim((string) $match[3]),
-                    'label' => 'Enviada via ' . trim((string) $match[1]),
+                    'label' => 'Enviada',
                 ];
                 continue;
             }
 
             if (preg_match('/^Falha ao enviar via (.+?) em ([0-9]{2}\/[0-9]{2}\/[0-9]{4} [0-9]{2}:[0-9]{2}):\n(.+)$/s', $block, $match) === 1) {
+                $displayFailureText = preg_replace('/\bPilot Status\b|\bMeta Cloud API\b/iu', 'WhatsApp', $block) ?? $block;
+                $displayFailureText = preg_replace('/Falha ao enviar via WhatsApp/iu', 'Falha ao enviar mensagem', $displayFailureText) ?? $displayFailureText;
                 $messages[] = [
                     'direction' => 'note',
                     'provider' => str_contains(strtolower((string) $match[1]), 'meta') ? 'meta_cloud' : 'pilot_status',
                     'at' => whatsapp_page_parse_br_datetime((string) $match[2]),
-                    'text' => $block,
+                    'text' => $displayFailureText,
                     'label' => 'Falha no envio',
                 ];
                 continue;
@@ -405,7 +407,7 @@ $activeProvider = is_array($activeConversation) ? (string) $activeConversation['
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="csrf-token" content="<?= htmlspecialchars(crm_csrf_token()) ?>" />
     <title>WhatsApp | Publi CRM</title>
-    <link rel="stylesheet" href="./assets/crm.css?v=20260802-wa-live-refresh" />
+    <link rel="stylesheet" href="./assets/crm.css?v=20260802-wa-clean-ui" />
   </head>
   <body class="whatsapp-page whatsapp-crm-page">
     <main class="wa-web-shell" aria-label="Atendimento WhatsApp do CRM">
@@ -472,17 +474,11 @@ $activeProvider = is_array($activeConversation) ? (string) $activeConversation['
           <input type="search" placeholder="Pesquisar ou começar uma nova conversa" data-wa-search />
         </label>
 
-        <nav class="wa-provider-tabs" aria-label="Filtro por API">
-          <a class="<?= $providerFilter === 'all' ? 'active' : '' ?>" href="whatsapp.php">Tudo <strong><?= (int) $providerCounts['all'] ?></strong></a>
-          <a class="<?= $providerFilter === 'meta_cloud' ? 'active' : '' ?>" href="whatsapp.php?provider=meta_cloud">Oficial <strong><?= (int) $providerCounts['meta_cloud'] ?></strong></a>
-          <a class="<?= $providerFilter === 'pilot_status' ? 'active' : '' ?>" href="whatsapp.php?provider=pilot_status">Pilot oficial <strong><?= (int) $providerCounts['pilot_status'] ?></strong></a>
-        </nav>
-
         <div class="wa-chat-list">
           <?php if (count($conversations) === 0): ?>
             <div class="wa-empty-list">
               <strong>Nenhuma conversa</strong>
-              <span>As mensagens recebidas pelos webhooks da Meta Cloud API e Pilot Status aparecem aqui.</span>
+              <span>As mensagens recebidas pelo WhatsApp aparecem aqui.</span>
             </div>
           <?php endif; ?>
 
@@ -507,10 +503,6 @@ $activeProvider = is_array($activeConversation) ? (string) $activeConversation['
               </span>
               <span class="wa-chat-meta">
                 <time><?= htmlspecialchars(whatsapp_page_time_label((string) $conversation['last_at'])) ?></time>
-                <span class="wa-unread-indicator" data-wa-unread hidden aria-label="Mensagem não lida"></span>
-                <em class="<?= htmlspecialchars(whatsapp_page_provider_badge_class((string) $conversation['provider'])) ?>">
-                  <?= htmlspecialchars(whatsapp_page_provider_label((string) $conversation['provider'])) ?>
-                </em>
               </span>
             </a>
           <?php endforeach; ?>
@@ -528,7 +520,7 @@ $activeProvider = is_array($activeConversation) ? (string) $activeConversation['
             <span class="wa-avatar large"><?= htmlspecialchars(strtoupper(substr(trim((string) ($activeLead['name'] ?? 'C')) ?: 'C', 0, 1))) ?></span>
             <div>
               <h2><?= htmlspecialchars((string) ($activeLead['name'] ?? 'Contato WhatsApp')) ?></h2>
-              <p><?= htmlspecialchars(crm_normalize_lead_whatsapp((string) ($activeLead['whatsapp'] ?? ''))) ?> · <?= htmlspecialchars(whatsapp_page_provider_label($activeProvider)) ?></p>
+              <p><?= htmlspecialchars(crm_normalize_lead_whatsapp((string) ($activeLead['whatsapp'] ?? ''))) ?></p>
             </div>
           </header>
 
@@ -612,9 +604,6 @@ $activeProvider = is_array($activeConversation) ? (string) $activeConversation['
             <div>
               <p class="eyebrow">Lead em atendimento</p>
               <h2><?= htmlspecialchars((string) ($activeLead['name'] ?? 'Contato WhatsApp')) ?></h2>
-              <span class="wa-provider-badge <?= htmlspecialchars(whatsapp_page_provider_badge_class($activeProvider)) ?>">
-                <?= htmlspecialchars(whatsapp_page_provider_label($activeProvider)) ?>
-              </span>
             </div>
           </section>
 
@@ -834,7 +823,7 @@ $activeProvider = is_array($activeConversation) ? (string) $activeConversation['
       };
 
       const updateUnreadTitle = () => {
-        const unreadCount = document.querySelectorAll("[data-wa-unread]:not([hidden])").length;
+        const unreadCount = document.querySelectorAll(".wa-chat-item.has-unread").length;
         document.title = unreadCount > 0 ? `(${unreadCount}) Nova mensagem | Publi CRM` : "WhatsApp | Publi CRM";
       };
 
@@ -844,7 +833,7 @@ $activeProvider = is_array($activeConversation) ? (string) $activeConversation['
         currentList?.querySelectorAll("[data-wa-chat]").forEach((chat) => {
           previousChats.set(chat.dataset.waLeadId || chat.href, {
             lastKey: chat.dataset.waLastKey || "",
-            unread: chat.querySelector("[data-wa-unread]")?.hidden === false,
+            unread: chat.classList.contains("has-unread"),
           });
         });
 
@@ -854,12 +843,6 @@ $activeProvider = is_array($activeConversation) ? (string) $activeConversation['
           const isIncoming = chat.dataset.waLastDirection === "incoming";
           const isActive = chat.classList.contains("active");
           const shouldShowUnread = !isActive && (previous?.unread || (lastKeyChanged && isIncoming));
-          const indicator = chat.querySelector("[data-wa-unread]");
-
-          if (indicator) {
-            indicator.hidden = !shouldShowUnread;
-          }
-
           chat.classList.toggle("has-unread", shouldShowUnread);
         });
       };
