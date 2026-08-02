@@ -98,6 +98,112 @@ function pilot_status_send_text(string $number, string $text): array
     ]);
 }
 
+function pilot_status_public_media_directory(): string
+{
+    return dirname(__DIR__) . '/whatsapp-media';
+}
+
+function pilot_status_public_media_base_url(): string
+{
+    $host = trim((string) ($_SERVER['HTTP_HOST'] ?? ''));
+
+    if ($host === '') {
+        return '';
+    }
+
+    $forwardedProtocol = strtolower(trim((string) ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '')));
+    $https = !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off';
+    $scheme = $https || $forwardedProtocol === 'https' ? 'https' : 'http';
+    $scriptName = str_replace('\\', '/', (string) ($_SERVER['SCRIPT_NAME'] ?? '/crm/send-chat-message.php'));
+    $scriptDirectory = rtrim(str_replace('\\', '/', dirname($scriptName)), '/');
+
+    return $scheme . '://' . $host . $scriptDirectory . '/whatsapp-media';
+}
+
+function pilot_status_media_extension(string $mimeType, string $fileName): string
+{
+    $extension = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
+
+    if (preg_match('/^[a-z0-9]{1,8}$/', $extension) === 1) {
+        return $extension;
+    }
+
+    return match ($mimeType) {
+        'image/jpeg' => 'jpg',
+        'image/png' => 'png',
+        'image/webp' => 'webp',
+        'image/gif' => 'gif',
+        'audio/ogg' => 'ogg',
+        'audio/webm', 'video/webm' => 'webm',
+        'audio/mpeg' => 'mp3',
+        'audio/mp4', 'audio/m4a' => 'm4a',
+        'audio/wav', 'audio/x-wav' => 'wav',
+        'application/pdf' => 'pdf',
+        'application/msword' => 'doc',
+        'application/vnd.ms-excel' => 'xls',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document' => 'docx',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' => 'xlsx',
+        'text/csv' => 'csv',
+        'text/plain' => 'txt',
+        default => 'bin',
+    };
+}
+
+function pilot_status_cleanup_public_media(int $maxAge = 86400): void
+{
+    $directory = pilot_status_public_media_directory();
+
+    if (!is_dir($directory)) {
+        return;
+    }
+
+    $cutoff = time() - max(3600, $maxAge);
+    $entries = scandir($directory);
+
+    if ($entries === false) {
+        return;
+    }
+
+    foreach ($entries as $entry) {
+        if ($entry === '.' || $entry === '..' || $entry === '.htaccess' || $entry === '.gitignore') {
+            continue;
+        }
+
+        $path = $directory . '/' . $entry;
+
+        if (is_file($path) && (int) @filemtime($path) < $cutoff) {
+            @unlink($path);
+        }
+    }
+}
+
+function pilot_status_publish_media(string $filePath, string $mimeType, string $fileName): array
+{
+    $baseUrl = pilot_status_public_media_base_url();
+
+    if ($baseUrl === '') {
+        return ['ok' => false, 'error' => 'Não foi possível gerar uma URL pública para o arquivo.'];
+    }
+
+    $directory = pilot_status_public_media_directory();
+
+    if (!is_dir($directory) && !@mkdir($directory, 0755, true) && !is_dir($directory)) {
+        return ['ok' => false, 'error' => 'Não foi possível preparar o armazenamento temporário da mídia.'];
+    }
+
+    $extension = pilot_status_media_extension($mimeType, $fileName);
+    $storedName = bin2hex(random_bytes(16)) . '.' . $extension;
+    $storedPath = $directory . '/' . $storedName;
+
+    if (!@copy($filePath, $storedPath)) {
+        return ['ok' => false, 'error' => 'Não foi possível publicar temporariamente o arquivo de mídia.'];
+    }
+
+    @chmod($storedPath, 0644);
+
+    return ['ok' => true, 'url' => rtrim($baseUrl, '/') . '/' . rawurlencode($storedName)];
+}
+
 function pilot_status_send_media(
     string $number,
     string $filePath,
@@ -120,24 +226,27 @@ function pilot_status_send_media(
         return ['ok' => false, 'error' => 'Arquivo de mídia indisponível para envio.'];
     }
 
-    $contents = file_get_contents($filePath);
+    $fileSize = @filesize($filePath);
 
-    if ($contents === false || $contents === '') {
+    if ($fileSize === false || $fileSize < 1) {
         return ['ok' => false, 'error' => 'Não foi possível ler o arquivo de mídia.'];
+    }
+
+    pilot_status_cleanup_public_media();
+    $published = pilot_status_publish_media($filePath, $mimeType, $fileName);
+
+    if (($published['ok'] ?? false) !== true) {
+        return $published;
     }
 
     $payload = [
         'destinationNumber' => $to,
-        'media' => 'data:' . $mimeType . ';base64,' . base64_encode($contents),
+        'media' => (string) ($published['url'] ?? ''),
         'mediaType' => $mediaType,
     ];
 
-    if (trim($caption) !== '') {
+    if ($mediaType !== 'audio' && trim($caption) !== '') {
         $payload['caption'] = trim($caption);
-    }
-
-    if ($mediaType === 'document' && trim($fileName) !== '') {
-        $payload['fileName'] = trim($fileName);
     }
 
     return pilot_status_request('/messages/send', $payload, 60);
