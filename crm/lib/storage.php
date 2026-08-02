@@ -1184,19 +1184,46 @@ function crm_create_lead(array $payload): array
 
 function crm_create_lead_once(array $payload): array
 {
-    $existingLead = crm_find_lead_by_whatsapp((string) ($payload['whatsapp'] ?? ''));
+    $whatsapp = (string) ($payload['whatsapp'] ?? '');
+    $normalizedWhatsapp = crm_normalize_lead_whatsapp($whatsapp);
 
-    if ($existingLead !== null) {
+    // A consulta seguida do INSERT precisa ser protegida como uma única
+    // operação. Webhooks e envios repetidos podem chegar ao mesmo tempo.
+    if ($normalizedWhatsapp === '') {
         return [
-            'lead' => $existingLead,
-            'created' => false,
+            'lead' => crm_create_lead($payload),
+            'created' => true,
         ];
     }
 
-    return [
-        'lead' => crm_create_lead($payload),
-        'created' => true,
-    ];
+    $db = crm_db();
+    $lockName = 'crm_lead_whatsapp_' . substr(hash('sha256', $normalizedWhatsapp), 0, 40);
+    $lockStmt = $db->prepare('SELECT GET_LOCK(:lock_name, 10)');
+    $lockStmt->execute(['lock_name' => $lockName]);
+    $lockAcquired = (int) $lockStmt->fetchColumn() === 1;
+
+    if (!$lockAcquired) {
+        throw new RuntimeException('Não foi possível reservar o WhatsApp para deduplicação.');
+    }
+
+    try {
+        $existingLead = crm_find_lead_by_whatsapp($whatsapp);
+
+        if ($existingLead !== null) {
+            return [
+                'lead' => $existingLead,
+                'created' => false,
+            ];
+        }
+
+        return [
+            'lead' => crm_create_lead($payload),
+            'created' => true,
+        ];
+    } finally {
+        $unlockStmt = $db->prepare('SELECT RELEASE_LOCK(:lock_name)');
+        $unlockStmt->execute(['lock_name' => $lockName]);
+    }
 }
 
 function crm_append_lead_note(string $id, string $note): bool
