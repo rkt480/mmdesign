@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/lib/auth.php';
 require_once __DIR__ . '/lib/storage.php';
 require_once __DIR__ . '/lib/whatsapp.php';
+require_once __DIR__ . '/lib/pilot-status.php';
 require_once __DIR__ . '/lib/whatsapp-templates.php';
 
 crm_require_login();
@@ -28,14 +29,15 @@ if (!in_array($providerFilter, ['all', 'meta_cloud', 'pilot_status'], true)) {
 $redirect = 'whatsapp.php?provider=' . rawurlencode($providerFilter) . '&lead=' . rawurlencode($leadId);
 $lead = crm_find_lead($leadId);
 $template = $templateId > 0 ? crm_find_whatsapp_template($templateId) : null;
+$provider = crm_whatsapp_provider();
 
 if (!is_array($lead) || !is_array($template)) {
     header('Location: ' . $redirect . '&send_error=' . rawurlencode('Contato ou template não encontrado.'));
     exit;
 }
 
-if (crm_whatsapp_provider() !== 'meta_cloud') {
-    header('Location: ' . $redirect . '&send_error=' . rawurlencode('O envio de templates está disponível com a Meta Cloud API configurada.'));
+if (!in_array($provider, ['meta_cloud', 'pilot_status'], true)) {
+    header('Location: ' . $redirect . '&send_error=' . rawurlencode('Nenhum provedor de templates está configurado.'));
     exit;
 }
 
@@ -44,17 +46,19 @@ if (!crm_whatsapp_template_is_sendable($template)) {
     exit;
 }
 
-$requiredVariables = crm_whatsapp_template_variables((string) ($template['body_text'] ?? ''));
+$requiredVariables = crm_whatsapp_template_variable_keys((string) ($template['body_text'] ?? ''));
 $orderedVariables = [];
+$providerVariables = [];
 
-foreach ($requiredVariables as $variableNumber) {
-    $value = trim((string) ($variables[(string) $variableNumber] ?? $variables[$variableNumber] ?? ''));
+foreach ($requiredVariables as $variableKey) {
+    $value = trim((string) ($variables[(string) $variableKey] ?? ''));
 
     if ($value === '') {
         header('Location: ' . $redirect . '&send_error=' . rawurlencode('Preencha todas as variáveis do template.'));
         exit;
     }
 
+    $providerVariables[$variableKey] = $value;
     $orderedVariables[] = $value;
 }
 
@@ -65,17 +69,20 @@ if ($number === '') {
     exit;
 }
 
-$result = meta_whatsapp_send_template($number, $template, $orderedVariables);
+$result = $provider === 'pilot_status'
+    ? pilot_status_send_template($number, $template, $providerVariables)
+    : meta_whatsapp_send_template($number, $template, $orderedVariables);
 
 if (($result['ok'] ?? false) !== true) {
-    $error = 'Falha ao enviar template via Meta Cloud API: ' . (string) ($result['error'] ?? 'Erro desconhecido.');
+    $providerLabel = $provider === 'pilot_status' ? 'Pilot Status' : 'Meta Cloud API';
+    $error = 'Falha ao enviar template via ' . $providerLabel . ': ' . (string) ($result['error'] ?? 'Erro desconhecido.');
     crm_append_lead_note($leadId, $error . ' em ' . date('d/m/Y H:i') . '.');
     header('Location: ' . $redirect . '&send_error=' . rawurlencode($error));
     exit;
 }
 
-$renderedBody = crm_whatsapp_template_render((string) ($template['body_text'] ?? ''), array_combine($requiredVariables, $orderedVariables) ?: [], $lead);
-$description = 'Template "' . (string) ($template['name'] ?? '') . '" enviado via Meta Cloud API em ' . date('d/m/Y H:i') . ":\n" . $renderedBody;
+$renderedBody = crm_whatsapp_template_render((string) ($template['body_text'] ?? ''), $providerVariables, $lead);
+$description = 'Template "' . (string) ($template['name'] ?? '') . '" enviado via ' . ($provider === 'pilot_status' ? 'Pilot Status' : 'Meta Cloud API') . ' em ' . date('d/m/Y H:i') . ":\n" . $renderedBody;
 crm_append_lead_note($leadId, $description);
 crm_update_whatsapp_status($leadId, 'enviado');
 

@@ -175,6 +175,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               <path d="M16 16v-5" />
             </svg>
           </a>
+          <a href="whatsapp-templates.php" title="Templates WhatsApp" aria-label="Templates WhatsApp">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4.5h14v15H5z" /><path d="M8 8h8M8 12h8M8 16h5" /></svg>
+          </a>
           <a href="commercial.php" title="Área comercial" aria-label="Área comercial">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M8 10.5a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" />
@@ -194,6 +197,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <a href="followups.php">Follow-up</a>
             <a href="dashboard.php">Dashboard</a>
             <a href="commercial.php">Comercial</a>
+            <a href="whatsapp-templates.php">Templates</a>
             <a class="active" href="settings.php">Configurações</a>
           </nav>
         </header>

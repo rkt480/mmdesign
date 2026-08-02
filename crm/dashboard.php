@@ -155,6 +155,9 @@ arsort($lostReasons);
             </svg>
           </a>
           <?php if ($canManageSettings): ?>
+            <a href="whatsapp-templates.php" title="Templates WhatsApp" aria-label="Templates WhatsApp">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4.5h14v15H5z" /><path d="M8 8h8M8 12h8M8 16h5" /></svg>
+            </a>
             <a href="commercial.php" title="Área comercial" aria-label="Área comercial">
               <svg viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M8 10.5a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" />
@@ -176,6 +179,7 @@ arsort($lostReasons);
             <a class="active" href="dashboard.php">Dashboard</a>
             <?php if ($canManageSettings): ?>
               <a href="commercial.php">Comercial</a>
+              <a href="whatsapp-templates.php">Templates</a>
               <a href="settings.php">Configurações</a>
             <?php endif; ?>
           </nav>

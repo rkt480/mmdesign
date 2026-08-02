@@ -53,6 +53,11 @@ function human_delay(int $minutes): string
               <path d="M10.7 8.2h6.2a4 4 0 0 1 4 4v2.7a4 4 0 0 1-4 4h-2.5L11 21v-2.1h-.3a4 4 0 0 1-4-4v-2.7a4 4 0 0 1 4-4Z" />
             </svg>
           </a>
+          <?php if ($canManageSettings): ?>
+            <a href="whatsapp-templates.php" title="Templates WhatsApp" aria-label="Templates WhatsApp">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4.5h14v15H5z" /><path d="M8 8h8M8 12h8M8 16h5" /></svg>
+            </a>
+          <?php endif; ?>
           <a href="dashboard.php" title="Dashboard do gestor" aria-label="Dashboard do gestor">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M4 19V5" />
@@ -84,6 +89,7 @@ function human_delay(int $minutes): string
             <a href="dashboard.php">Dashboard</a>
             <?php if ($canManageSettings): ?>
               <a href="commercial.php">Comercial</a>
+              <a href="whatsapp-templates.php">Templates</a>
               <a href="settings.php">Configurações</a>
             <?php endif; ?>
           </nav>

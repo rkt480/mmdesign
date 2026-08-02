@@ -119,12 +119,17 @@ function whatsapp_page_avatar_markup(array $lead, string $modifier = ''): string
     $initial = function_exists('mb_substr') ? mb_substr($name, 0, 1, 'UTF-8') : substr($name, 0, 1);
     $initial = function_exists('mb_strtoupper') ? mb_strtoupper($initial, 'UTF-8') : strtoupper($initial);
     $url = crm_normalize_profile_picture_url((string) ($lead['profile_picture_url'] ?? ''));
+    $leadId = trim((string) ($lead['id'] ?? ''));
     $classes = trim('wa-avatar ' . $modifier . ($url !== '' ? ' has-image' : ''));
     $safeClasses = htmlspecialchars($classes, ENT_QUOTES, 'UTF-8');
     $safeInitial = htmlspecialchars($initial ?: 'C', ENT_QUOTES, 'UTF-8');
+    $avatarData = $url === '' && $leadId !== ''
+        ? ' data-wa-avatar-fetch data-wa-avatar-lead-id="' . htmlspecialchars($leadId, ENT_QUOTES, 'UTF-8')
+            . '" data-wa-avatar-initial="' . $safeInitial . '"'
+        : '';
 
     if ($url === '') {
-        return '<span class="' . $safeClasses . '">' . $safeInitial . '</span>';
+        return '<span class="' . $safeClasses . '"' . $avatarData . '>' . $safeInitial . '</span>';
     }
 
     return '<span class="' . $safeClasses . '"><img src="'
@@ -149,7 +154,13 @@ function whatsapp_page_is_technical_delivery_note(string $text): bool
 
 function whatsapp_template_status_label_for_conversation(array $template): string
 {
-    return match (strtoupper(trim((string) ($template['meta_status'] ?? '')))) {
+    $metaStatus = strtoupper(trim((string) ($template['meta_status'] ?? '')));
+
+    if ($metaStatus === '' && strtolower(trim((string) ($template['status'] ?? ''))) === 'approved') {
+        return 'aprovado';
+    }
+
+    return match ($metaStatus) {
         'APPROVED' => 'aprovado',
         'PENDING' => 'em análise',
         'REJECTED' => 'rejeitado',
@@ -469,9 +480,9 @@ $waTemplateData = [];
 foreach ($whatsappTemplates as $template) {
     $waTemplateData[(string) $template['id']] = [
         'name' => (string) ($template['name'] ?? ''),
-        'status' => strtoupper((string) ($template['meta_status'] ?? '')),
+        'status' => crm_whatsapp_template_is_sendable($template) ? 'APPROVED' : strtoupper((string) ($template['meta_status'] ?? '')),
         'body' => (string) ($template['body_text'] ?? ''),
-        'variables' => crm_whatsapp_template_variables((string) ($template['body_text'] ?? '')),
+        'variables' => crm_whatsapp_template_variable_keys((string) ($template['body_text'] ?? '')),
     ];
 }
 ?>
@@ -641,7 +652,7 @@ foreach ($whatsappTemplates as $template) {
 
             <?php if (!$wa24hOpen): ?>
               <section class="wa-template-picker" data-wa-template-picker>
-                <div class="wa-template-picker-heading"><div><p class="eyebrow">API oficial</p><strong>Enviar template aprovado</strong></div><span>Meta</span></div>
+                <div class="wa-template-picker-heading"><div><p class="eyebrow"><?= $provider === 'pilot_status' ? 'Pilot Status' : 'API oficial' ?></p><strong>Enviar template aprovado</strong></div><span><?= $provider === 'pilot_status' ? 'Pilot' : 'Meta' ?></span></div>
                 <form method="post" action="send-whatsapp-template.php" data-wa-template-form>
                   <input type="hidden" name="_csrf_token" value="<?= htmlspecialchars(crm_csrf_token()) ?>" />
                   <input type="hidden" name="lead_id" value="<?= htmlspecialchars((string) ($activeLead['id'] ?? '')) ?>" />
@@ -650,7 +661,7 @@ foreach ($whatsappTemplates as $template) {
                   <div class="wa-template-variable-fields" data-wa-template-fields hidden></div>
                   <p class="wa-template-preview" data-wa-template-preview hidden></p>
                 </form>
-                <?php if ($provider !== 'meta_cloud'): ?><small class="wa-template-picker-note">Selecione Meta Cloud API nas configurações para enviar templates oficiais.</small><?php elseif (count($whatsappTemplates) === 0): ?><small class="wa-template-picker-note">Nenhum template cadastrado. <a href="whatsapp-templates.php">Criar template</a></small><?php elseif (!$hasApprovedWhatsAppTemplate): ?><small class="wa-template-picker-note">Seus templates ainda precisam ser aprovados pela Meta. Use “Sincronizar status” na biblioteca depois da análise.</small><?php endif; ?>
+                <?php if (!$pilotStatusConfigured && $provider === 'pilot_status'): ?><small class="wa-template-picker-note">Configure a API key do Pilot Status antes de enviar templates.</small><?php elseif ($provider !== 'meta_cloud' && $provider !== 'pilot_status'): ?><small class="wa-template-picker-note">Selecione um provedor de WhatsApp nas configurações.</small><?php elseif (count($whatsappTemplates) === 0): ?><small class="wa-template-picker-note">Nenhum template cadastrado. <a href="whatsapp-templates.php">Criar template</a></small><?php elseif (!$hasApprovedWhatsAppTemplate): ?><small class="wa-template-picker-note">Seus templates ainda precisam ser aprovados pela Meta ou sincronizados com o Pilot Status.</small><?php endif; ?>
               </section>
             <?php endif; ?>
 
@@ -907,6 +918,48 @@ foreach ($whatsappTemplates as $template) {
         }, { once: true });
       });
 
+      const avatarRequests = new Map();
+      const applyAvatarImage = (avatar, url) => {
+        const image = document.createElement("img");
+        image.src = url;
+        image.alt = "";
+        image.loading = "lazy";
+        image.referrerPolicy = "no-referrer";
+        image.dataset.waAvatarImage = "";
+        image.addEventListener("error", () => {
+          avatar.classList.add("is-fallback");
+        }, { once: true });
+
+        const fallback = document.createElement("span");
+        fallback.className = "wa-avatar-fallback";
+        fallback.setAttribute("aria-hidden", "true");
+        fallback.textContent = avatar.dataset.waAvatarInitial || "C";
+
+        avatar.classList.add("has-image");
+        avatar.replaceChildren(image, fallback);
+      };
+
+      document.querySelectorAll("[data-wa-avatar-fetch]").forEach((avatar) => {
+        const leadId = avatar.dataset.waAvatarLeadId || "";
+        if (!leadId || avatarRequests.has(leadId)) return;
+
+        const endpoint = new URL("api/lead-profile-picture.php", window.location.href);
+        endpoint.searchParams.set("lead", leadId);
+        const request = fetch(endpoint, { headers: { Accept: "application/json" } })
+          .then((response) => response.ok ? response.json() : null)
+          .then((data) => {
+            const url = data?.profile_picture_url || "";
+            if (!url) return;
+
+            document.querySelectorAll("[data-wa-avatar-lead-id]").forEach((candidate) => {
+              if (candidate.dataset.waAvatarLeadId === leadId) applyAvatarImage(candidate, url);
+            });
+          })
+          .catch(() => {});
+
+        avatarRequests.set(leadId, request);
+      });
+
       const templatePicker = document.querySelector("[data-wa-template-picker]");
       if (templatePicker) {
         const templateSelect = templatePicker.querySelector("[data-wa-template-select]");
@@ -928,17 +981,17 @@ foreach ($whatsappTemplates as $template) {
 
           templateFields.hidden = false;
           const values = {};
-          (selected.variables || []).forEach((variableNumber) => {
+          (selected.variables || []).forEach((variableKey) => {
             const label = document.createElement("label");
-            label.textContent = `Variável {{${variableNumber}}}`;
+            label.textContent = `Variável {{${variableKey}}}`;
             const input = document.createElement("input");
             input.type = "text";
-            input.name = `variables[${variableNumber}]`;
-            input.placeholder = variableNumber === 1 ? "Ex.: nome do contato" : "Informe o valor";
+            input.name = `variables[${variableKey}]`;
+            input.placeholder = variableKey === "1" || variableKey === "nome" || variableKey === "name" ? "Ex.: nome do contato" : "Informe o valor";
             input.required = true;
             input.addEventListener("input", () => {
-              values[variableNumber] = input.value;
-              templatePreview.textContent = selected.body.replace(/\{\{\s*(\d+)\s*\}\}/g, (_, number) => values[number] || `{{${number}}}`);
+              values[variableKey] = input.value;
+              templatePreview.textContent = selected.body.replace(/\{\{\s*([a-zA-Z][a-zA-Z0-9_]*|\d+)\s*\}\}/g, (_, key) => values[key] || `{{${key}}}`);
               templatePreview.hidden = false;
             });
             label.appendChild(input);

@@ -16,18 +16,33 @@ function crm_whatsapp_template_variables(string $text): array
     return $variables;
 }
 
+function crm_whatsapp_template_variable_keys(string $text): array
+{
+    preg_match_all('/\{\{\s*([a-zA-Z][a-zA-Z0-9_]*|\d+)\s*\}\}/u', $text, $matches);
+    $variables = [];
+
+    foreach ($matches[1] ?? [] as $variable) {
+        $variable = trim((string) $variable);
+
+        if ($variable !== '' && !in_array($variable, $variables, true)) {
+            $variables[] = $variable;
+        }
+    }
+
+    return $variables;
+}
+
 function crm_whatsapp_template_render(string $text, array $values, array $lead = []): string
 {
-    $rendered = strtr($text, [
-        '{{name}}' => (string) ($lead['name'] ?? ''),
-        '{{company}}' => (string) ($lead['company'] ?? ''),
-        '{{segment}}' => (string) ($lead['segment'] ?? ''),
-    ]);
+    return preg_replace_callback('/\{\{\s*([a-zA-Z][a-zA-Z0-9_]*|\d+)\s*\}\}/u', static function (array $match) use ($values, $lead): string {
+        $key = trim((string) ($match[1] ?? ''));
 
-    return preg_replace_callback('/\{\{\s*(\d+)\s*\}\}/', static function (array $match) use ($values): string {
-        $key = (string) ((int) ($match[1] ?? 0));
-        return trim((string) ($values[$key] ?? ''));
-    }, $rendered) ?? $rendered;
+        if (array_key_exists($key, $values)) {
+            return trim((string) $values[$key]);
+        }
+
+        return trim((string) ($lead[$key] ?? ''));
+    }, $text) ?? $text;
 }
 
 function crm_whatsapp_last_incoming_at(array $lead): ?int
@@ -85,10 +100,23 @@ function crm_whatsapp_window_label(array $lead): string
         : 'Janela encerrada · use um template aprovado';
 }
 
-function crm_whatsapp_template_is_sendable(array $template): bool
+function crm_whatsapp_template_is_sendable(array $template, ?string $provider = null): bool
 {
-    return (int) ($template['active'] ?? 0) === 1
-        && strtolower((string) ($template['meta_status'] ?? '')) === 'approved'
-        && trim((string) ($template['name'] ?? '')) !== '';
-}
+    if ((int) ($template['active'] ?? 0) !== 1 || trim((string) ($template['name'] ?? '')) === '') {
+        return false;
+    }
 
+    $provider = $provider ?? crm_whatsapp_provider();
+
+    if ($provider === 'pilot_status' && trim((string) ($template['meta_template_id'] ?? '')) === '') {
+        return false;
+    }
+
+    $metaStatus = strtolower(trim((string) ($template['meta_status'] ?? '')));
+
+    if ($metaStatus === 'approved' || strtolower(trim((string) ($template['status'] ?? ''))) === 'approved') {
+        return true;
+    }
+
+    return false;
+}
