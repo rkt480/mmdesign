@@ -18,6 +18,12 @@ crm_require_valid_csrf();
 $leadId = trim((string) ($_POST['lead_id'] ?? ''));
 $message = trim((string) ($_POST['message'] ?? ''));
 $providerFilter = trim((string) ($_POST['provider_filter'] ?? 'all'));
+$currentUser = crm_current_user();
+$senderName = crm_user_label($currentUser);
+
+if ($senderName === 'Sem vendedor') {
+    $senderName = 'Usuário do CRM';
+}
 
 if (!in_array($providerFilter, ['all', 'meta_cloud', 'pilot_status'], true)) {
     $providerFilter = 'all';
@@ -51,6 +57,7 @@ if ($number === '') {
     exit;
 }
 
+$messageWithSender = $senderName . ', disse:' . ($message !== '' ? "\n" . $message : '');
 $providerLabel = crm_whatsapp_provider_label();
 $mediaType = '';
 $mimeType = '';
@@ -111,13 +118,13 @@ if ($hasMedia) {
 }
 
 $result = $hasMedia
-    ? crm_whatsapp_send_media($number, $mediaPath, $mimeType, $mediaType, $message, $fileName)
-    : crm_whatsapp_send_text($number, $message, false);
+    ? crm_whatsapp_send_media($number, $mediaPath, $mimeType, $mediaType, $messageWithSender, $fileName)
+    : crm_whatsapp_send_text($number, $messageWithSender, false);
 
 if (($result['ok'] ?? false) === true) {
     $sentDescription = $hasMedia
-        ? ucfirst($mediaType) . ' enviada' . ($message !== '' ? " com legenda:\n" . $message : '')
-        : $message;
+        ? ucfirst($mediaType) . " enviada com legenda:\n" . $messageWithSender
+        : $messageWithSender;
     crm_append_lead_note(
         $leadId,
         ($hasMedia ? 'Mídia enviada via ' : 'Mensagem enviada via ') . $providerLabel . ' em ' . date('d/m/Y H:i') . ":\n" . $sentDescription

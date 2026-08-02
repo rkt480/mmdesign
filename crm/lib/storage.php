@@ -1775,10 +1775,12 @@ function crm_assign_followup_flow(string $leadId, int $flowId): bool
 function crm_read_due_followups(int $limit = 20): array
 {
     $stmt = crm_db()->prepare(
-        'SELECT q.*, s.message, l.name, l.whatsapp, l.company, l.segment
+        'SELECT q.*, s.message, l.name, l.whatsapp, l.company, l.segment,
+                crm_users.name AS assigned_user_name, crm_users.username AS assigned_username
         FROM followup_queue q
         JOIN followup_steps s ON s.id = q.step_id
         JOIN leads l ON l.id = q.lead_id
+        LEFT JOIN crm_users ON crm_users.id = l.assigned_user_id
         WHERE q.status = "pendente"
           AND q.scheduled_at <= :now_due
           AND NOT EXISTS (

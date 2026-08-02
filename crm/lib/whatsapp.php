@@ -56,6 +56,16 @@ function crm_whatsapp_send_lead_notification(array $lead): array
 
 function crm_whatsapp_send_followup(array $queueItem): array
 {
+    $senderName = trim((string) ($queueItem['assigned_user_name'] ?? ''));
+
+    if ($senderName === '') {
+        $senderName = trim((string) ($queueItem['assigned_username'] ?? ''));
+    }
+
+    if ($senderName !== '') {
+        $queueItem['message'] = $senderName . ", disse:\n" . ltrim((string) ($queueItem['message'] ?? ''));
+    }
+
     if (crm_whatsapp_provider() === 'meta_cloud') {
         return meta_whatsapp_send_followup($queueItem);
     }
