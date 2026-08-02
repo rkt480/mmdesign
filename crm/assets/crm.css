@@ -5285,3 +5285,324 @@ textarea:focus {
     width: 100%;
   }
 }
+
+/* Live updates and mobile operational layout */
+.live-refresh-toast {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 30;
+  padding: 12px 16px;
+  color: #075985;
+  background: #e0f2fe;
+  border: 1px solid rgba(14, 165, 233, 0.2);
+  border-radius: 999px;
+  box-shadow: var(--shadow-soft);
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.live-refresh-toast[hidden] {
+  display: none;
+}
+
+.commercial-help {
+  margin: -4px 0 4px;
+  color: #64748b;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.commercial-help.is-warning {
+  color: #9a3412;
+  font-weight: 700;
+}
+
+.wa-mobile-tabs {
+  display: none;
+}
+
+@media (max-width: 620px) {
+  .app-shell {
+    padding: 10px;
+  }
+
+  .sidebar {
+    min-height: 64px;
+    margin-bottom: 10px;
+    padding: 10px 12px;
+    border-radius: 22px;
+  }
+
+  .brand {
+    width: auto;
+    grid-auto-flow: column;
+    gap: 8px;
+    font-size: 0.72rem;
+  }
+
+  .brand-mark {
+    width: 38px;
+    height: 38px;
+  }
+
+  .sidebar-tabs {
+    width: auto;
+    gap: 6px;
+  }
+
+  .sidebar-tabs a,
+  .sidebar-exit {
+    width: 44px;
+    height: 44px;
+    min-height: 44px;
+  }
+
+  .sidebar-tabs a svg {
+    width: 21px;
+    height: 21px;
+  }
+
+  .app-header {
+    gap: 12px;
+    padding: 4px 2px 14px;
+  }
+
+  .app-header nav {
+    display: grid;
+    width: 100%;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .app-header nav a,
+  .app-header nav button {
+    width: 100%;
+    min-height: 42px;
+    padding: 9px 8px;
+    font-size: 0.78rem;
+  }
+
+  .dashboard {
+    padding: 0 2px 28px;
+  }
+
+  .push-onboarding {
+    margin: 0 0 14px;
+    padding: 14px;
+    border-radius: 18px;
+  }
+
+  .push-onboarding .push-control {
+    width: 100%;
+  }
+
+  .metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+
+  .metrics article {
+    min-height: 102px;
+    padding: 14px;
+    border-radius: 20px;
+  }
+
+  .metrics span {
+    font-size: 0.62rem;
+  }
+
+  .metrics strong {
+    margin-top: 5px;
+    font-size: 1.8rem;
+  }
+
+  .kanban-board {
+    grid-template-columns: repeat(6, minmax(0, 86vw));
+    gap: 12px;
+    padding-bottom: 10px;
+    scroll-snap-type: x proximity;
+  }
+
+  .kanban-column {
+    min-height: 0;
+    border-radius: 22px;
+    scroll-snap-align: start;
+  }
+
+  .kanban-column-header {
+    padding: 14px;
+  }
+
+  .live-refresh-toast {
+    right: 12px;
+    bottom: 12px;
+    left: 12px;
+    text-align: center;
+  }
+}
+
+@media (max-width: 1024px) {
+  .whatsapp-crm-page {
+    min-height: 100dvh;
+    overflow: auto;
+  }
+
+  .whatsapp-crm-page .wa-web-shell {
+    grid-template-columns: 1fr;
+    width: 100%;
+    min-height: 100dvh;
+    height: auto;
+    gap: 10px;
+    padding: 10px;
+    overflow: visible;
+  }
+
+  .whatsapp-crm-page .sidebar {
+    display: flex;
+    width: 100%;
+    height: auto;
+    min-height: 64px;
+    align-items: center;
+    justify-content: space-between;
+    margin: 0;
+    padding: 10px 12px;
+    border-radius: 22px;
+  }
+
+  .whatsapp-crm-page .brand {
+    width: auto;
+    grid-auto-flow: column;
+    gap: 8px;
+  }
+
+  .whatsapp-crm-page .sidebar-tabs,
+  .whatsapp-crm-page .sidebar-exit {
+    margin-top: 0;
+  }
+
+  .whatsapp-crm-page .sidebar-tabs {
+    display: flex;
+    width: auto;
+    gap: 6px;
+  }
+
+  .whatsapp-crm-page .sidebar-tabs a,
+  .whatsapp-crm-page .sidebar-exit {
+    width: 44px;
+    height: 44px;
+    min-height: 44px;
+  }
+
+  .wa-mobile-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+    padding: 4px;
+    background: rgba(255, 255, 255, 0.68);
+    border: 1px solid rgba(255, 255, 255, 0.86);
+    border-radius: 16px;
+    box-shadow: var(--shadow-soft);
+  }
+
+  .wa-mobile-tabs button {
+    min-height: 40px;
+    padding: 8px 6px;
+    color: #64748b;
+    background: transparent;
+    border: 0;
+    border-radius: 12px;
+    box-shadow: none;
+    font-size: 0.74rem;
+    white-space: nowrap;
+  }
+
+  .wa-mobile-tabs button.is-active {
+    color: #075985;
+    background: #e0f2fe;
+  }
+
+  .whatsapp-crm-page .wa-inbox,
+  .whatsapp-crm-page .wa-thread,
+  .whatsapp-crm-page .wa-lead-panel {
+    grid-column: 1;
+    min-height: 0;
+    border-radius: 22px;
+  }
+
+  .whatsapp-crm-page .wa-inbox,
+  .whatsapp-crm-page .wa-thread,
+  .whatsapp-crm-page .wa-lead-panel {
+    display: none !important;
+  }
+
+  body.whatsapp-crm-page[data-wa-mobile-view="inbox"] .wa-inbox,
+  body.whatsapp-crm-page[data-wa-mobile-view="thread"] .wa-thread,
+  body.whatsapp-crm-page[data-wa-mobile-view="lead"] .wa-lead-panel {
+    display: grid !important;
+  }
+
+  .whatsapp-crm-page .wa-inbox {
+    grid-template-rows: auto auto auto auto minmax(0, 1fr);
+    min-height: calc(100dvh - 152px);
+    max-height: calc(100dvh - 152px);
+  }
+
+  .whatsapp-crm-page .wa-chat-list {
+    min-height: 0;
+  }
+
+  .whatsapp-crm-page .wa-thread {
+    grid-template-rows: 68px minmax(280px, 1fr) auto;
+    min-height: calc(100dvh - 152px);
+  }
+
+  .whatsapp-crm-page .wa-thread-header {
+    padding: 12px 14px;
+  }
+
+  .whatsapp-crm-page .wa-message-surface {
+    min-height: 0;
+    padding: 16px 12px;
+  }
+
+  .whatsapp-crm-page .wa-thread-bottom {
+    max-height: none;
+    overflow: visible;
+    padding: 8px 10px 0;
+  }
+
+  .whatsapp-crm-page .wa-thread-bottom .wa-composer {
+    margin: 0 -10px;
+  }
+
+  .whatsapp-crm-page .wa-composer {
+    grid-template-columns: 40px minmax(0, 1fr) 40px 40px;
+    gap: 6px;
+    padding: 8px 10px;
+  }
+
+  .whatsapp-crm-page .wa-composer textarea {
+    min-height: 44px;
+    padding: 12px 13px;
+    font-size: 0.9rem;
+  }
+
+  .whatsapp-crm-page .wa-template-picker-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .whatsapp-crm-page .wa-template-picker select,
+  .whatsapp-crm-page .wa-template-picker button {
+    width: 100%;
+  }
+
+  .whatsapp-crm-page .wa-lead-panel {
+    align-content: start;
+    max-height: none;
+    overflow: visible;
+    padding: 10px;
+  }
+}

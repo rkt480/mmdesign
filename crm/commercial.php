@@ -353,6 +353,10 @@ $overdueLeads = crm_read_sla_overdue_leads(20);
                     <input type="checkbox" name="sales_rotation_enabled" value="1" <?= $salesDistributionSettings['rotation_enabled'] ? 'checked' : '' ?> />
                     <span>Usar roleta em novos leads</span>
                   </label>
+                  <p class="commercial-help">Quando ativa, todo lead novo sem vendedor é entregue automaticamente ao próximo vendedor ativo que participa da roleta.</p>
+                  <?php if ($salesDistributionSettings['rotation_enabled'] && count($rotationUsers) === 0): ?>
+                    <p class="commercial-help is-warning">Cadastre ou marque pelo menos um vendedor ativo como “Participa da roleta” para a distribuição funcionar.</p>
+                  <?php endif; ?>
                   <label class="checkbox-field">
                     <input type="checkbox" name="sales_sla_enabled" value="1" <?= $salesDistributionSettings['sla_enabled'] ? 'checked' : '' ?> />
                     <span>Redistribuir lead sem atividade</span>

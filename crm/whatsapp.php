@@ -444,9 +444,9 @@ foreach ($whatsappTemplates as $template) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="csrf-token" content="<?= htmlspecialchars(crm_csrf_token()) ?>" />
     <title>WhatsApp | Publi CRM</title>
-    <link rel="stylesheet" href="./assets/crm.css?v=20260802-wa-window-clean" />
+    <link rel="stylesheet" href="./assets/crm.css?v=20260802-mobile-ux" />
   </head>
-  <body class="whatsapp-page whatsapp-crm-page">
+  <body class="whatsapp-page whatsapp-crm-page" data-wa-initial-view="<?= is_array($activeLead) ? 'thread' : 'inbox' ?>">
     <main class="wa-web-shell" aria-label="Atendimento WhatsApp do CRM">
       <aside class="sidebar" aria-label="Navegação do CRM">
         <a class="brand" href="index.php" aria-label="Início">
@@ -492,6 +492,12 @@ foreach ($whatsappTemplates as $template) {
         </nav>
         <a class="sidebar-exit" href="logout.php" title="Sair">Sair</a>
       </aside>
+
+      <nav class="wa-mobile-tabs" aria-label="Área do atendimento no celular">
+        <button type="button" class="is-active" data-wa-mobile-view="inbox">Conversas</button>
+        <button type="button" data-wa-mobile-view="thread">Atendimento</button>
+        <button type="button" data-wa-mobile-view="lead">Dados do lead</button>
+      </nav>
 
       <aside class="wa-inbox" aria-label="Lista de conversas">
         <header class="wa-inbox-header">
@@ -917,6 +923,19 @@ foreach ($whatsappTemplates as $template) {
         surface.scrollTop = surface.scrollHeight;
       });
 
+      const waMobileTabs = document.querySelectorAll("[data-wa-mobile-view]");
+      const setWaMobileView = (view) => {
+        document.body.dataset.waMobileView = view;
+        waMobileTabs.forEach((tab) => {
+          tab.classList.toggle("is-active", tab.dataset.waMobileView === view);
+        });
+      };
+
+      setWaMobileView(document.body.dataset.waInitialView || "inbox");
+      waMobileTabs.forEach((tab) => {
+        tab.addEventListener("click", () => setWaMobileView(tab.dataset.waMobileView || "inbox"));
+      });
+
       const bindConversationSearch = () => {
         const searchInput = document.querySelector("[data-wa-search]");
 
@@ -1027,6 +1046,14 @@ foreach ($whatsappTemplates as $template) {
             // Se a primeira mensagem chegou enquanto a tela estava sem conversa,
             // a seleção inicial precisa ser reconstruída pelo servidor.
             window.location.reload();
+          }
+
+          const currentLeadPanel = document.querySelector(".wa-lead-panel");
+          const refreshedLeadPanel = refreshedDocument.querySelector(".wa-lead-panel");
+          const editingLeadData = document.activeElement?.closest(".wa-lead-panel");
+
+          if (currentLeadPanel && refreshedLeadPanel && currentLeadPanel.innerHTML !== refreshedLeadPanel.innerHTML && !editingLeadData) {
+            currentLeadPanel.replaceWith(refreshedLeadPanel);
           }
         } catch (error) {
           // Uma falha momentânea de rede não deve interromper o atendimento.
