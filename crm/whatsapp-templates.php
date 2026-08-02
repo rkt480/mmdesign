@@ -17,6 +17,8 @@ $currentTemplate = $requestedId > 0 ? crm_find_whatsapp_template($requestedId) :
 $isNew = $currentTemplate === null;
 $saved = ($_GET['saved'] ?? '') === '1';
 $synced = ($_GET['synced'] ?? '') === '1';
+$deleted = ($_GET['deleted'] ?? '') === '1';
+$remoteWarning = trim((string) ($_GET['remote_warning'] ?? ''));
 $error = trim((string) ($_GET['error'] ?? ''));
 $provider = crm_whatsapp_provider();
 $metaWhatsAppConfigured = crm_meta_whatsapp_is_configured();
@@ -101,6 +103,7 @@ $bodyVariables = crm_whatsapp_template_variables((string) ($currentTemplate['bod
         <main class="wa-templates-layout">
           <section class="wa-template-editor">
             <?php if ($saved && !$synced): ?><div class="alert success">Template salvo com sucesso.</div><?php endif; ?>
+            <?php if ($deleted): ?><div class="alert success">Template excluído do CRM.<?= htmlspecialchars($remoteWarning) ?></div><?php endif; ?>
             <?php if ($synced): ?><div class="alert success">Status dos templates sincronizado com a Meta.</div><?php endif; ?>
             <?php if ($error !== ''): ?><div class="alert"><?= htmlspecialchars($error) ?></div><?php endif; ?>
             <header class="section-heading"><div><p class="eyebrow"><?= $isNew ? 'Novo cadastro' : 'Editando template' ?></p><h2><?= htmlspecialchars((string) ($currentTemplate['name'] ?? 'Modelo de mensagem')) ?></h2></div><?php if (!$isNew): ?><span class="wa-template-status <?= whatsapp_template_status_class($currentTemplate) ?>"><?= htmlspecialchars(whatsapp_template_status_label($currentTemplate, $statusLabels)) ?></span><?php endif; ?></header>
@@ -113,11 +116,11 @@ $bodyVariables = crm_whatsapp_template_variables((string) ($currentTemplate['bod
                 <label>Idioma<select name="language"><option value="pt_BR" <?= (($currentTemplate['language'] ?? 'pt_BR') === 'pt_BR') ? 'selected' : '' ?>>Português (Brasil)</option><option value="en_US" <?= (($currentTemplate['language'] ?? '') === 'en_US') ? 'selected' : '' ?>>English (US)</option><option value="es_ES" <?= (($currentTemplate['language'] ?? '') === 'es_ES') ? 'selected' : '' ?>>Español</option></select></label>
                 <label>Categoria<select name="category"><option value="UTILITY" <?= (($currentTemplate['category'] ?? 'UTILITY') === 'UTILITY') ? 'selected' : '' ?>>Utilidade</option><option value="MARKETING" <?= (($currentTemplate['category'] ?? '') === 'MARKETING') ? 'selected' : '' ?>>Marketing</option></select></label>
                 <label class="field-wide">Cabeçalho <span>opcional · texto</span><input type="text" name="header_text" value="<?= htmlspecialchars((string) ($currentTemplate['header_text'] ?? '')) ?>" maxlength="60" placeholder="Ex.: Atendimento Publi" /></label>
-                <label class="field-wide">Corpo da mensagem <span><?= $provider === 'pilot_status' ? 'use {{nome}}, {{pedido}} para campos variáveis' : 'use {{1}}, {{2}} para campos variáveis' ?></span><textarea name="body_text" rows="8" maxlength="1024" placeholder="<?= $provider === 'pilot_status' ? 'Olá, {{nome}}! Recebemos seu contato e vamos continuar seu atendimento por aqui.' : 'Olá, {{1}}! Recebemos seu contato e vamos continuar seu atendimento por aqui.' ?>" required><?= htmlspecialchars((string) ($currentTemplate['body_text'] ?? '')) ?></textarea></label>
+                <label class="field-wide">Corpo da mensagem <span><?= $provider === 'pilot_status' ? 'use {{nome}}, {{pedido}} para campos variáveis · mantenha pelo menos 3 palavras fixas por variável' : 'use {{1}}, {{2}} para campos variáveis' ?></span><textarea name="body_text" rows="8" maxlength="1024" placeholder="<?= $provider === 'pilot_status' ? 'Olá, {{nome}}! Recebemos seu contato e vamos continuar seu atendimento por aqui.' : 'Olá, {{1}}! Recebemos seu contato e vamos continuar seu atendimento por aqui.' ?>" required><?= htmlspecialchars((string) ($currentTemplate['body_text'] ?? '')) ?></textarea></label>
                 <label class="field-wide">Rodapé <span>opcional</span><input type="text" name="footer_text" value="<?= htmlspecialchars((string) ($currentTemplate['footer_text'] ?? '')) ?>" maxlength="60" placeholder="Publi CRM" /></label>
               </div>
               <div class="wa-template-help"><strong>Como funciona</strong><span><?= $provider === 'pilot_status' ? 'O Pilot Status envia o template para a Meta quando o número é oficial. Depois de aprovado, ele ficará disponível na aba Conversas.' : 'A Meta analisa o conteúdo antes de liberar o envio. Depois de aprovado, ele ficará disponível na aba Conversas.' ?></span></div>
-              <div class="builder-actions"><button type="submit" name="action" value="save">Salvar rascunho</button><?php if ($providerConfigured): ?><button class="secondary-action" type="submit" name="action" value="submit_provider">Salvar e enviar para aprovação</button><?php else: ?><span class="wa-template-config-note"><?= $provider === 'pilot_status' ? 'Configure a API key do Pilot Status para enviar o template.' : 'Configure a Meta Cloud API e o WABA ID para enviar à aprovação.' ?></span><?php endif; ?></div>
+              <div class="builder-actions"><button type="submit" name="action" value="save">Salvar rascunho</button><?php if ($providerConfigured): ?><button class="secondary-action" type="submit" name="action" value="submit_provider">Salvar e enviar para aprovação</button><?php else: ?><span class="wa-template-config-note"><?= $provider === 'pilot_status' ? 'Configure a API key do Pilot Status para enviar o template.' : 'Configure a Meta Cloud API e o WABA ID para enviar à aprovação.' ?></span><?php endif; ?><?php if (!$isNew): ?><button class="danger" type="submit" name="action" value="delete" onclick="return confirm('Excluir este template? Essa ação não pode ser desfeita.');">Excluir template</button><?php endif; ?></div>
             </form>
           </section>
 

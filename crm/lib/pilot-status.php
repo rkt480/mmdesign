@@ -212,7 +212,28 @@ function pilot_status_api_request(string $endpoint, string $method = 'GET', ?arr
             'response' => $decoded,
         ]);
 
-        return ['ok' => false, 'error' => 'Pilot Status HTTP ' . $httpCode . ': ' . $body, 'response' => $decoded];
+        $rawError = is_array($decoded) && isset($decoded['error']) && is_scalar($decoded['error'])
+            ? (string) $decoded['error']
+            : (is_scalar($decoded) ? (string) $decoded : $body);
+
+        if (
+            str_contains($rawError, '2388293')
+            || str_contains($rawError, 'Params Words Ratio Exceeds Limit')
+        ) {
+            return [
+                'ok' => false,
+                'error' => 'A Meta recusou este template porque há pouca mensagem fixa em relação à variável. Aumente o texto ao redor de {{nome}} (por exemplo, explique o atendimento, pedido ou próximo passo) e tente enviar novamente.',
+                'response' => $decoded,
+            ];
+        }
+
+        $rawError = trim($rawError);
+
+        return [
+            'ok' => false,
+            'error' => 'Pilot Status HTTP ' . $httpCode . ': ' . ($rawError !== '' ? $rawError : 'resposta inválida.'),
+            'response' => $decoded,
+        ];
     }
 
     return ['ok' => true, 'response' => is_array($decoded) ? $decoded : $body];
@@ -311,6 +332,17 @@ function pilot_status_update_template(string $templateId, array $template): arra
 function pilot_status_list_templates(): array
 {
     return pilot_status_api_request('/templates', 'GET');
+}
+
+function pilot_status_delete_template(string $templateId): array
+{
+    $templateId = trim($templateId);
+
+    if ($templateId === '') {
+        return ['ok' => false, 'error' => 'ID do template no Pilot Status não configurado.'];
+    }
+
+    return pilot_status_api_request('/templates/' . rawurlencode($templateId), 'DELETE');
 }
 
 function pilot_status_send_template(string $number, array $template, array $variables = []): array

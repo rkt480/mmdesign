@@ -186,7 +186,7 @@ function lead_money_input(array $lead, string $field): string
     <title>CRM de Contatos | <?= htmlspecialchars((string) $config['company_name']) ?></title>
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="apple-touch-icon" href="./assets/icon-192.png" />
-    <link rel="stylesheet" href="./assets/crm.css?v=20260802-push-flow" />
+    <link rel="stylesheet" href="./assets/crm.css?v=20260802-mobile-drag" />
   </head>
   <body class="leads-page">
     <div class="app-shell">
@@ -481,6 +481,7 @@ function lead_money_input(array $lead, string $field): string
           <p>Ajuste os filtros para visualizar outros contatos do CRM.</p>
         </section>
       <?php else: ?>
+        <p class="mobile-kanban-hint">Toque e segure um lead para arrastá-lo para outra etapa.</p>
         <section class="kanban-board" aria-label="Funil comercial em Kanban" style="grid-template-columns: repeat(<?= max(1, count($statusLabels)) ?>, minmax(285px, 1fr));">
           <?php foreach ($statusLabels as $status => $label): ?>
             <section class="kanban-column" data-status="<?= htmlspecialchars($status) ?>">
@@ -520,6 +521,14 @@ function lead_money_input(array $lead, string $field): string
                         </svg>
                       </a>
                       <button class="details-toggle" type="button" data-toggle-details>Detalhes</button>
+                      <label class="mobile-status-move">
+                        Mover para
+                        <select data-mobile-status aria-label="Mover lead para outra etapa">
+                          <?php foreach ($statusLabels as $moveStatus => $moveLabel): ?>
+                            <option value="<?= htmlspecialchars($moveStatus) ?>" <?= $moveStatus === $status ? 'selected' : '' ?>><?= htmlspecialchars($moveLabel) ?></option>
+                          <?php endforeach; ?>
+                        </select>
+                      </label>
                       <?php if ($canManageSales): ?>
                         <form method="post" action="delete.php" onsubmit="return confirm('Excluir este contato?');">
                           <input type="hidden" name="_csrf_token" value="<?= htmlspecialchars(crm_csrf_token()) ?>" />
@@ -795,6 +804,6 @@ function lead_money_input(array $lead, string $field): string
     </main>
       </div>
     </div>
-    <script src="./assets/crm.js?v=20260802-push-flow"></script>
+    <script src="./assets/crm.js?v=20260802-mobile-drag"></script>
   </body>
 </html>
