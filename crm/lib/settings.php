@@ -412,12 +412,15 @@ function crm_normalize_sales_sla_statuses($statuses): array
 function crm_sales_distribution_settings(): array
 {
     $settings = crm_read_settings();
+    $rotationWasConfigured = array_key_exists('sales_rotation_enabled', $settings);
     $slaMinutes = max(15, min(10080, (int) ($settings['sales_sla_inactivity_minutes'] ?? 240)));
     $warningMinutes = max(0, min($slaMinutes, (int) ($settings['sales_sla_warning_minutes'] ?? 30)));
     $slaAction = trim((string) ($settings['sales_sla_action'] ?? 'rotation'));
 
     return [
-        'rotation_enabled' => !empty($settings['sales_rotation_enabled']),
+        // A roleta é o fluxo esperado para novos leads. Só fica manual quando
+        // o administrador desmarca essa opção explicitamente.
+        'rotation_enabled' => $rotationWasConfigured ? !empty($settings['sales_rotation_enabled']) : true,
         'sla_enabled' => !empty($settings['sales_sla_enabled']),
         'sla_inactivity_minutes' => $slaMinutes,
         'sla_warning_minutes' => $warningMinutes,

@@ -629,7 +629,20 @@ async function syncPushState() {
     const registration = await navigator.serviceWorker.ready;
     const subscription = await registration.pushManager.getSubscription();
     const permission = window.Notification?.permission || "default";
-    const subscribed = Boolean(subscription && Number(config.subscriptions || 0) > 0);
+
+    // A inscrição local é a fonte imediata de verdade no aparelho. Se o
+    // servidor perdeu a linha da assinatura (por exemplo, após uma limpeza
+    // de sessão), reaproveitamos a inscrição existente sem pedir permissão
+    // novamente ao vendedor.
+    if (subscription && permission === "granted" && Number(config.subscriptions || 0) === 0) {
+      const json = subscription.toJSON();
+      await pushRequest("subscribe", {
+        method: "POST",
+        body: JSON.stringify({ endpoint: json.endpoint, keys: json.keys }),
+      });
+    }
+
+    const subscribed = Boolean(subscription && permission === "granted");
 
     pushEnableButton.disabled = false;
     pushEnableButton.hidden = subscribed;
@@ -767,4 +780,81 @@ if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("./sw.js", { scope: "./" })
     .then(syncPushState)
     .catch((error) => showPushUnavailable(error.message || "Não foi possível preparar o aplicativo."));
+}
+
+// Mantém o funil sincronizado quando uma nova mensagem cria um lead ou quando
+// a roleta atribui o lead a um vendedor. A página continua leve porque o
+// endpoint devolve apenas uma versão, sem recarregar todos os dados a cada ciclo.
+if (document.body.classList.contains("leads-page")) {
+  let leadFeedVersion = "";
+  let leadFeedInFlight = false;
+  let leadFeedReloadScheduled = false;
+
+  const leadFeedHasOpenEditor = () => {
+    if (document.querySelector(".utility-dialog:not([hidden]), .lead-modal:not([hidden])")) {
+      return true;
+    }
+
+    const activeElement = document.activeElement;
+    return Boolean(activeElement && activeElement.matches("input, textarea, select"));
+  };
+
+  const showLeadFeedRefreshNotice = () => {
+    let notice = document.querySelector("[data-lead-feed-refresh]");
+
+    if (!notice) {
+      notice = document.createElement("div");
+      notice.className = "live-refresh-toast";
+      notice.dataset.leadFeedRefresh = "true";
+      notice.setAttribute("role", "status");
+      document.body.appendChild(notice);
+    }
+
+    notice.textContent = "Novo lead atribuído. Atualizando…";
+    notice.hidden = false;
+  };
+
+  const syncLeadFeed = async () => {
+    if (leadFeedInFlight || leadFeedReloadScheduled || document.visibilityState !== "visible" || leadFeedHasOpenEditor()) {
+      return;
+    }
+
+    leadFeedInFlight = true;
+
+    try {
+      const response = await fetch(`./api/lead-feed.php?_=${Date.now()}`, {
+        headers: { Accept: "application/json" },
+        cache: "no-store",
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok || data.ok !== true || !data.version) {
+        return;
+      }
+
+      if (leadFeedVersion === "") {
+        leadFeedVersion = data.version;
+        return;
+      }
+
+      if (leadFeedVersion !== data.version) {
+        leadFeedVersion = data.version;
+        leadFeedReloadScheduled = true;
+        showLeadFeedRefreshNotice();
+        window.setTimeout(() => window.location.reload(), 350);
+      }
+    } catch (error) {
+      // Uma falha pontual de rede será recuperada no próximo ciclo.
+    } finally {
+      leadFeedInFlight = false;
+    }
+  };
+
+  syncLeadFeed();
+  window.setInterval(syncLeadFeed, 5000);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") {
+      syncLeadFeed();
+    }
+  });
 }
