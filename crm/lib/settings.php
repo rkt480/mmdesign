@@ -7,7 +7,23 @@ function crm_settings_file(): string
     return dirname(__DIR__) . '/data/settings.json';
 }
 
-function crm_read_settings(): array
+function crm_settings_db(): PDO
+{
+    if (!function_exists('crm_db')) {
+        require_once __DIR__ . '/storage.php';
+    }
+
+    return crm_db();
+}
+
+function crm_decode_setting_value(string $value)
+{
+    $decoded = json_decode($value, true);
+
+    return json_last_error() === JSON_ERROR_NONE ? $decoded : $value;
+}
+
+function crm_read_legacy_settings(): array
 {
     $file = crm_settings_file();
 
@@ -21,15 +37,124 @@ function crm_read_settings(): array
     return is_array($settings) ? $settings : [];
 }
 
-function crm_write_settings(array $settings): void
+function crm_migrate_legacy_settings(PDO $pdo): void
 {
-    $dir = dirname(crm_settings_file());
+    $migrationKey = '__legacy_json_migrated';
+    $check = $pdo->prepare('SELECT COUNT(*) FROM crm_settings WHERE setting_key = :setting_key');
+    $check->execute(['setting_key' => $migrationKey]);
 
-    if (!is_dir($dir)) {
-        @mkdir($dir, 0755, true);
+    if ((int) $check->fetchColumn() > 0) {
+        return;
     }
 
-    file_put_contents(crm_settings_file(), json_encode($settings, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+    $settings = crm_read_legacy_settings();
+    $now = date('Y-m-d H:i:s');
+    $insert = $pdo->prepare(
+        'INSERT IGNORE INTO crm_settings (setting_key, setting_value, created_at, updated_at)
+         VALUES (:setting_key, :setting_value, :created_at, :updated_at)'
+    );
+
+    $pdo->beginTransaction();
+
+    try {
+        foreach ($settings as $key => $value) {
+            if (!is_string($key) || $key === '' || str_starts_with($key, '__')) {
+                continue;
+            }
+
+            $insert->execute([
+                'setting_key' => $key,
+                'setting_value' => json_encode($value, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+        }
+
+        $insert->execute([
+            'setting_key' => $migrationKey,
+            'setting_value' => 'true',
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+        $pdo->commit();
+    } catch (Throwable $error) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+
+        throw $error;
+    }
+}
+
+function crm_read_settings_from_db(PDO $pdo): array
+{
+    $stmt = $pdo->query(
+        'SELECT setting_key, setting_value
+         FROM crm_settings
+         ORDER BY setting_key'
+    );
+    $settings = [];
+
+    foreach ($stmt->fetchAll() as $row) {
+        $key = (string) ($row['setting_key'] ?? '');
+
+        if ($key === '' || str_starts_with($key, '__')) {
+            continue;
+        }
+
+        $settings[$key] = crm_decode_setting_value((string) ($row['setting_value'] ?? ''));
+    }
+
+    return $settings;
+}
+
+function crm_read_settings(): array
+{
+    return crm_read_settings_from_db(crm_settings_db());
+}
+
+function crm_write_settings_to_db(PDO $pdo, array $settings): void
+{
+    $now = date('Y-m-d H:i:s');
+    $upsert = $pdo->prepare(
+        'INSERT INTO crm_settings (setting_key, setting_value, created_at, updated_at)
+         VALUES (:setting_key, :setting_value, :created_at, :updated_at)
+         ON DUPLICATE KEY UPDATE
+            setting_value = VALUES(setting_value),
+            updated_at = VALUES(updated_at)'
+    );
+
+    $pdo->beginTransaction();
+
+    try {
+        $pdo->exec("DELETE FROM crm_settings WHERE LEFT(setting_key, 2) <> '__'");
+
+        foreach ($settings as $key => $value) {
+            if (!is_string($key) || $key === '' || str_starts_with($key, '__')) {
+                continue;
+            }
+
+            $upsert->execute([
+                'setting_key' => $key,
+                'setting_value' => json_encode($value, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+        }
+
+        $pdo->commit();
+    } catch (Throwable $error) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+
+        throw $error;
+    }
+}
+
+function crm_write_settings(array $settings): void
+{
+    crm_write_settings_to_db(crm_settings_db(), $settings);
 }
 
 function crm_normalize_whatsapp_number(string $number): string

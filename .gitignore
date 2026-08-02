@@ -1,5 +1,6 @@
 # Configurações confidenciais (Banco de dados, APIs, WhatsApp)
 crm/config.php
+crm/data/settings.json
 
 # Arquivos de log e temporários do CRM
 crm/data/*.log

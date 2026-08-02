@@ -53,6 +53,13 @@ CREATE TABLE IF NOT EXISTS publi_ai_crm.leads (
   DEFAULT CHARSET=utf8mb4
   COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS publi_ai_crm.crm_settings (
+  setting_key VARCHAR(120) PRIMARY KEY,
+  setting_value LONGTEXT NOT NULL,
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS publi_ai_crm.crm_users (
   id INT AUTO_INCREMENT PRIMARY KEY,
   name VARCHAR(160) NOT NULL,
