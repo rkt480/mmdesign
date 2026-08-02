@@ -58,7 +58,7 @@ function crm_migrate_legacy_settings(PDO $pdo): void
 
     try {
         foreach ($settings as $key => $value) {
-            if (!is_string($key) || $key === '' || str_starts_with($key, '__')) {
+            if (!is_string($key) || $key === '' || str_starts_with($key, '__') || $key === 'whatsapp_number') {
                 continue;
             }
 
@@ -130,7 +130,7 @@ function crm_write_settings_to_db(PDO $pdo, array $settings): void
         $pdo->exec("DELETE FROM crm_settings WHERE LEFT(setting_key, 2) <> '__'");
 
         foreach ($settings as $key => $value) {
-            if (!is_string($key) || $key === '' || str_starts_with($key, '__')) {
+            if (!is_string($key) || $key === '' || str_starts_with($key, '__') || $key === 'whatsapp_number') {
                 continue;
             }
 
@@ -190,12 +190,6 @@ function crm_whatsapp_number_variants(string $number): array
     }
 
     return array_values(array_unique($variants));
-}
-
-function crm_whatsapp_number(): string
-{
-    $settings = crm_read_settings();
-    return crm_normalize_whatsapp_number((string) ($settings['whatsapp_number'] ?? ''));
 }
 
 function crm_whatsapp_provider(): string

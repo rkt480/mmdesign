@@ -3,7 +3,6 @@
 declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/lib/storage.php';
-require_once dirname(__DIR__) . '/lib/whatsapp.php';
 require_once dirname(__DIR__) . '/lib/email.php';
 require_once dirname(__DIR__) . '/lib/meta-capi.php';
 require_once dirname(__DIR__) . '/lib/security.php';
@@ -82,7 +81,6 @@ try {
     exit;
 }
 
-$whatsappResult = ['ok' => false, 'error' => 'Notificação não executada.'];
 $emailResult = ['ok' => false, 'error' => 'E-mail não executado.'];
 $metaResult = ['ok' => false, 'error' => 'Meta CAPI não executada.'];
 
@@ -98,13 +96,6 @@ if (($leadResult['created'] ?? false) === true) {
     }
 
     try {
-        $whatsappResult = crm_whatsapp_send_lead_notification($lead);
-    } catch (Throwable $error) {
-        crm_update_whatsapp_status((string) $lead['id'], 'falhou', 'Erro ao enviar WhatsApp: ' . $error->getMessage());
-        error_log('Erro WhatsApp no lead ' . (string) $lead['id'] . ': ' . $error->getMessage());
-    }
-
-    try {
         $emailResult = crm_send_lead_email_notification($lead);
 
         if (($emailResult['ok'] ?? false) !== true && ($emailResult['skipped'] ?? false) !== true) {
@@ -115,7 +106,6 @@ if (($leadResult['created'] ?? false) === true) {
         error_log('Erro e-mail Lead ' . (string) $lead['id'] . ': ' . $error->getMessage());
     }
 } else {
-    $whatsappResult = ['ok' => true, 'skipped' => true, 'reason' => 'Lead já existe no CRM.'];
     $emailResult = ['ok' => true, 'skipped' => true, 'reason' => 'Lead já existe no CRM.'];
     $metaResult = ['ok' => true, 'skipped' => true, 'reason' => 'Lead já existe no CRM.'];
 }
@@ -129,7 +119,6 @@ echo json_encode([
     'created' => (bool) ($leadResult['created'] ?? false),
     'score' => $lead['lead_score'] ?? null,
     'temperature' => $lead['lead_temperature'] ?? null,
-    'whatsapp' => $whatsappResult,
     'email' => $emailResult,
     'meta' => $metaResult,
 ]);

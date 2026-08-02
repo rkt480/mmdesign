@@ -17,9 +17,6 @@ return [
         'password' => '',
         'charset' => 'utf8mb4',
     ],
-    'whatsapp' => [
-        'internal_notification_message' => "Novo lead recebido:\n\nData/Hora: {{created_at_br}}\nNome: {{name}}\nWhatsApp: {{whatsapp}}\nEmpresa: {{company}}\nSite/Landing: {{segment}}\nControle dos leads: {{advertises}}\nNecessidade: {{message}}",
-    ],
     'meta_whatsapp' => [
         'access_token' => '',
         'verify_token' => '',

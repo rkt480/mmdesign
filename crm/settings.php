@@ -12,9 +12,7 @@ $saved = ($_GET['saved'] ?? '') === '1';
 $googleConnected = ($_GET['google_connected'] ?? '') === '1';
 $googleError = (string) ($_GET['google_error'] ?? '');
 $error = '';
-$successMessage = '';
 $settings = crm_read_settings();
-$whatsappNumber = (string) ($settings['whatsapp_number'] ?? '');
 $whatsappProvider = crm_whatsapp_provider();
 $notificationEmail = crm_notification_email();
 $metaSettings = crm_meta_capi_settings();
@@ -27,8 +25,7 @@ $googleTagManagerId = crm_google_tag_manager_id();
 $googleCalendarSettings = crm_google_calendar_settings();
 $metaWhatsAppConfigured = crm_meta_whatsapp_is_configured();
 $pilotStatusConfigured = crm_pilot_status_is_configured();
-$whatsappConfigured = $whatsappNumber !== ''
-    && ($whatsappProvider !== 'meta_cloud' || $metaWhatsAppConfigured)
+$whatsappConfigured = ($whatsappProvider !== 'meta_cloud' || $metaWhatsAppConfigured)
     && ($whatsappProvider !== 'pilot_status' || $pilotStatusConfigured);
 $emailConfigured = $notificationEmail !== '';
 $metaConfigured = $metaPixelId !== '' && $metaAccessToken !== '';
@@ -52,37 +49,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     crm_require_valid_csrf();
     $settingsSection = (string) ($_POST['settings_section'] ?? '');
 
-    if ($settingsSection === 'whatsapp_test') {
-        $testNumber = crm_whatsapp_number();
-
-        if ($testNumber === '') {
-            $error = 'Informe o número que recebe a notificação interna antes de testar.';
-        } else {
-            $providerLabel = crm_whatsapp_provider_label();
-            $testMessage = 'Teste do Publi CRM via ' . $providerLabel . ' em ' . date('d/m/Y H:i') . '.';
-            $testResult = crm_whatsapp_send_text($testNumber, $testMessage);
-
-            if (($testResult['ok'] ?? false) === true) {
-                $messageId = '';
-                $response = $testResult['response'] ?? [];
-
-                if (is_array($response)) {
-                    $messageId = (string) ($response['messages'][0]['id'] ?? $response['messageId'] ?? $response['id'] ?? '');
-                }
-
-                $successMessage = 'Teste enviado para ' . $testNumber . ' via ' . $providerLabel . '.';
-
-                if ($messageId !== '') {
-                    $successMessage .= ' ID: ' . $messageId . '.';
-                }
-            } else {
-                $error = 'Falha no teste via ' . $providerLabel . ': ' . (string) ($testResult['error'] ?? 'Erro desconhecido.');
-            }
-        }
-    }
-
     if ($settingsSection === 'whatsapp') {
-        $settings['whatsapp_number'] = crm_normalize_whatsapp_number((string) ($_POST['whatsapp_number'] ?? ''));
+        unset($settings['whatsapp_number']);
         $provider = (string) ($_POST['whatsapp_provider'] ?? 'pilot_status');
         $settings['whatsapp_provider'] = in_array($provider, ['meta_cloud', 'pilot_status'], true) ? $provider : 'pilot_status';
         $settings['meta_whatsapp_graph_version'] = crm_normalize_meta_graph_version((string) ($_POST['meta_whatsapp_graph_version'] ?? '20.0'));
@@ -143,7 +111,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
-    if ($error === '' && $settingsSection !== 'whatsapp_test') {
+    if ($error === '') {
         crm_write_settings($settings);
         header('Location: settings.php?saved=1');
         exit;
@@ -215,10 +183,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           <div class="alert success">Configuração salva.</div>
         <?php endif; ?>
 
-        <?php if ($successMessage !== ''): ?>
-          <div class="alert success"><?= htmlspecialchars($successMessage) ?></div>
-        <?php endif; ?>
-
         <?php if ($googleConnected): ?>
           <div class="alert success">Google Agenda conectado.</div>
         <?php endif; ?>
@@ -270,11 +234,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                       <option value="pilot_status" <?= $whatsappProvider === 'pilot_status' ? 'selected' : '' ?>>Pilot Status / API oficial</option>
                     </select>
                   </label>
-                  <label>
-                    Número que recebe notificação interna
-                    <input type="tel" name="whatsapp_number" value="<?= htmlspecialchars($whatsappNumber) ?>" placeholder="Ex: 5511999999999" />
-                  </label>
-
                   <div class="settings-subgroup">
                     <div>
                       <p class="integration-kicker">Meta Cloud API</p>
@@ -347,13 +306,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                   </button>
                 </form>
 
-                <form class="integration-test-form" method="post">
-                  <input type="hidden" name="_csrf_token" value="<?= htmlspecialchars(crm_csrf_token()) ?>" />
-                  <input type="hidden" name="settings_section" value="whatsapp_test" />
-                  <button class="integration-test" type="submit">
-                    Enviar teste para <?= htmlspecialchars(crm_whatsapp_number() !== '' ? crm_whatsapp_number() : 'número interno') ?>
-                  </button>
-                </form>
               </section>
 
               <section class="automation-card integration-card">

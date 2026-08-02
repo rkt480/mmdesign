@@ -141,18 +141,18 @@ function whatsapp_page_origin_summary(array $lead): string
 
 function whatsapp_page_whatsapp_status(array $lead): string
 {
-    $status = (string) ($lead['whatsapp_status'] ?? 'pendente');
+    $status = (string) ($lead['whatsapp_status'] ?? '');
     $labels = [
-        'pendente' => 'Pendente',
-        'notifica_enviada' => 'Notificação enviada',
-        'notifica_falhou' => 'Notificação falhou',
-        'notifica_sem_numero' => 'Número interno ausente',
+        'pendente' => 'Nenhuma mensagem enviada',
+        'notifica_enviada' => 'Mensagem enviada',
+        'notifica_falhou' => 'Falha no envio',
+        'notifica_sem_numero' => 'Nenhuma mensagem enviada',
         'nao_configurado' => 'WhatsApp não configurado',
-        'falhou' => 'Falhou',
+        'falhou' => 'Falha no envio',
         'enviado' => 'Mensagem enviada',
     ];
 
-    return $labels[$status] ?? $status;
+    return $labels[$status] ?? ($status !== '' ? $status : 'Nenhuma mensagem enviada');
 }
 
 function whatsapp_page_lead_answer(array $lead, string $field): string

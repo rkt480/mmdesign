@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/lib/storage.php';
 require_once dirname(__DIR__) . '/lib/pilot-status.php';
-require_once dirname(__DIR__) . '/lib/whatsapp.php';
 require_once dirname(__DIR__) . '/lib/email.php';
 require_once dirname(__DIR__) . '/lib/meta-capi.php';
 
@@ -117,7 +116,6 @@ foreach ($incomingMessages as $incoming) {
     }
 
     $metaResult = ['ok' => true, 'skipped' => true, 'reason' => 'Lead já existe no CRM.'];
-    $whatsappResult = ['ok' => true, 'skipped' => true, 'reason' => 'Notificação interna não repetida.'];
     $emailResult = ['ok' => true, 'skipped' => true, 'reason' => 'Notificação por e-mail não repetida.'];
 
     if (($leadResult['created'] ?? false) === true) {
@@ -129,17 +127,6 @@ foreach ($incomingMessages as $incoming) {
                 'error' => $error->getMessage(),
             ]);
             $metaResult = ['ok' => false, 'error' => 'Meta CAPI falhou.'];
-        }
-
-        try {
-            $whatsappResult = crm_whatsapp_send_lead_notification($lead);
-        } catch (Throwable $error) {
-            crm_update_whatsapp_status((string) $lead['id'], 'falhou', 'Erro ao enviar WhatsApp: ' . $error->getMessage());
-            pilot_status_log('Erro notificação WhatsApp webhook Pilot Status Lead.', [
-                'lead_id' => (string) $lead['id'],
-                'error' => $error->getMessage(),
-            ]);
-            $whatsappResult = ['ok' => false, 'error' => 'Notificação interna falhou.'];
         }
 
         try {
@@ -165,7 +152,6 @@ foreach ($incomingMessages as $incoming) {
         'lead_id' => $lead['id'],
         'created' => (bool) ($leadResult['created'] ?? false),
         'message_id' => (string) ($incoming['id'] ?? ''),
-        'whatsapp' => $whatsappResult,
         'email' => $emailResult,
         'meta' => $metaResult,
     ];
