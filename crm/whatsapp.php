@@ -444,7 +444,7 @@ foreach ($whatsappTemplates as $template) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="csrf-token" content="<?= htmlspecialchars(crm_csrf_token()) ?>" />
     <title>WhatsApp | Publi CRM</title>
-    <link rel="stylesheet" href="./assets/crm.css?v=20260802-mobile-ux" />
+    <link rel="stylesheet" href="./assets/crm.css?v=20260802-composer" />
   </head>
   <body class="whatsapp-page whatsapp-crm-page" data-wa-initial-view="<?= is_array($activeLead) ? 'thread' : 'inbox' ?>">
     <main class="wa-web-shell" aria-label="Atendimento WhatsApp do CRM">

@@ -33,6 +33,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'active' => ($_POST['active'] ?? '') === '1',
             'participates_in_rotation' => ($_POST['participates_in_rotation'] ?? '') === '1',
             'rotation_weight' => $_POST['rotation_weight'] ?? 1,
+            'access_schedule_enabled' => ($_POST['access_schedule_enabled'] ?? '') === '1',
+            'access_start_time' => $_POST['access_start_time'] ?? '09:00',
+            'access_end_time' => $_POST['access_end_time'] ?? '18:00',
         ]);
 
         if (($result['ok'] ?? false) === true) {
@@ -233,6 +236,27 @@ $overdueLeads = crm_read_sla_overdue_leads(20);
                     <input type="checkbox" name="participates_in_rotation" value="1" checked />
                     <span>Participa da roleta</span>
                   </label>
+                  <div class="settings-subgroup field-wide access-schedule-settings">
+                    <div>
+                      <p class="integration-kicker">Controle de acesso</p>
+                      <h3>Horário do vendedor</h3>
+                    </div>
+                    <label class="checkbox-field">
+                      <input type="checkbox" name="access_schedule_enabled" value="1" checked />
+                      <span>Bloquear acesso fora do horário definido</span>
+                    </label>
+                    <div class="access-time-fields">
+                      <label>
+                        Início do acesso
+                        <input type="time" name="access_start_time" value="09:00" required />
+                      </label>
+                      <label>
+                        Fim do acesso
+                        <input type="time" name="access_end_time" value="18:00" required />
+                      </label>
+                    </div>
+                    <p class="commercial-help">Aplicado somente ao perfil Vendedor. O acesso é liberado no horário inicial e bloqueado a partir do horário final.</p>
+                  </div>
                   <button class="integration-save" type="submit">
                     <span aria-hidden="true">✓</span>
                     Criar usuário
@@ -305,6 +329,27 @@ $overdueLeads = crm_read_sla_overdue_leads(20);
                             <input type="checkbox" name="participates_in_rotation" value="1" <?= (int) ($crmUser['participates_in_rotation'] ?? 0) === 1 ? 'checked' : '' ?> />
                             <span>Participa da roleta</span>
                           </label>
+                          <div class="settings-subgroup field-wide access-schedule-settings">
+                            <div>
+                              <p class="integration-kicker">Controle de acesso</p>
+                              <h3>Horário do vendedor</h3>
+                            </div>
+                            <label class="checkbox-field">
+                              <input type="checkbox" name="access_schedule_enabled" value="1" <?= crm_user_access_schedule_enabled($crmUser) ? 'checked' : '' ?> />
+                              <span>Bloquear acesso fora do horário definido</span>
+                            </label>
+                            <div class="access-time-fields">
+                              <label>
+                                Início do acesso
+                                <input type="time" name="access_start_time" value="<?= htmlspecialchars(substr(crm_normalize_user_access_time((string) ($crmUser['access_start_time'] ?? ''), '09:00:00'), 0, 5)) ?>" required />
+                              </label>
+                              <label>
+                                Fim do acesso
+                                <input type="time" name="access_end_time" value="<?= htmlspecialchars(substr(crm_normalize_user_access_time((string) ($crmUser['access_end_time'] ?? ''), '18:00:00'), 0, 5)) ?>" required />
+                              </label>
+                            </div>
+                            <p class="commercial-help">Aplicado somente ao perfil Vendedor. O acesso é liberado no horário inicial e bloqueado a partir do horário final.</p>
+                          </div>
                           <button class="integration-save" type="submit">
                             <span aria-hidden="true">✓</span>
                             Salvar usuário

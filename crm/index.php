@@ -186,7 +186,7 @@ function lead_money_input(array $lead, string $field): string
     <title>CRM de Contatos | <?= htmlspecialchars((string) $config['company_name']) ?></title>
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="apple-touch-icon" href="./assets/icon-192.png" />
-    <link rel="stylesheet" href="./assets/crm.css?v=20260802-mobile-ux" />
+    <link rel="stylesheet" href="./assets/crm.css?v=20260802-push-flow" />
   </head>
   <body class="leads-page">
     <div class="app-shell">

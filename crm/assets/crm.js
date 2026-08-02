@@ -537,6 +537,7 @@ const pushStatus = document.querySelector("[data-push-status]");
 const installButton = document.querySelector("[data-pwa-install]");
 const pushCsrfToken = document.querySelector("meta[name='csrf-token']")?.content || "";
 let deferredInstallPrompt = null;
+let pushActivationInFlight = false;
 
 function setPushStatus(message, isError = false) {
   if (!pushStatus) {
@@ -628,7 +629,7 @@ async function pushConfigRequest() {
 }
 
 async function syncPushState() {
-  if (!pushEnableButton || !pushOnboarding) {
+  if (!pushEnableButton || !pushOnboarding || pushActivationInFlight) {
     return;
   }
 
@@ -684,6 +685,10 @@ async function syncPushState() {
 
     const subscribed = Boolean(subscription && permission === "granted");
 
+    if (pushActivationInFlight) {
+      return;
+    }
+
     pushEnableButton.disabled = false;
     pushEnableButton.hidden = subscribed;
     pushOnboarding.hidden = subscribed;
@@ -702,6 +707,10 @@ async function syncPushState() {
       setPushStatus("Leva apenas um toque no botão e outro em Permitir.");
     }
   } catch (error) {
+    if (pushActivationInFlight) {
+      return;
+    }
+
     pushOnboarding.hidden = false;
     pushEnableButton.hidden = false;
     pushEnableButton.disabled = true;
@@ -713,6 +722,12 @@ async function enablePushNotifications() {
   if (!pushEnableButton) {
     return;
   }
+
+  if (pushActivationInFlight) {
+    return;
+  }
+
+  pushActivationInFlight = true;
 
   pushEnableButton.disabled = true;
   pushEnableButton.textContent = "Ativando…";
@@ -743,6 +758,11 @@ async function enablePushNotifications() {
     if (permission !== "granted") {
       throw new Error("A permissão para notificações não foi concedida.");
     }
+
+    // O usuário já autorizou o recurso. Removemos o onboarding imediatamente
+    // para não deixar a tela presa enquanto o navegador termina a inscrição.
+    pushEnableButton.hidden = true;
+    pushOnboarding.hidden = true;
 
     const registration = await Promise.race([
       navigator.serviceWorker.ready,
@@ -779,6 +799,7 @@ async function enablePushNotifications() {
       pushOnboarding.hidden = false;
       pushEnableButton.textContent = "Tentar novamente";
       setPushStatus("Permissão concedida, mas não foi possível concluir a sincronização.", true);
+      pushActivationInFlight = false;
       return;
     }
 
@@ -790,9 +811,14 @@ async function enablePushNotifications() {
       setPushStatus("Alertas ativos. O teste não pôde ser enviado agora.", true);
     }
 
+    pushActivationInFlight = false;
+
   } catch (error) {
+    pushActivationInFlight = false;
     pushEnableButton.disabled = false;
-    pushEnableButton.textContent = "Ativar notificações";
+    pushEnableButton.hidden = false;
+    pushOnboarding.hidden = false;
+    pushEnableButton.textContent = "Tentar novamente";
     setPushStatus(error.message || "Não foi possível ativar os alertas.", true);
   }
 }

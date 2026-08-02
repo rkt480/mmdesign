@@ -170,6 +170,9 @@ function crm_ensure_crm_schema(PDO $pdo): void
             participates_in_rotation TINYINT(1) NOT NULL DEFAULT 0,
             rotation_weight INT NOT NULL DEFAULT 1,
             last_assigned_at DATETIME NULL,
+            access_schedule_enabled TINYINT(1) NOT NULL DEFAULT 1,
+            access_start_time TIME NOT NULL DEFAULT "09:00:00",
+            access_end_time TIME NOT NULL DEFAULT "18:00:00",
             created_at DATETIME NOT NULL,
             updated_at DATETIME NOT NULL,
             INDEX idx_crm_users_role_active (role, active),
@@ -321,6 +324,9 @@ function crm_ensure_user_columns(PDO $pdo): void
         'participates_in_rotation' => 'TINYINT(1) NOT NULL DEFAULT 0 AFTER active',
         'rotation_weight' => 'INT NOT NULL DEFAULT 1 AFTER participates_in_rotation',
         'last_assigned_at' => 'DATETIME NULL AFTER rotation_weight',
+        'access_schedule_enabled' => 'TINYINT(1) NOT NULL DEFAULT 1 AFTER last_assigned_at',
+        'access_start_time' => 'TIME NOT NULL DEFAULT "09:00:00" AFTER access_schedule_enabled',
+        'access_end_time' => 'TIME NOT NULL DEFAULT "18:00:00" AFTER access_start_time',
     ];
 
     foreach ($columns as $column => $definition) {
@@ -996,6 +1002,9 @@ function crm_save_user(array $payload): array
     $active = !empty($payload['active']) ? 1 : 0;
     $participates = !empty($payload['participates_in_rotation']) ? 1 : 0;
     $weight = max(1, min(10, (int) ($payload['rotation_weight'] ?? 1)));
+    $accessScheduleEnabled = !empty($payload['access_schedule_enabled']) ? 1 : 0;
+    $accessStartTime = crm_normalize_user_access_time((string) ($payload['access_start_time'] ?? ''), '09:00:00');
+    $accessEndTime = crm_normalize_user_access_time((string) ($payload['access_end_time'] ?? ''), '18:00:00');
 
     if ($name === '' || $username === '') {
         return ['ok' => false, 'error' => 'Informe nome e usuário.'];
@@ -1011,6 +1020,10 @@ function crm_save_user(array $payload): array
 
     if (trim($password) !== '' && strlen($password) < 6) {
         return ['ok' => false, 'error' => 'Use uma senha com pelo menos 6 caracteres.'];
+    }
+
+    if ($accessScheduleEnabled === 1 && $accessStartTime >= $accessEndTime) {
+        return ['ok' => false, 'error' => 'O início do acesso deve ser anterior ao fim do acesso.'];
     }
 
     try {
@@ -1035,6 +1048,9 @@ function crm_save_user(array $payload): array
                 'active = :active',
                 'participates_in_rotation = :participates_in_rotation',
                 'rotation_weight = :rotation_weight',
+                'access_schedule_enabled = :access_schedule_enabled',
+                'access_start_time = :access_start_time',
+                'access_end_time = :access_end_time',
                 'updated_at = :updated_at',
             ];
             $params = [
@@ -1046,6 +1062,9 @@ function crm_save_user(array $payload): array
                 'active' => $active,
                 'participates_in_rotation' => $participates,
                 'rotation_weight' => $weight,
+                'access_schedule_enabled' => $accessScheduleEnabled,
+                'access_start_time' => $accessStartTime,
+                'access_end_time' => $accessEndTime,
                 'updated_at' => date('Y-m-d H:i:s'),
             ];
 
@@ -1062,9 +1081,11 @@ function crm_save_user(array $payload): array
 
         $stmt = crm_db()->prepare(
             'INSERT INTO crm_users
-            (name, username, email, password_hash, role, active, participates_in_rotation, rotation_weight, created_at, updated_at)
+            (name, username, email, password_hash, role, active, participates_in_rotation, rotation_weight,
+             access_schedule_enabled, access_start_time, access_end_time, created_at, updated_at)
             VALUES
-            (:name, :username, :email, :password_hash, :role, :active, :participates_in_rotation, :rotation_weight, :created_at, :updated_at)'
+            (:name, :username, :email, :password_hash, :role, :active, :participates_in_rotation, :rotation_weight,
+             :access_schedule_enabled, :access_start_time, :access_end_time, :created_at, :updated_at)'
         );
         $stmt->execute([
             'name' => $name,
@@ -1075,6 +1096,9 @@ function crm_save_user(array $payload): array
             'active' => $active,
             'participates_in_rotation' => $participates,
             'rotation_weight' => $weight,
+            'access_schedule_enabled' => $accessScheduleEnabled,
+            'access_start_time' => $accessStartTime,
+            'access_end_time' => $accessEndTime,
             'created_at' => date('Y-m-d H:i:s'),
             'updated_at' => date('Y-m-d H:i:s'),
         ]);
