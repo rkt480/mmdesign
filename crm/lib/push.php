@@ -81,6 +81,28 @@ function crm_push_is_configured(): bool
     return $settings['public_key'] !== '' && $settings['private_key'] !== '';
 }
 
+function crm_push_ensure_configured(): array
+{
+    $settings = crm_push_settings();
+
+    if ($settings['public_key'] !== '' && $settings['private_key'] !== '') {
+        return $settings;
+    }
+
+    $keys = crm_push_generate_keys();
+    $allSettings = crm_read_settings();
+    $allSettings['push_vapid_public_key'] = $keys['public_key'];
+    $allSettings['push_vapid_private_key'] = $keys['private_key'];
+    $allSettings['push_vapid_subject'] = $settings['subject'];
+    crm_write_settings($allSettings);
+
+    return [
+        'public_key' => $keys['public_key'],
+        'private_key' => $keys['private_key'],
+        'subject' => $settings['subject'],
+    ];
+}
+
 function crm_push_generate_keys(): array
 {
     $key = openssl_pkey_new([
@@ -358,7 +380,7 @@ function crm_push_send_subscription(array $subscription, string $payload): array
         throw new RuntimeException('A extensão cURL é necessária para enviar notificações push.');
     }
 
-    $settings = crm_push_settings();
+    $settings = crm_push_ensure_configured();
 
     if ($settings['public_key'] === '' || $settings['private_key'] === '') {
         return ['ok' => false, 'skipped' => true, 'reason' => 'Chaves VAPID não configuradas.'];
