@@ -440,7 +440,7 @@ foreach ($whatsappTemplates as $template) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="csrf-token" content="<?= htmlspecialchars(crm_csrf_token()) ?>" />
     <title>WhatsApp | Publi CRM</title>
-    <link rel="stylesheet" href="./assets/crm.css?v=20260802-wa-clean-ui" />
+    <link rel="stylesheet" href="./assets/crm.css?v=20260802-wa-template-layout" />
   </head>
   <body class="whatsapp-page whatsapp-crm-page">
     <main class="wa-web-shell" aria-label="Atendimento WhatsApp do CRM">
@@ -585,25 +585,26 @@ foreach ($whatsappTemplates as $template) {
             <?php endforeach; ?>
           </div>
 
-          <div class="wa-window-banner <?= $wa24hOpen ? 'is-open' : 'is-closed' ?>">
-            <span class="wa-window-icon"><?= $wa24hOpen ? '✓' : '!' ?></span>
-            <div><strong><?= $wa24hOpen ? 'Resposta livre liberada' : 'Janela de 24 horas encerrada' ?></strong><span><?= htmlspecialchars($waWindowLabel) ?></span></div>
-          </div>
+          <div class="wa-thread-bottom">
+            <div class="wa-window-banner <?= $wa24hOpen ? 'is-open' : 'is-closed' ?>">
+              <span class="wa-window-icon"><?= $wa24hOpen ? '✓' : '!' ?></span>
+              <div><strong><?= $wa24hOpen ? 'Resposta livre liberada' : 'Janela de 24 horas encerrada' ?></strong><span><?= htmlspecialchars($waWindowLabel) ?></span></div>
+            </div>
 
-          <section class="wa-template-picker" data-wa-template-picker>
-            <div class="wa-template-picker-heading"><div><p class="eyebrow">API oficial</p><strong>Enviar template aprovado</strong></div><span>Meta</span></div>
-            <form method="post" action="send-whatsapp-template.php" data-wa-template-form>
-              <input type="hidden" name="_csrf_token" value="<?= htmlspecialchars(crm_csrf_token()) ?>" />
-              <input type="hidden" name="lead_id" value="<?= htmlspecialchars((string) ($activeLead['id'] ?? '')) ?>" />
-              <input type="hidden" name="provider_filter" value="<?= htmlspecialchars($providerFilter) ?>" />
-              <div class="wa-template-picker-row"><select name="template_id" data-wa-template-select required><option value="">Selecione um template</option><?php foreach ($whatsappTemplates as $template): $isApproved = crm_whatsapp_template_is_sendable($template); ?><option value="<?= (int) $template['id'] ?>" <?= !$isApproved ? 'disabled' : '' ?>><?= htmlspecialchars((string) $template['name']) ?> · <?= htmlspecialchars(whatsapp_template_status_label_for_conversation($template)) ?></option><?php endforeach; ?></select><button type="submit" data-wa-template-send disabled>Enviar template</button></div>
-              <div class="wa-template-variable-fields" data-wa-template-fields hidden></div>
-              <p class="wa-template-preview" data-wa-template-preview hidden></p>
-            </form>
-            <?php if ($provider !== 'meta_cloud'): ?><small class="wa-template-picker-note">Selecione Meta Cloud API nas configurações para enviar templates oficiais.</small><?php elseif (count($whatsappTemplates) === 0): ?><small class="wa-template-picker-note">Nenhum template cadastrado. <a href="whatsapp-templates.php">Criar template</a></small><?php elseif (!$hasApprovedWhatsAppTemplate): ?><small class="wa-template-picker-note">Seus templates ainda precisam ser aprovados pela Meta. Use “Sincronizar status” na biblioteca depois da análise.</small><?php endif; ?>
-          </section>
+            <section class="wa-template-picker" data-wa-template-picker>
+              <div class="wa-template-picker-heading"><div><p class="eyebrow">API oficial</p><strong>Enviar template aprovado</strong></div><span>Meta</span></div>
+              <form method="post" action="send-whatsapp-template.php" data-wa-template-form>
+                <input type="hidden" name="_csrf_token" value="<?= htmlspecialchars(crm_csrf_token()) ?>" />
+                <input type="hidden" name="lead_id" value="<?= htmlspecialchars((string) ($activeLead['id'] ?? '')) ?>" />
+                <input type="hidden" name="provider_filter" value="<?= htmlspecialchars($providerFilter) ?>" />
+                <div class="wa-template-picker-row"><select name="template_id" data-wa-template-select required><option value="">Selecione um template</option><?php foreach ($whatsappTemplates as $template): $isApproved = crm_whatsapp_template_is_sendable($template); ?><option value="<?= (int) $template['id'] ?>" <?= !$isApproved ? 'disabled' : '' ?>><?= htmlspecialchars((string) $template['name']) ?> · <?= htmlspecialchars(whatsapp_template_status_label_for_conversation($template)) ?></option><?php endforeach; ?></select><button type="submit" data-wa-template-send disabled>Enviar template</button></div>
+                <div class="wa-template-variable-fields" data-wa-template-fields hidden></div>
+                <p class="wa-template-preview" data-wa-template-preview hidden></p>
+              </form>
+              <?php if ($provider !== 'meta_cloud'): ?><small class="wa-template-picker-note">Selecione Meta Cloud API nas configurações para enviar templates oficiais.</small><?php elseif (count($whatsappTemplates) === 0): ?><small class="wa-template-picker-note">Nenhum template cadastrado. <a href="whatsapp-templates.php">Criar template</a></small><?php elseif (!$hasApprovedWhatsAppTemplate): ?><small class="wa-template-picker-note">Seus templates ainda precisam ser aprovados pela Meta. Use “Sincronizar status” na biblioteca depois da análise.</small><?php endif; ?>
+            </section>
 
-          <form class="wa-composer <?= $wa24hOpen ? '' : 'is-locked' ?>" method="post" action="send-chat-message.php" enctype="multipart/form-data" data-wa-composer <?= $wa24hOpen ? '' : 'aria-disabled="true"' ?> <?= $wa24hOpen ? '' : 'hidden' ?>>
+            <form class="wa-composer <?= $wa24hOpen ? '' : 'is-locked' ?>" method="post" action="send-chat-message.php" enctype="multipart/form-data" data-wa-composer <?= $wa24hOpen ? '' : 'aria-disabled="true"' ?> <?= $wa24hOpen ? '' : 'hidden' ?>>
             <div class="wa-composer-tools">
               <button class="wa-tool-button" type="button" title="Anexar imagem, áudio ou documento" data-wa-attach aria-label="Anexar imagem, áudio ou documento">
                 <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -645,7 +646,8 @@ foreach ($whatsappTemplates as $template) {
                 <path d="M7 12h13" />
               </svg>
             </button>
-          </form>
+            </form>
+          </div>
         <?php endif; ?>
       </section>
 
