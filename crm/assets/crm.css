@@ -5804,3 +5804,9 @@ textarea:focus {
     opacity: 0.62;
   }
 }
+
+@media (pointer: coarse) {
+  .leads-page .kanban-card {
+    touch-action: none;
+  }
+}

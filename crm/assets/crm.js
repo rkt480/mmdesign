@@ -117,7 +117,15 @@ const touchDragState = {
 };
 
 function isTouchKanbanEvent(event) {
-  return event.pointerType === "touch" && window.matchMedia("(max-width: 880px)").matches;
+  return event.type.startsWith("touch") || event.pointerType === "touch";
+}
+
+function getGesturePoint(event) {
+  return event.touches?.[0] || event.changedTouches?.[0] || event;
+}
+
+function getGesturePointerId(event) {
+  return event.pointerId ?? "touch";
 }
 
 function isKanbanInteractiveTarget(target) {
@@ -174,7 +182,9 @@ function activateTouchKanbanDrag(card, pointerId) {
   draggedCard = card;
   card.classList.add("is-dragging", "is-touch-dragging");
   document.body.classList.add("touch-dragging");
-  card.setPointerCapture?.(pointerId);
+  if (typeof pointerId === "number") {
+    card.setPointerCapture?.(pointerId);
+  }
 }
 
 function beginTouchKanbanDrag(event) {
@@ -183,6 +193,7 @@ function beginTouchKanbanDrag(event) {
   }
 
   const card = event.currentTarget;
+  const point = getGesturePoint(event);
 
   if (touchDragState.card) {
     return;
@@ -193,35 +204,39 @@ function beginTouchKanbanDrag(event) {
   touchDragState.card = card;
   touchDragState.previousParent = card.parentElement;
   touchDragState.previousNextSibling = card.nextElementSibling;
-  touchDragState.pointerId = event.pointerId;
-  touchDragState.startX = event.clientX;
-  touchDragState.startY = event.clientY;
+  touchDragState.pointerId = getGesturePointerId(event);
+  touchDragState.startX = point.clientX;
+  touchDragState.startY = point.clientY;
   touchDragState.active = false;
-  card.setPointerCapture?.(event.pointerId);
+  if (typeof event.pointerId === "number") {
+    card.setPointerCapture?.(event.pointerId);
+  }
   touchDragState.holdTimer = window.setTimeout(() => {
-    activateTouchKanbanDrag(card, event.pointerId);
+    activateTouchKanbanDrag(card, touchDragState.pointerId);
   }, 180);
 }
 
 function moveTouchKanbanDrag(event) {
-  if (touchDragState.card !== event.currentTarget) {
+  if (!touchDragState.card) {
     return;
   }
 
+  const point = getGesturePoint(event);
+
   if (!touchDragState.active) {
-    const distance = Math.hypot(event.clientX - touchDragState.startX, event.clientY - touchDragState.startY);
+    const distance = Math.hypot(point.clientX - touchDragState.startX, point.clientY - touchDragState.startY);
 
     if (distance > 10) {
-      activateTouchKanbanDrag(touchDragState.card, event.pointerId);
+      activateTouchKanbanDrag(touchDragState.card, getGesturePointerId(event));
     } else {
       return;
     }
   }
 
   event.preventDefault();
-  updateBoardAutoScroll(event.clientX);
+  updateBoardAutoScroll(point.clientX);
 
-  const target = document.elementFromPoint(event.clientX, event.clientY);
+  const target = document.elementFromPoint(point.clientX, point.clientY);
   const zone = target?.closest(".kanban-dropzone");
 
   if (!zone || !document.body.contains(zone)) {
@@ -231,7 +246,7 @@ function moveTouchKanbanDrag(event) {
   clearTouchDropzoneState();
   zone.classList.add("is-over");
   const card = touchDragState.card;
-  const cardAfterPointer = getCardAfterPointer(zone, event.clientY);
+  const cardAfterPointer = getCardAfterPointer(zone, point.clientY);
 
   if (cardAfterPointer !== card && card.nextElementSibling !== cardAfterPointer) {
     zone.insertBefore(card, cardAfterPointer);
@@ -240,7 +255,7 @@ function moveTouchKanbanDrag(event) {
 }
 
 async function finishTouchKanbanDrag(event, cancelled = false) {
-  if (touchDragState.card !== event.currentTarget) {
+  if (!touchDragState.card) {
     return;
   }
 
@@ -312,6 +327,7 @@ cards.forEach((card) => {
   card.addEventListener("pointermove", moveTouchKanbanDrag, { passive: false });
   card.addEventListener("pointerup", finishTouchKanbanDrag);
   card.addEventListener("pointercancel", (event) => finishTouchKanbanDrag(event, true));
+  card.addEventListener("touchstart", beginTouchKanbanDrag, { passive: false });
 });
 
 document.addEventListener("pointerup", (event) => {
@@ -325,6 +341,20 @@ document.addEventListener("pointercancel", (event) => {
     resetTouchDragState();
   }
 });
+
+document.addEventListener("touchmove", moveTouchKanbanDrag, { passive: false });
+document.addEventListener("touchend", finishTouchKanbanDrag, { passive: false });
+document.addEventListener("touchcancel", (event) => finishTouchKanbanDrag(event, true), { passive: false });
+
+const syncMobileDraggable = () => {
+  const isMobile = window.matchMedia("(max-width: 880px), (pointer: coarse)").matches;
+  cards.forEach((card) => {
+    card.draggable = !isMobile;
+  });
+};
+
+syncMobileDraggable();
+window.addEventListener("resize", syncMobileDraggable);
 
 if (kanbanBoard) {
   kanbanBoard.addEventListener("dragover", (event) => {
