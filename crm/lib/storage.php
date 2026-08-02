@@ -101,6 +101,17 @@ function crm_ensure_crm_schema(PDO $pdo): void
     }
 
     $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS crm_settings (
+            setting_key VARCHAR(120) PRIMARY KEY,
+            setting_value LONGTEXT NOT NULL,
+            created_at DATETIME NOT NULL,
+            updated_at DATETIME NOT NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
+    );
+
+    crm_migrate_legacy_settings($pdo);
+
+    $pdo->exec(
         'CREATE TABLE IF NOT EXISTS kanban_columns (
             status VARCHAR(80) PRIMARY KEY,
             label VARCHAR(120) NOT NULL,

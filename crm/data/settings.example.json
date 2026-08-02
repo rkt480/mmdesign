@@ -1,0 +1,13 @@
+{
+    "whatsapp_number": "",
+    "whatsapp_provider": "pilot_status",
+    "meta_whatsapp_graph_version": "20.0",
+    "meta_whatsapp_phone_number_id": "",
+    "meta_whatsapp_business_account_id": "",
+    "meta_whatsapp_verify_token": "",
+    "meta_whatsapp_coex_enabled": false,
+    "pilot_status_base_url": "https://pilotstatus.com.br/v1",
+    "pilot_status_webhook_secret": "",
+    "meta_whatsapp_access_token": "",
+    "pilot_status_api_key": ""
+}
