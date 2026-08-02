@@ -50,7 +50,7 @@ function crm_whatsapp_send_followup(array $queueItem): array
     }
 
     if ($senderName !== '') {
-        $queueItem['message'] = $senderName . ", disse:\n" . ltrim((string) ($queueItem['message'] ?? ''));
+        $queueItem['message'] = '*' . $senderName . ", disse:*\n" . ltrim((string) ($queueItem['message'] ?? ''));
     }
 
     if (crm_whatsapp_provider() === 'meta_cloud') {

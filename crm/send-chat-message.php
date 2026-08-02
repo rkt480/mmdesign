@@ -57,7 +57,7 @@ if ($number === '') {
     exit;
 }
 
-$messageWithSender = $senderName . ', disse:' . ($message !== '' ? "\n" . $message : '');
+$messageWithSender = '*' . $senderName . ', disse:*' . ($message !== '' ? "\n" . $message : '');
 $providerLabel = crm_whatsapp_provider_label();
 $mediaType = '';
 $mimeType = '';
