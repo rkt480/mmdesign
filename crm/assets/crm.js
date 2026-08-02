@@ -531,8 +531,8 @@ if (initialLeadId) {
 }
 
 // PWA, instalação e notificações direcionadas ao vendedor logado.
+const pushOnboarding = document.querySelector("[data-push-onboarding]");
 const pushEnableButton = document.querySelector("[data-push-enable]");
-const pushTestButton = document.querySelector("[data-push-test]");
 const pushStatus = document.querySelector("[data-push-status]");
 const installButton = document.querySelector("[data-pwa-install]");
 const pushCsrfToken = document.querySelector("meta[name='csrf-token']")?.content || "";
@@ -574,7 +574,7 @@ async function pushRequest(action, options = {}) {
 }
 
 async function syncPushState() {
-  if (!pushEnableButton || !window.isSecureContext || !("serviceWorker" in navigator) || !("PushManager" in window)) {
+  if (!pushEnableButton || !pushOnboarding || !window.isSecureContext || !("serviceWorker" in navigator) || !("PushManager" in window)) {
     return;
   }
 
@@ -583,10 +583,7 @@ async function syncPushState() {
     const config = await configResponse.json();
 
     if (!config.configured) {
-      pushEnableButton.hidden = false;
-      pushEnableButton.disabled = true;
-      pushEnableButton.textContent = "Alertas não configurados";
-      setPushStatus("O administrador ainda precisa configurar o Web Push.", true);
+      pushOnboarding.hidden = true;
       return;
     }
 
@@ -597,19 +594,23 @@ async function syncPushState() {
 
     pushEnableButton.disabled = false;
     pushEnableButton.hidden = subscribed;
-    pushTestButton.hidden = !subscribed;
+    pushOnboarding.hidden = subscribed;
 
     if (permission === "denied") {
       pushEnableButton.hidden = false;
-      pushEnableButton.textContent = "Alertas bloqueados";
+      pushEnableButton.disabled = true;
+      pushOnboarding.hidden = false;
+      pushEnableButton.textContent = "Notificações bloqueadas";
       setPushStatus("Permita as notificações nas configurações do navegador.", true);
     } else if (subscribed) {
       setPushStatus("Alertas de novos leads ativos.");
     } else {
-      pushEnableButton.textContent = "Ativar alertas";
-      setPushStatus("Ative os alertas para receber novos leads.");
+      pushEnableButton.textContent = "Ativar notificações";
+      pushOnboarding.hidden = false;
+      setPushStatus("Leva apenas um toque no botão e outro em Permitir.");
     }
   } catch (error) {
+    pushOnboarding.hidden = false;
     pushEnableButton.hidden = false;
     pushEnableButton.disabled = true;
     setPushStatus(error.message || "Não foi possível carregar as notificações.", true);
@@ -669,28 +670,13 @@ async function enablePushNotifications() {
     await syncPushState();
   } catch (error) {
     pushEnableButton.disabled = false;
-    pushEnableButton.textContent = "Ativar alertas";
+    pushEnableButton.textContent = "Ativar notificações";
     setPushStatus(error.message || "Não foi possível ativar os alertas.", true);
   }
 }
 
 if (pushEnableButton) {
   pushEnableButton.addEventListener("click", enablePushNotifications);
-}
-
-if (pushTestButton) {
-  pushTestButton.addEventListener("click", async () => {
-    pushTestButton.disabled = true;
-
-    try {
-      await pushRequest("test", { method: "POST", body: "{}" });
-      setPushStatus("Notificação de teste enviada.");
-    } catch (error) {
-      setPushStatus(error.message || "Não foi possível enviar o teste.", true);
-    } finally {
-      pushTestButton.disabled = false;
-    }
-  });
 }
 
 if (installButton) {

@@ -263,10 +263,6 @@ function lead_money_input(array $lead, string $field): string
             <?php if ($canManageSales): ?>
               <a href="followups.php">Criar fluxo</a>
             <?php endif; ?>
-            <button type="button" class="push-control" data-push-enable hidden>Ativar alertas</button>
-            <button type="button" class="push-control" data-push-test hidden>Testar alerta</button>
-            <button type="button" class="push-control" data-pwa-install hidden>Instalar app</button>
-            <span class="push-status" data-push-status role="status" aria-live="polite"></span>
             <button type="button" data-open-dialog="contact">Criar contato</button>
             <button type="button" class="<?= $filtersActive ? 'is-active' : '' ?>" data-open-dialog="filters">Filtrar</button>
             <?php if ($canManageSettings): ?>
@@ -277,6 +273,14 @@ function lead_money_input(array $lead, string $field): string
         </header>
 
     <main class="dashboard">
+      <section class="push-onboarding" data-push-onboarding hidden>
+        <div>
+          <p class="eyebrow">Configuração rápida</p>
+          <strong>Receba um aviso quando chegar um novo lead.</strong>
+          <span class="push-status" data-push-status role="status" aria-live="polite"></span>
+        </div>
+        <button type="button" class="push-control" data-push-enable hidden>Ativar notificações</button>
+      </section>
       <?php if ($scheduled): ?>
         <div class="alert success">Agendamento criado no Google Agenda.</div>
       <?php endif; ?>

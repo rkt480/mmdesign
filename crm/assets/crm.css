@@ -300,6 +300,34 @@ button {
   color: #b91c1c;
 }
 
+.push-onboarding {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin: 0 10px 18px;
+  padding: 16px 18px;
+  background: rgba(224, 242, 254, 0.72);
+  border: 1px solid rgba(14, 165, 233, 0.18);
+  border-radius: 20px;
+}
+
+.push-onboarding strong {
+  display: block;
+  margin-bottom: 4px;
+  color: #0f172a;
+  font-size: 0.92rem;
+}
+
+.push-onboarding .eyebrow {
+  margin-bottom: 4px;
+}
+
+.push-onboarding .push-status {
+  display: block;
+  max-width: none;
+}
+
 .app-header nav a:first-child,
 .app-header nav button.is-active,
 button[type="submit"]:not(.danger) {
@@ -1884,6 +1912,11 @@ textarea:focus {
   }
 
   .app-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .push-onboarding {
     align-items: flex-start;
     flex-direction: column;
   }
