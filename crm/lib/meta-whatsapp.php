@@ -520,7 +520,16 @@ function meta_whatsapp_extract_incoming_messages(array $payload): array
                 $waId = crm_normalize_whatsapp_number((string) ($contact['wa_id'] ?? ''));
 
                 if ($waId !== '') {
-                    $contacts[$waId] = trim((string) ($contact['profile']['name'] ?? ''));
+                    $profilePictureUrl = (string) (
+                        $contact['profile']['profile_picture_url']
+                        ?? $contact['profile']['profilePictureUrl']
+                        ?? $contact['profile']['picture']['url']
+                        ?? ''
+                    );
+                    $contacts[$waId] = [
+                        'name' => trim((string) ($contact['profile']['name'] ?? '')),
+                        'profile_picture_url' => crm_normalize_profile_picture_url($profilePictureUrl),
+                    ];
                 }
             }
 
@@ -550,7 +559,8 @@ function meta_whatsapp_extract_incoming_messages(array $payload): array
                 $messages[] = [
                     'id' => (string) ($message['id'] ?? ''),
                     'number' => $number,
-                    'name' => $contacts[$number] ?? '',
+                    'name' => (string) ($contacts[$number]['name'] ?? ''),
+                    'profile_picture_url' => (string) ($contacts[$number]['profile_picture_url'] ?? ''),
                     'text' => $text,
                     'type' => (string) ($message['type'] ?? ''),
                     'timestamp' => (string) ($message['timestamp'] ?? ''),

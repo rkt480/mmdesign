@@ -76,6 +76,7 @@ foreach ($incomingMessages as $incoming) {
     $whatsapp = (string) ($incoming['number'] ?? '');
     $message = trim((string) ($incoming['text'] ?? ''));
     $name = trim((string) ($incoming['name'] ?? ''));
+    $profilePictureUrl = crm_normalize_profile_picture_url((string) ($incoming['profile_picture_url'] ?? ''));
 
     if ($whatsapp === '') {
         continue;
@@ -88,6 +89,7 @@ foreach ($incomingMessages as $incoming) {
     $leadPayload = [
         'name' => $name,
         'whatsapp' => $whatsapp,
+        'profile_picture_url' => $profilePictureUrl,
         'company' => 'Não informado',
         'segment' => 'WhatsApp',
         'advertises' => 'whatsapp',
@@ -102,6 +104,10 @@ foreach ($incomingMessages as $incoming) {
     try {
         $leadResult = crm_create_lead_once($leadPayload);
         $lead = $leadResult['lead'];
+
+        if ($profilePictureUrl !== '' && $profilePictureUrl !== (string) ($lead['profile_picture_url'] ?? '')) {
+            crm_update_lead_profile_picture((string) $lead['id'], $profilePictureUrl);
+        }
 
         if (($leadResult['created'] ?? false) === false && $message !== '') {
             crm_append_lead_note(
