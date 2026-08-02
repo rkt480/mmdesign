@@ -123,6 +123,9 @@ $overdueLeads = crm_read_sla_overdue_leads(20);
               <path d="M13.4 14.2c.8-.5 1.7-.8 2.6-.8a4.2 4.2 0 0 1 4.2 4.2v1.9" />
             </svg>
           </a>
+          <a href="whatsapp-templates.php" title="Templates WhatsApp" aria-label="Templates WhatsApp">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4.5h14v15H5z" /><path d="M8 8h8M8 12h8M8 16h5" /></svg>
+          </a>
         </nav>
         <a class="sidebar-exit" href="logout.php" title="Sair">Sair</a>
       </aside>
@@ -134,6 +137,7 @@ $overdueLeads = crm_read_sla_overdue_leads(20);
             <a href="followups.php">Follow-up</a>
             <a href="dashboard.php">Dashboard</a>
             <a class="active" href="commercial.php">Comercial</a>
+            <a href="whatsapp-templates.php">Templates</a>
             <a href="settings.php">Configurações</a>
           </nav>
         </header>

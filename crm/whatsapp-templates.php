@@ -6,6 +6,7 @@ require_once __DIR__ . '/lib/auth.php';
 require_once __DIR__ . '/lib/storage.php';
 require_once __DIR__ . '/lib/settings.php';
 require_once __DIR__ . '/lib/meta-whatsapp.php';
+require_once __DIR__ . '/lib/pilot-status.php';
 require_once __DIR__ . '/lib/whatsapp-templates.php';
 
 crm_require_admin();
@@ -17,12 +18,17 @@ $isNew = $currentTemplate === null;
 $saved = ($_GET['saved'] ?? '') === '1';
 $synced = ($_GET['synced'] ?? '') === '1';
 $error = trim((string) ($_GET['error'] ?? ''));
+$provider = crm_whatsapp_provider();
 $metaWhatsAppConfigured = crm_meta_whatsapp_is_configured();
 $wabaConfigured = trim((string) crm_meta_whatsapp_settings()['business_account_id']) !== '';
+$pilotStatusConfigured = pilot_status_is_configured();
+$providerConfigured = $provider === 'pilot_status' ? $pilotStatusConfigured : ($metaWhatsAppConfigured && $wabaConfigured);
 
 $statusLabels = [
     'draft' => 'Rascunho local',
     'pending' => 'Em análise na Meta',
+    'approved' => 'Aprovado',
+    'rejected' => 'Rejeitado',
 ];
 
 function whatsapp_template_status_label(array $template, array $labels): string
@@ -43,7 +49,13 @@ function whatsapp_template_status_label(array $template, array $labels): string
 
 function whatsapp_template_status_class(array $template): string
 {
-    return match (strtoupper(trim((string) ($template['meta_status'] ?? '')))) {
+    $metaStatus = strtoupper(trim((string) ($template['meta_status'] ?? '')));
+
+    if ($metaStatus === '' && strtolower(trim((string) ($template['status'] ?? ''))) === 'approved') {
+        return 'is-approved';
+    }
+
+    return match ($metaStatus) {
         'APPROVED' => 'is-approved',
         'PENDING' => 'is-pending',
         'REJECTED' => 'is-rejected',
@@ -101,16 +113,16 @@ $bodyVariables = crm_whatsapp_template_variables((string) ($currentTemplate['bod
                 <label>Idioma<select name="language"><option value="pt_BR" <?= (($currentTemplate['language'] ?? 'pt_BR') === 'pt_BR') ? 'selected' : '' ?>>Português (Brasil)</option><option value="en_US" <?= (($currentTemplate['language'] ?? '') === 'en_US') ? 'selected' : '' ?>>English (US)</option><option value="es_ES" <?= (($currentTemplate['language'] ?? '') === 'es_ES') ? 'selected' : '' ?>>Español</option></select></label>
                 <label>Categoria<select name="category"><option value="UTILITY" <?= (($currentTemplate['category'] ?? 'UTILITY') === 'UTILITY') ? 'selected' : '' ?>>Utilidade</option><option value="MARKETING" <?= (($currentTemplate['category'] ?? '') === 'MARKETING') ? 'selected' : '' ?>>Marketing</option></select></label>
                 <label class="field-wide">Cabeçalho <span>opcional · texto</span><input type="text" name="header_text" value="<?= htmlspecialchars((string) ($currentTemplate['header_text'] ?? '')) ?>" maxlength="60" placeholder="Ex.: Atendimento Publi" /></label>
-                <label class="field-wide">Corpo da mensagem <span>use {{1}}, {{2}} para campos variáveis</span><textarea name="body_text" rows="8" maxlength="1024" placeholder="Olá, {{1}}! Recebemos seu contato e vamos continuar seu atendimento por aqui." required><?= htmlspecialchars((string) ($currentTemplate['body_text'] ?? '')) ?></textarea></label>
+                <label class="field-wide">Corpo da mensagem <span><?= $provider === 'pilot_status' ? 'use {{nome}}, {{pedido}} para campos variáveis' : 'use {{1}}, {{2}} para campos variáveis' ?></span><textarea name="body_text" rows="8" maxlength="1024" placeholder="<?= $provider === 'pilot_status' ? 'Olá, {{nome}}! Recebemos seu contato e vamos continuar seu atendimento por aqui.' : 'Olá, {{1}}! Recebemos seu contato e vamos continuar seu atendimento por aqui.' ?>" required><?= htmlspecialchars((string) ($currentTemplate['body_text'] ?? '')) ?></textarea></label>
                 <label class="field-wide">Rodapé <span>opcional</span><input type="text" name="footer_text" value="<?= htmlspecialchars((string) ($currentTemplate['footer_text'] ?? '')) ?>" maxlength="60" placeholder="Publi CRM" /></label>
               </div>
-              <div class="wa-template-help"><strong>Como funciona</strong><span>A Meta analisa o conteúdo antes de liberar o envio. Depois de aprovado, ele ficará disponível na aba Conversas.</span></div>
-              <div class="builder-actions"><button type="submit" name="action" value="save">Salvar rascunho</button><?php if ($metaWhatsAppConfigured && $wabaConfigured): ?><button class="secondary-action" type="submit" name="action" value="submit_meta">Salvar e enviar para aprovação</button><?php else: ?><span class="wa-template-config-note">Configure a Meta Cloud API e o WABA ID para enviar à aprovação.</span><?php endif; ?></div>
+              <div class="wa-template-help"><strong>Como funciona</strong><span><?= $provider === 'pilot_status' ? 'O Pilot Status envia o template para a Meta quando o número é oficial. Depois de aprovado, ele ficará disponível na aba Conversas.' : 'A Meta analisa o conteúdo antes de liberar o envio. Depois de aprovado, ele ficará disponível na aba Conversas.' ?></span></div>
+              <div class="builder-actions"><button type="submit" name="action" value="save">Salvar rascunho</button><?php if ($providerConfigured): ?><button class="secondary-action" type="submit" name="action" value="submit_provider">Salvar e enviar para aprovação</button><?php else: ?><span class="wa-template-config-note"><?= $provider === 'pilot_status' ? 'Configure a API key do Pilot Status para enviar o template.' : 'Configure a Meta Cloud API e o WABA ID para enviar à aprovação.' ?></span><?php endif; ?></div>
             </form>
           </section>
 
           <aside class="wa-template-list-card"><header class="section-heading"><div><p class="eyebrow">Biblioteca</p><h2>Seus templates</h2></div><span class="wa-template-count"><?= count($templates) ?></span></header>
-            <?php if ($metaWhatsAppConfigured && $wabaConfigured): ?><form method="post" action="save-whatsapp-template.php" class="wa-template-sync-form"><input type="hidden" name="_csrf_token" value="<?= htmlspecialchars(crm_csrf_token()) ?>" /><button type="submit" name="action" value="sync_meta">Sincronizar status com a Meta</button></form><?php endif; ?>
+            <?php if ($providerConfigured): ?><form method="post" action="save-whatsapp-template.php" class="wa-template-sync-form"><input type="hidden" name="_csrf_token" value="<?= htmlspecialchars(crm_csrf_token()) ?>" /><button type="submit" name="action" value="sync_provider">Sincronizar status com <?= $provider === 'pilot_status' ? 'o Pilot Status' : 'a Meta' ?></button></form><?php endif; ?>
             <?php if ($templates === []): ?><div class="wa-template-empty"><strong>Nenhum template criado</strong><span>Comece pelo modelo de boas-vindas ou retorno.</span></div><?php endif; ?>
             <?php foreach ($templates as $template): ?><a class="wa-template-list-item" href="whatsapp-templates.php?id=<?= (int) $template['id'] ?>"><div><strong><?= htmlspecialchars((string) $template['name']) ?></strong><span><?= htmlspecialchars(whatsapp_template_short_text((string) $template['body_text'])) ?></span></div><em class="wa-template-status <?= whatsapp_template_status_class($template) ?>"><?= htmlspecialchars(whatsapp_template_status_label($template, $statusLabels)) ?></em></a><?php endforeach; ?>
           </aside>

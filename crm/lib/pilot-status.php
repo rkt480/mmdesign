@@ -15,6 +15,128 @@ function pilot_status_is_configured(): bool
     return crm_pilot_status_is_configured();
 }
 
+function pilot_status_profile_picture_layer_url(): string
+{
+    $settings = pilot_status_settings();
+    $baseUrl = rtrim((string) ($settings['base_url'] ?? ''), '/');
+
+    if ($baseUrl === '') {
+        return '';
+    }
+
+    if (str_contains($baseUrl, '/api/layer/')) {
+        return $baseUrl . '/user/avatar';
+    }
+
+    $parts = parse_url($baseUrl);
+
+    if (!is_array($parts) || trim((string) ($parts['host'] ?? '')) === '') {
+        return '';
+    }
+
+    $scheme = strtolower((string) ($parts['scheme'] ?? 'https')) === 'http' ? 'http' : 'https';
+    $port = isset($parts['port']) ? ':' . (int) $parts['port'] : '';
+
+    return $scheme . '://' . $parts['host'] . $port . '/api/layer/evolution-go/user/avatar';
+}
+
+function pilot_status_extract_profile_picture_from_response(mixed $value, int $depth = 0): string
+{
+    if ($depth > 6 || !is_array($value)) {
+        return '';
+    }
+
+    foreach ($value as $key => $child) {
+        $normalizedKey = strtolower((string) $key);
+
+        if (
+            in_array($normalizedKey, ['profilepictureurl', 'profilepicurl', 'pictureurl', 'avatarurl', 'link'], true)
+            && is_scalar($child)
+        ) {
+            $url = crm_normalize_profile_picture_url((string) $child);
+
+            if ($url !== '') {
+                return $url;
+            }
+        }
+
+        if (is_array($child)) {
+            $url = pilot_status_extract_profile_picture_from_response($child, $depth + 1);
+
+            if ($url !== '') {
+                return $url;
+            }
+        }
+    }
+
+    return '';
+}
+
+function pilot_status_fetch_profile_picture_url(string $number): array
+{
+    $number = crm_normalize_lead_whatsapp($number);
+    $settings = pilot_status_settings();
+    $apiKey = trim((string) ($settings['api_key'] ?? ''));
+    $url = pilot_status_profile_picture_layer_url();
+
+    if ($number === '' || $apiKey === '' || $url === '') {
+        return ['ok' => false, 'profile_picture_url' => '', 'skipped' => true];
+    }
+
+    $ch = curl_init($url);
+
+    if ($ch === false) {
+        return ['ok' => false, 'profile_picture_url' => '', 'error' => 'Não foi possível iniciar a consulta da foto.'];
+    }
+
+    curl_setopt_array($ch, [
+        CURLOPT_POST => true,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_HTTPHEADER => [
+            'Accept: application/json',
+            'Content-Type: application/json',
+            'x-api-key: ' . $apiKey,
+            'apikey: ' . $apiKey,
+        ],
+        CURLOPT_POSTFIELDS => json_encode(['number' => $number], JSON_UNESCAPED_UNICODE),
+        CURLOPT_TIMEOUT => 12,
+    ]);
+
+    $body = curl_exec($ch);
+    $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curlError = curl_error($ch);
+    curl_close($ch);
+
+    if ($body === false || $curlError !== '') {
+        pilot_status_log('Erro ao consultar foto de perfil.', [
+            'number' => $number,
+            'error' => $curlError ?: 'Resposta vazia.',
+        ]);
+
+        return ['ok' => false, 'profile_picture_url' => '', 'error' => $curlError ?: 'Resposta vazia.'];
+    }
+
+    $response = json_decode((string) $body, true);
+
+    if ($httpCode < 200 || $httpCode >= 300 || !is_array($response)) {
+        pilot_status_log('Consulta de foto de perfil recusada.', [
+            'number' => $number,
+            'http_code' => $httpCode,
+            'response' => $response,
+        ]);
+
+        return ['ok' => false, 'profile_picture_url' => '', 'error' => 'A Pilot Status não retornou uma foto.'];
+    }
+
+    $profilePictureUrl = pilot_status_extract_profile_picture_from_response($response);
+
+    return [
+        'ok' => $profilePictureUrl !== '',
+        'profile_picture_url' => $profilePictureUrl,
+        'skipped' => $profilePictureUrl === '',
+    ];
+}
+
 function pilot_status_log(string $message, array $context = []): void
 {
     $dir = dirname(__DIR__) . '/data';
@@ -32,7 +154,7 @@ function pilot_status_log(string $message, array $context = []): void
     @file_put_contents($dir . '/pilot-status.log', $line . PHP_EOL, FILE_APPEND | LOCK_EX);
 }
 
-function pilot_status_request(string $endpoint, array $payload, int $timeout = 20): array
+function pilot_status_api_request(string $endpoint, string $method = 'GET', ?array $payload = null, int $timeout = 20): array
 {
     $settings = pilot_status_settings();
     $apiKey = trim((string) $settings['api_key']);
@@ -41,24 +163,36 @@ function pilot_status_request(string $endpoint, array $payload, int $timeout = 2
         return ['ok' => false, 'error' => 'API key da Pilot Status não configurada.'];
     }
 
+    $method = strtoupper(trim($method));
+    $payload = $payload ?? [];
     $url = rtrim((string) $settings['base_url'], '/') . '/' . ltrim($endpoint, '/');
+
+    if ($method === 'GET' && $payload !== []) {
+        $url .= '?' . http_build_query($payload);
+    }
+
     $ch = curl_init($url);
 
     if ($ch === false) {
         return ['ok' => false, 'error' => 'Não foi possível iniciar o cURL da Pilot Status.'];
     }
 
-    curl_setopt_array($ch, [
-        CURLOPT_POST => true,
+    $options = [
+        CURLOPT_CUSTOMREQUEST => $method,
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_HTTPHEADER => [
             'Accept: application/json',
             'Content-Type: application/json',
             'x-api-key: ' . $apiKey,
         ],
-        CURLOPT_POSTFIELDS => json_encode($payload, JSON_UNESCAPED_UNICODE),
         CURLOPT_TIMEOUT => $timeout,
-    ]);
+    ];
+
+    if ($method !== 'GET') {
+        $options[CURLOPT_POSTFIELDS] = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    }
+
+    curl_setopt_array($ch, $options);
 
     $body = curl_exec($ch);
     $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -82,6 +216,121 @@ function pilot_status_request(string $endpoint, array $payload, int $timeout = 2
     }
 
     return ['ok' => true, 'response' => is_array($decoded) ? $decoded : $body];
+}
+
+function pilot_status_request(string $endpoint, array $payload, int $timeout = 20): array
+{
+    return pilot_status_api_request($endpoint, 'POST', $payload, $timeout);
+}
+
+function pilot_status_template_variables(string $text): array
+{
+    preg_match_all('/\{\{\s*([a-zA-Z][a-zA-Z0-9_]*|\d+)\s*\}\}/u', $text, $matches);
+    $variables = [];
+
+    foreach ($matches[1] ?? [] as $variable) {
+        $variable = trim((string) $variable);
+
+        if ($variable !== '' && !in_array($variable, $variables, true)) {
+            $variables[] = $variable;
+        }
+    }
+
+    return $variables;
+}
+
+function pilot_status_template_examples(string $body, string $header = ''): array
+{
+    $variables = pilot_status_template_variables($body . ' ' . $header);
+    $examples = [];
+
+    foreach ($variables as $variable) {
+        $examples[$variable] = match (strtolower($variable)) {
+            'name', 'nome' => 'Maria',
+            'company', 'empresa' => 'Empresa exemplo',
+            'segment', 'segmento' => 'Serviços',
+            default => 'Exemplo ' . $variable,
+        };
+    }
+
+    return $examples;
+}
+
+function pilot_status_template_payload(array $template): array
+{
+    $bodyText = trim((string) ($template['body_text'] ?? ''));
+    $body = [
+        'body' => [
+            'text' => $bodyText,
+        ],
+    ];
+    $header = trim((string) ($template['header_text'] ?? ''));
+    $footer = trim((string) ($template['footer_text'] ?? ''));
+
+    if ($header !== '') {
+        $body['header'] = [
+            'type' => 'TEXT',
+            'text' => $header,
+        ];
+    }
+
+    if ($footer !== '') {
+        $body['footer'] = [
+            'text' => $footer,
+        ];
+    }
+
+    return [
+        'name' => trim((string) ($template['name'] ?? '')),
+        'category' => strtoupper(trim((string) ($template['category'] ?? 'UTILITY'))) ?: 'UTILITY',
+        'language' => trim((string) ($template['language'] ?? 'pt_BR')) ?: 'pt_BR',
+        'body' => $body,
+        'examples' => pilot_status_template_examples($bodyText, $header),
+    ];
+}
+
+function pilot_status_create_template(array $template): array
+{
+    return pilot_status_api_request('/templates', 'POST', pilot_status_template_payload($template));
+}
+
+function pilot_status_update_template(string $templateId, array $template): array
+{
+    $templateId = trim($templateId);
+
+    if ($templateId === '') {
+        return ['ok' => false, 'error' => 'ID do template no Pilot Status não configurado.'];
+    }
+
+    $payload = pilot_status_template_payload($template);
+    unset($payload['name'], $payload['category'], $payload['language']);
+
+    return pilot_status_api_request('/templates/' . rawurlencode($templateId), 'PUT', $payload);
+}
+
+function pilot_status_list_templates(): array
+{
+    return pilot_status_api_request('/templates', 'GET');
+}
+
+function pilot_status_send_template(string $number, array $template, array $variables = []): array
+{
+    $to = crm_normalize_whatsapp_number($number);
+    $templateId = trim((string) ($template['meta_template_id'] ?? ''));
+
+    if ($to === '') {
+        return ['ok' => false, 'error' => 'WhatsApp inválido.'];
+    }
+
+    if ($templateId === '') {
+        return ['ok' => false, 'error' => 'ID do template no Pilot Status não configurado.'];
+    }
+
+    return pilot_status_request('/messages/send', [
+        'templateId' => $templateId,
+        'destinationNumber' => $to,
+        'variables' => $variables,
+    ]);
 }
 
 function pilot_status_extract_delivery_event(array $payload): array
