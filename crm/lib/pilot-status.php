@@ -501,6 +501,57 @@ function pilot_status_extract_name(array $payload): string
     ]);
 }
 
+function pilot_status_extract_profile_picture_url(array $payload): string
+{
+    $candidateKeys = [
+        'profilepicurl',
+        'profilepictureurl',
+        'profilepicture',
+        'profile_picture_url',
+        'pictureurl',
+        'avatarurl',
+        'avatar_url',
+    ];
+
+    $find = static function (mixed $value, int $depth = 0) use (&$find, $candidateKeys): string {
+        if ($depth > 6 || !is_array($value)) {
+            return '';
+        }
+
+        foreach ($value as $key => $child) {
+            $normalizedKey = strtolower((string) $key);
+
+            if (in_array($normalizedKey, $candidateKeys, true) && is_scalar($child)) {
+                $url = crm_normalize_profile_picture_url((string) $child);
+
+                if ($url !== '') {
+                    return $url;
+                }
+            }
+
+            if ($normalizedKey === 'picture' && is_array($child)) {
+                $url = $find($child, $depth + 1);
+
+                if ($url !== '') {
+                    return $url;
+                }
+            }
+
+            if (is_array($child)) {
+                $url = $find($child, $depth + 1);
+
+                if ($url !== '') {
+                    return $url;
+                }
+            }
+        }
+
+        return '';
+    };
+
+    return $find($payload);
+}
+
 function pilot_status_extract_single_incoming_message(array $payload): array
 {
     $phone = [
@@ -587,6 +638,7 @@ function pilot_status_extract_single_incoming_message(array $payload): array
         'number' => $phone['number'],
         'text' => pilot_status_extract_text($payload),
         'name' => pilot_status_extract_name($payload),
+        'profile_picture_url' => pilot_status_extract_profile_picture_url($payload),
         'from_me' => pilot_status_payload_is_from_me($payload),
         'is_group' => (bool) $phone['is_group'],
         'event' => pilot_status_first_payload_value($payload, [['event'], ['type'], ['eventType']]),

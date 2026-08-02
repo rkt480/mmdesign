@@ -113,6 +113,40 @@ function whatsapp_page_short_text(string $text, int $limit = 92): string
     return strlen($text) > $limit ? substr($text, 0, $limit - 3) . '...' : $text;
 }
 
+function whatsapp_page_avatar_markup(array $lead, string $modifier = ''): string
+{
+    $name = trim((string) ($lead['name'] ?? 'Contato WhatsApp')) ?: 'Contato WhatsApp';
+    $initial = function_exists('mb_substr') ? mb_substr($name, 0, 1, 'UTF-8') : substr($name, 0, 1);
+    $initial = function_exists('mb_strtoupper') ? mb_strtoupper($initial, 'UTF-8') : strtoupper($initial);
+    $url = crm_normalize_profile_picture_url((string) ($lead['profile_picture_url'] ?? ''));
+    $classes = trim('wa-avatar ' . $modifier . ($url !== '' ? ' has-image' : ''));
+    $safeClasses = htmlspecialchars($classes, ENT_QUOTES, 'UTF-8');
+    $safeInitial = htmlspecialchars($initial ?: 'C', ENT_QUOTES, 'UTF-8');
+
+    if ($url === '') {
+        return '<span class="' . $safeClasses . '">' . $safeInitial . '</span>';
+    }
+
+    return '<span class="' . $safeClasses . '"><img src="'
+        . htmlspecialchars($url, ENT_QUOTES, 'UTF-8')
+        . '" alt="" loading="lazy" referrerpolicy="no-referrer" data-wa-avatar-image />'
+        . '<span class="wa-avatar-fallback" aria-hidden="true">' . $safeInitial . '</span></span>';
+}
+
+function whatsapp_page_clean_sent_message_text(string $text): string
+{
+    $text = preg_replace('/\R?Status inicial: aceito pela Pilot Status; aguardando confirmação de entrega\.\R?/iu', "\n", $text) ?? $text;
+    $text = preg_replace('/\R?Status: aceito pela API\.\R?/iu', "\n", $text) ?? $text;
+    $text = preg_replace('/\R?Pilot Status ID:\s*[^\r\n]+/iu', '', $text) ?? $text;
+
+    return trim($text);
+}
+
+function whatsapp_page_is_technical_delivery_note(string $text): bool
+{
+    return preg_match('/^Pilot Status evento:/iu', trim($text)) === 1;
+}
+
 function whatsapp_template_status_label_for_conversation(array $template): string
 {
     return match (strtoupper(trim((string) ($template['meta_status'] ?? '')))) {
@@ -244,13 +278,13 @@ function whatsapp_page_messages_for_lead(array $lead): array
 
             if (preg_match('/^(?:Mensagem|Mídia) enviada via (.+) em ([0-9]{2}\/[0-9]{2}\/[0-9]{4} [0-9]{2}:[0-9]{2}):\n(.+)$/s', $block, $match) === 1) {
                 $sentProviderLabel = strtolower((string) $match[1]);
-                $sentText = trim((string) $match[3]);
+                $sentText = whatsapp_page_clean_sent_message_text(trim((string) $match[3]));
                 $messages[] = [
                     'direction' => 'outgoing',
                     'provider' => str_contains($sentProviderLabel, 'meta') ? 'meta_cloud' : 'pilot_status',
                     'at' => whatsapp_page_parse_br_datetime((string) $match[2]),
                     'text' => $sentText,
-                    'label' => str_contains(strtolower($sentText), 'aguardando confirmação') ? 'Aguardando confirmação' : 'Aceita pela API',
+                    'label' => 'Enviada',
                 ];
                 continue;
             }
@@ -265,6 +299,10 @@ function whatsapp_page_messages_for_lead(array $lead): array
                     'text' => $displayFailureText,
                     'label' => 'Falha no envio',
                 ];
+                continue;
+            }
+
+            if (whatsapp_page_is_technical_delivery_note($block)) {
                 continue;
             }
 
@@ -547,7 +585,7 @@ foreach ($whatsappTemplates as $template) {
               data-wa-last-direction="<?= htmlspecialchars((string) ($conversation['last_direction'] ?? '')) ?>"
               data-search="<?= htmlspecialchars(strtolower($leadName . ' ' . (string) ($lead['whatsapp'] ?? '') . ' ' . (string) $conversation['preview'])) ?>"
             >
-              <span class="wa-avatar"><?= htmlspecialchars(strtoupper(substr(trim($leadName) ?: 'C', 0, 1))) ?></span>
+              <?= whatsapp_page_avatar_markup($lead) ?>
               <span class="wa-chat-summary">
                 <strong><?= htmlspecialchars($leadName) ?></strong>
                 <small><?= htmlspecialchars(whatsapp_page_short_text((string) $conversation['preview'])) ?></small>
@@ -568,7 +606,7 @@ foreach ($whatsappTemplates as $template) {
           </div>
         <?php else: ?>
           <header class="wa-thread-header">
-            <span class="wa-avatar large"><?= htmlspecialchars(strtoupper(substr(trim((string) ($activeLead['name'] ?? 'C')) ?: 'C', 0, 1))) ?></span>
+            <?= whatsapp_page_avatar_markup($activeLead, 'large') ?>
             <div>
               <h2><?= htmlspecialchars((string) ($activeLead['name'] ?? 'Contato WhatsApp')) ?></h2>
               <p><?= htmlspecialchars(crm_normalize_lead_whatsapp((string) ($activeLead['whatsapp'] ?? ''))) ?></p>
@@ -673,7 +711,7 @@ foreach ($whatsappTemplates as $template) {
           <?php $activeLeadTags = crm_decode_lead_tags($activeLead); ?>
           <?php $activeLeadReturnUrl = 'whatsapp.php?provider=' . rawurlencode($providerFilter) . '&lead=' . rawurlencode((string) ($activeLead['id'] ?? '')); ?>
           <section class="wa-lead-profile">
-            <span class="wa-avatar large"><?= htmlspecialchars(strtoupper(substr(trim((string) ($activeLead['name'] ?? 'C')) ?: 'C', 0, 1))) ?></span>
+            <?= whatsapp_page_avatar_markup($activeLead, 'large') ?>
             <div>
               <p class="eyebrow">Lead em atendimento</p>
               <h2><?= htmlspecialchars((string) ($activeLead['name'] ?? 'Contato WhatsApp')) ?></h2>
@@ -862,6 +900,12 @@ foreach ($whatsappTemplates as $template) {
     </main>
     <script>
       const waTemplateData = <?= json_encode($waTemplateData, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+
+      document.querySelectorAll("[data-wa-avatar-image]").forEach((image) => {
+        image.addEventListener("error", () => {
+          image.closest(".wa-avatar")?.classList.add("is-fallback");
+        }, { once: true });
+      });
 
       const templatePicker = document.querySelector("[data-wa-template-picker]");
       if (templatePicker) {

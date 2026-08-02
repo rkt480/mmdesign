@@ -373,6 +373,7 @@ function crm_ensure_lead_columns(PDO $pdo): void
 {
     $columns = [
         'cpf' => 'VARCHAR(14) NULL AFTER whatsapp',
+        'profile_picture_url' => 'TEXT NULL AFTER whatsapp',
         'utm_source' => 'VARCHAR(120) NULL AFTER page',
         'utm_medium' => 'VARCHAR(120) NULL AFTER utm_source',
         'utm_campaign' => 'VARCHAR(180) NULL AFTER utm_medium',
@@ -1211,6 +1212,19 @@ function crm_normalize_lead_whatsapp(string $phone): string
     return crm_whatsapp_number_variants($phone)[0] ?? '';
 }
 
+function crm_normalize_profile_picture_url(string $url): string
+{
+    $url = trim($url);
+
+    if ($url === '' || strlen($url) > 4000 || filter_var($url, FILTER_VALIDATE_URL) === false) {
+        return '';
+    }
+
+    $scheme = strtolower((string) parse_url($url, PHP_URL_SCHEME));
+
+    return in_array($scheme, ['http', 'https'], true) ? $url : '';
+}
+
 function crm_normalize_cpf(string $cpf): string
 {
     $digits = preg_replace('/\D+/', '', $cpf) ?? '';
@@ -1275,6 +1289,7 @@ function crm_create_lead(array $payload): array
         'id' => bin2hex(random_bytes(8)),
         'name' => trim((string) ($payload['name'] ?? '')),
         'whatsapp' => crm_normalize_lead_whatsapp((string) ($payload['whatsapp'] ?? '')),
+        'profile_picture_url' => crm_normalize_profile_picture_url((string) ($payload['profile_picture_url'] ?? '')),
         'cpf' => crm_normalize_cpf((string) ($payload['cpf'] ?? '')),
         'company' => trim((string) ($payload['company'] ?? '')),
         'segment' => trim((string) ($payload['segment'] ?? '')),
@@ -1321,9 +1336,9 @@ function crm_create_lead(array $payload): array
 
     $stmt = crm_db()->prepare(
         'INSERT INTO leads
-        (id, name, whatsapp, cpf, company, segment, advertises, message, page, utm_source, utm_medium, utm_campaign, utm_content, utm_term, referrer, landing_path, form_id, form_answers, lead_score, lead_temperature, score_reasons, status, notes, tags, assigned_user_id, assigned_at, last_activity_at, last_activity_type, sla_last_checked_at, estimated_value, proposal_value, expected_close_date, lost_reason, first_contact_at, closed_at, lost_at, whatsapp_status, whatsapp_sent_at, whatsapp_error, followup_flow_id, followup_started_at, created_at, updated_at)
+        (id, name, whatsapp, profile_picture_url, cpf, company, segment, advertises, message, page, utm_source, utm_medium, utm_campaign, utm_content, utm_term, referrer, landing_path, form_id, form_answers, lead_score, lead_temperature, score_reasons, status, notes, tags, assigned_user_id, assigned_at, last_activity_at, last_activity_type, sla_last_checked_at, estimated_value, proposal_value, expected_close_date, lost_reason, first_contact_at, closed_at, lost_at, whatsapp_status, whatsapp_sent_at, whatsapp_error, followup_flow_id, followup_started_at, created_at, updated_at)
         VALUES
-        (:id, :name, :whatsapp, :cpf, :company, :segment, :advertises, :message, :page, :utm_source, :utm_medium, :utm_campaign, :utm_content, :utm_term, :referrer, :landing_path, :form_id, :form_answers, :lead_score, :lead_temperature, :score_reasons, :status, :notes, :tags, :assigned_user_id, :assigned_at, :last_activity_at, :last_activity_type, :sla_last_checked_at, :estimated_value, :proposal_value, :expected_close_date, :lost_reason, :first_contact_at, :closed_at, :lost_at, :whatsapp_status, :whatsapp_sent_at, :whatsapp_error, :followup_flow_id, :followup_started_at, :created_at, :updated_at)'
+        (:id, :name, :whatsapp, :profile_picture_url, :cpf, :company, :segment, :advertises, :message, :page, :utm_source, :utm_medium, :utm_campaign, :utm_content, :utm_term, :referrer, :landing_path, :form_id, :form_answers, :lead_score, :lead_temperature, :score_reasons, :status, :notes, :tags, :assigned_user_id, :assigned_at, :last_activity_at, :last_activity_type, :sla_last_checked_at, :estimated_value, :proposal_value, :expected_close_date, :lost_reason, :first_contact_at, :closed_at, :lost_at, :whatsapp_status, :whatsapp_sent_at, :whatsapp_error, :followup_flow_id, :followup_started_at, :created_at, :updated_at)'
     );
     $stmt->execute($lead);
 
@@ -1464,6 +1479,30 @@ function crm_find_lead_by_pilot_status_message_id(string $messageId): ?array
     $lead = $stmt->fetch();
 
     return is_array($lead) ? $lead : null;
+}
+
+function crm_update_lead_profile_picture(string $id, string $url): bool
+{
+    $url = crm_normalize_profile_picture_url($url);
+
+    if ($url === '') {
+        return false;
+    }
+
+    [$accessSql, $accessParams] = crm_lead_access_sql('leads', false);
+    $stmt = crm_db()->prepare(
+        'UPDATE leads
+         SET profile_picture_url = :profile_picture_url,
+             updated_at = :updated_at
+         WHERE id = :id' . $accessSql
+    );
+    $stmt->execute([
+        'id' => $id,
+        'profile_picture_url' => $url,
+        'updated_at' => date('Y-m-d H:i:s'),
+    ] + $accessParams);
+
+    return $stmt->rowCount() > 0;
 }
 
 function crm_update_lead(string $id, array $updates): bool

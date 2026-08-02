@@ -2,6 +2,7 @@ CREATE TABLE IF NOT EXISTS leads (
   id VARCHAR(32) PRIMARY KEY,
   name VARCHAR(160) NOT NULL,
   whatsapp VARCHAR(40) NOT NULL,
+  profile_picture_url TEXT NULL,
   cpf VARCHAR(14) NULL,
   company VARCHAR(180) NOT NULL,
   segment VARCHAR(180) NULL,
