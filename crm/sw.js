@@ -1,4 +1,4 @@
-const CACHE_NAME = "publi-crm-v1";
+const CACHE_NAME = "publi-crm-v2";
 const APP_SHELL = ["./assets/crm.css", "./assets/crm.js", "./assets/icon.svg", "./assets/icon-192.png", "./assets/icon-512.png"];
 
 self.addEventListener("install", (event) => {

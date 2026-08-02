@@ -547,6 +547,18 @@ function setPushStatus(message, isError = false) {
   pushStatus.classList.toggle("is-error", isError);
 }
 
+function showPushUnavailable(message, buttonEnabled = false) {
+  if (!pushOnboarding || !pushEnableButton) {
+    return;
+  }
+
+  pushOnboarding.hidden = false;
+  pushEnableButton.hidden = false;
+  pushEnableButton.disabled = !buttonEnabled;
+  pushEnableButton.textContent = buttonEnabled ? "Ativar notificações" : "Notificações indisponíveis";
+  setPushStatus(message, true);
+}
+
 function base64UrlToUint8Array(value) {
   const padding = "=".repeat((4 - (value.length % 4)) % 4);
   const base64 = (value + padding).replace(/-/g, "+").replace(/_/g, "/");
@@ -574,13 +586,40 @@ async function pushRequest(action, options = {}) {
 }
 
 async function syncPushState() {
-  if (!pushEnableButton || !pushOnboarding || !window.isSecureContext || !("serviceWorker" in navigator) || !("PushManager" in window)) {
+  if (!pushEnableButton || !pushOnboarding) {
+    return;
+  }
+
+  const isIos = /iPad|iPhone|iPod/i.test(navigator.userAgent);
+  const isStandalone = window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
+
+  if (!window.isSecureContext) {
+    showPushUnavailable("Abra o CRM por um endereço HTTPS para ativar notificações.");
+    return;
+  }
+
+  if (!("serviceWorker" in navigator)) {
+    showPushUnavailable("Este navegador não oferece suporte ao aplicativo.");
+    return;
+  }
+
+  if (!("PushManager" in window)) {
+    showPushUnavailable(
+      isIos && !isStandalone
+        ? "No iPhone, primeiro adicione o CRM à Tela de Início e abra pelo novo ícone."
+        : "Este navegador não oferece suporte a notificações push.",
+      isIos && !isStandalone
+    );
     return;
   }
 
   try {
     const configResponse = await fetch("./api/push.php?action=config", { headers: { Accept: "application/json" } });
-    const config = await configResponse.json();
+    const config = await configResponse.json().catch(() => ({}));
+
+    if (!configResponse.ok || config.ok === false) {
+      throw new Error(config.error || "Não foi possível preparar as notificações.");
+    }
 
     if (!config.configured) {
       pushOnboarding.hidden = true;
@@ -638,7 +677,11 @@ async function enablePushNotifications() {
     }
 
     const configResponse = await fetch("./api/push.php?action=config", { headers: { Accept: "application/json" } });
-    const config = await configResponse.json();
+    const config = await configResponse.json().catch(() => ({}));
+
+    if (!configResponse.ok || config.ok === false) {
+      throw new Error(config.error || "Não foi possível preparar as notificações.");
+    }
 
     if (!config.configured || !config.public_key) {
       throw new Error("O administrador ainda precisa configurar o Web Push.");
@@ -714,5 +757,5 @@ if (installButton) {
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("./sw.js", { scope: "./" })
     .then(syncPushState)
-    .catch((error) => setPushStatus(error.message || "Não foi possível preparar o aplicativo.", true));
+    .catch((error) => showPushUnavailable(error.message || "Não foi possível preparar o aplicativo."));
 }
