@@ -186,7 +186,7 @@ function lead_money_input(array $lead, string $field): string
     <title>CRM de Contatos | <?= htmlspecialchars((string) $config['company_name']) ?></title>
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="apple-touch-icon" href="./assets/icon-192.png" />
-    <link rel="stylesheet" href="./assets/crm.css?v=20260802-template-navigation" />
+    <link rel="stylesheet" href="./assets/crm.css?v=20260802-push-onboarding" />
   </head>
   <body class="leads-page">
     <div class="app-shell">
@@ -257,9 +257,6 @@ function lead_money_input(array $lead, string $field): string
             <h1>Contatos</h1>
           </div>
           <nav>
-            <?php if ($canManageSettings): ?>
-              <a href="whatsapp-templates.php">Templates WhatsApp</a>
-            <?php endif; ?>
             <?php if ($canManageSales): ?>
               <a href="followups.php">Criar fluxo</a>
             <?php endif; ?>
@@ -798,6 +795,6 @@ function lead_money_input(array $lead, string $field): string
     </main>
       </div>
     </div>
-    <script src="./assets/crm.js?v=20260731-cpf"></script>
+    <script src="./assets/crm.js?v=20260802-push-onboarding"></script>
   </body>
 </html>
