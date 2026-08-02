@@ -240,6 +240,17 @@ function whatsapp_page_messages_for_lead(array $lead): array
                 continue;
             }
 
+            if (preg_match('/^Falha ao enviar via (.+?) em ([0-9]{2}\/[0-9]{2}\/[0-9]{4} [0-9]{2}:[0-9]{2}):\n(.+)$/s', $block, $match) === 1) {
+                $messages[] = [
+                    'direction' => 'note',
+                    'provider' => str_contains(strtolower((string) $match[1]), 'meta') ? 'meta_cloud' : 'pilot_status',
+                    'at' => whatsapp_page_parse_br_datetime((string) $match[2]),
+                    'text' => $block,
+                    'label' => 'Falha no envio',
+                ];
+                continue;
+            }
+
             $messages[] = [
                 'direction' => 'note',
                 'provider' => $provider,
@@ -250,7 +261,18 @@ function whatsapp_page_messages_for_lead(array $lead): array
         }
     }
 
-    usort($messages, static fn(array $a, array $b): int => strtotime((string) $a['at']) <=> strtotime((string) $b['at']));
+    usort($messages, static function (array $a, array $b): int {
+        $timestampComparison = strtotime((string) $a['at']) <=> strtotime((string) $b['at']);
+
+        if ($timestampComparison !== 0) {
+            return $timestampComparison;
+        }
+
+        $priority = ['note' => 0, 'incoming' => 1, 'outgoing' => 2];
+
+        return ($priority[(string) ($a['direction'] ?? '')] ?? 1)
+            <=> ($priority[(string) ($b['direction'] ?? '')] ?? 1);
+    });
 
     return $messages;
 }
@@ -383,7 +405,7 @@ $activeProvider = is_array($activeConversation) ? (string) $activeConversation['
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="csrf-token" content="<?= htmlspecialchars(crm_csrf_token()) ?>" />
     <title>WhatsApp | Publi CRM</title>
-    <link rel="stylesheet" href="./assets/crm.css?v=20260731-wa-composer-documents" />
+    <link rel="stylesheet" href="./assets/crm.css?v=20260802-wa-live-refresh" />
   </head>
   <body class="whatsapp-page whatsapp-crm-page">
     <main class="wa-web-shell" aria-label="Atendimento WhatsApp do CRM">
@@ -878,6 +900,16 @@ $activeProvider = is_array($activeConversation) ? (string) $activeConversation['
 
           if (currentSurface && refreshedSurface && currentSurface.innerHTML !== refreshedSurface.innerHTML) {
             const wasAtBottom = currentSurface.scrollHeight - currentSurface.scrollTop - currentSurface.clientHeight < 80;
+            const currentIncomingMessages = new Set(
+              Array.from(currentSurface.querySelectorAll(".wa-message-incoming")).map((message) => message.innerHTML),
+            );
+
+            refreshedSurface.querySelectorAll(".wa-message-incoming").forEach((message) => {
+              if (!currentIncomingMessages.has(message.innerHTML)) {
+                message.classList.add("is-new");
+              }
+            });
+
             currentSurface.replaceWith(refreshedSurface);
 
             if (wasAtBottom) {
