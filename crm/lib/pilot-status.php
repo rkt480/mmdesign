@@ -496,6 +496,18 @@ function pilot_status_public_media_base_url(): string
 
 function pilot_status_media_extension(string $mimeType, string $fileName): string
 {
+    // The Pilot Status API fetches this public URL before forwarding it to
+    // WhatsApp. Use the canonical extension for audio before trusting the
+    // browser-provided filename, so the web server and the remote fetcher
+    // agree on the MIME type.
+    if (in_array($mimeType, ['audio/mp4', 'audio/m4a', 'audio/x-m4a'], true)) {
+        return 'mp4';
+    }
+
+    if (in_array($mimeType, ['audio/ogg', 'audio/opus'], true)) {
+        return 'ogg';
+    }
+
     $extension = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
 
     if (preg_match('/^[a-z0-9]{1,8}$/', $extension) === 1) {
@@ -510,7 +522,7 @@ function pilot_status_media_extension(string $mimeType, string $fileName): strin
         'audio/ogg' => 'ogg',
         'audio/webm', 'video/webm' => 'webm',
         'audio/mpeg' => 'mp3',
-        'audio/mp4', 'audio/m4a' => 'm4a',
+        'audio/mp4', 'audio/m4a', 'audio/x-m4a' => 'mp4',
         'audio/wav', 'audio/x-wav' => 'wav',
         'application/pdf' => 'pdf',
         'application/msword' => 'doc',

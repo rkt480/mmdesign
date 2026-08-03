@@ -1270,13 +1270,16 @@ foreach ($whatsappTemplates as $template) {
             recorderStream = await navigator.mediaDevices.getUserMedia({ audio: true });
             const recordingTypes = [
               { mimeType: "audio/ogg;codecs=opus", fileType: "audio/ogg", extension: "ogg" },
-              { mimeType: "audio/mp4", fileType: "audio/mp4", extension: "m4a" },
+              // Meta accepts MP4 only when it contains AAC. A generic
+              // audio/mp4 request may be recorded by the browser with an
+              // incompatible codec and is then rejected as octet-stream.
+              { mimeType: "audio/mp4;codecs=mp4a.40.2", fileType: "audio/mp4", extension: "mp4" },
               { mimeType: "audio/webm;codecs=opus", fileType: "audio/webm", extension: "webm" },
             ];
             const recordingType = recordingTypes.find((candidate) => MediaRecorder.isTypeSupported(candidate.mimeType));
             const chunks = [];
             recorder = recordingType
-              ? new MediaRecorder(recorderStream, { mimeType: recordingType.mimeType })
+              ? new MediaRecorder(recorderStream, { mimeType: recordingType.mimeType, audioBitsPerSecond: 64000 })
               : new MediaRecorder(recorderStream);
             recorder.addEventListener("dataavailable", (event) => {
               if (event.data.size > 0) chunks.push(event.data);
