@@ -1173,6 +1173,231 @@ foreach ($whatsappTemplates as $template) {
         let previewUrl = "";
         let recorder = null;
         let recorderStream = null;
+        let compatibleAudioRecorder = null;
+
+        const concatAudioBytes = (parts) => {
+          const length = parts.reduce((total, part) => total + part.length, 0);
+          const output = new Uint8Array(length);
+          let offset = 0;
+
+          parts.forEach((part) => {
+            output.set(part, offset);
+            offset += part.length;
+          });
+
+          return output;
+        };
+
+        // Ogg uses a checksum that is not the same as CRC-32. Keeping this
+        // small muxer in the browser lets us record an actual Ogg/Opus file
+        // instead of only labelling a browser-specific MP4 as audio.
+        const oggCrcTable = (() => {
+          const table = new Uint32Array(256);
+
+          for (let index = 0; index < table.length; index += 1) {
+            let value = index << 24;
+
+            for (let bit = 0; bit < 8; bit += 1) {
+              value = (value & 0x80000000) !== 0
+                ? (value << 1) ^ 0x04c11db7
+                : value << 1;
+            }
+
+            table[index] = value >>> 0;
+          }
+
+          return table;
+        })();
+
+        const oggChecksum = (bytes) => {
+          let checksum = 0;
+
+          bytes.forEach((byte) => {
+            checksum = ((checksum << 8) ^ oggCrcTable[((checksum >>> 24) ^ byte) & 0xff]) >>> 0;
+          });
+
+          return checksum >>> 0;
+        };
+
+        const createOggPage = (packets, headerType, granulePosition, serialNumber, pageSequence) => {
+          const lacing = [];
+          let bodyLength = 0;
+
+          packets.forEach((packet) => {
+            bodyLength += packet.length;
+            let remaining = packet.length;
+
+            while (remaining >= 255) {
+              lacing.push(255);
+              remaining -= 255;
+            }
+
+            lacing.push(remaining);
+          });
+
+          const page = new Uint8Array(27 + lacing.length + bodyLength);
+          const view = new DataView(page.buffer);
+          page.set([0x4f, 0x67, 0x67, 0x53, 0x00, headerType], 0); // OggS
+          view.setUint32(6, granulePosition >>> 0, true);
+          view.setUint32(10, Math.floor(granulePosition / 0x100000000) >>> 0, true);
+          view.setUint32(14, serialNumber >>> 0, true);
+          view.setUint32(18, pageSequence >>> 0, true);
+          view.setUint32(22, 0, true);
+          page[26] = lacing.length;
+          page.set(lacing, 27);
+
+          let offset = 27 + lacing.length;
+          packets.forEach((packet) => {
+            page.set(packet, offset);
+            offset += packet.length;
+          });
+
+          view.setUint32(22, oggChecksum(page), true);
+          return page;
+        };
+
+        const createOpusHeaders = (channels, inputSampleRate) => {
+          const encoder = new TextEncoder();
+          const opusHead = new Uint8Array(19);
+          const headView = new DataView(opusHead.buffer);
+          opusHead.set(encoder.encode("OpusHead"));
+          opusHead[8] = 1;
+          opusHead[9] = channels;
+          // Opus has a fixed 48 kHz output clock. 312 is its standard
+          // pre-skip and prevents an audible encoder warm-up at playback.
+          headView.setUint16(10, 312, true);
+          headView.setUint32(12, inputSampleRate, true);
+          headView.setInt16(16, 0, true);
+          opusHead[18] = 0;
+
+          const vendor = encoder.encode("Publi CRM");
+          const opusTags = new Uint8Array(16 + vendor.length);
+          const tagsView = new DataView(opusTags.buffer);
+          opusTags.set(encoder.encode("OpusTags"));
+          tagsView.setUint32(8, vendor.length, true);
+          opusTags.set(vendor, 12);
+          tagsView.setUint32(12 + vendor.length, 0, true);
+
+          return [opusHead, opusTags];
+        };
+
+        const buildOggOpusFile = (packets, channels, inputSampleRate) => {
+          if (!packets.length) {
+            throw new Error("Nenhum dado de áudio foi capturado.");
+          }
+
+          const serialNumber = (Date.now() ^ Math.floor(Math.random() * 0xffffffff)) >>> 0;
+          const pages = [createOggPage(createOpusHeaders(channels, inputSampleRate), 0x02, 0, serialNumber, 0)];
+          let granulePosition = 0;
+
+          packets.forEach((packet, index) => {
+            granulePosition += Math.max(1, Math.round((packet.duration || 20000) * 48000 / 1000000));
+            const isLastPacket = index === packets.length - 1;
+            pages.push(createOggPage([packet.bytes], isLastPacket ? 0x04 : 0x00, granulePosition, serialNumber, index + 1));
+          });
+
+          return new File(
+            [concatAudioBytes(pages)],
+            "audio-whatsapp.ogg",
+            { type: "audio/ogg" }
+          );
+        };
+
+        const createCompatibleAudioRecorder = (stream) => {
+          const track = stream.getAudioTracks()[0];
+
+          if (!track || typeof window.AudioEncoder === "undefined" || typeof window.MediaStreamTrackProcessor === "undefined") {
+            return null;
+          }
+
+          const processor = new MediaStreamTrackProcessor({ track });
+          const reader = processor.readable.getReader();
+          const packets = [];
+          const inputDurations = [];
+          let state = "recording";
+          let encoder = null;
+          let encodingError = null;
+          let channels = 1;
+          let inputSampleRate = 48000;
+
+          const consumeAudio = (async () => {
+            try {
+              while (true) {
+                const { done, value: audioData } = await reader.read();
+
+                if (done) {
+                  break;
+                }
+
+                if (!encoder) {
+                  channels = audioData.numberOfChannels;
+                  inputSampleRate = audioData.sampleRate;
+                  const config = {
+                    codec: "opus",
+                    sampleRate: inputSampleRate,
+                    numberOfChannels: channels,
+                    bitrate: 32000,
+                    opus: { application: "voip", signal: "voice" },
+                  };
+
+                  if (typeof AudioEncoder.isConfigSupported === "function") {
+                    const support = await AudioEncoder.isConfigSupported(config);
+
+                    if (!support.supported) {
+                      audioData.close();
+                      throw new Error("O navegador não consegue codificar Opus.");
+                    }
+                  }
+
+                  encoder = new AudioEncoder({
+                    output: (chunk) => {
+                      const bytes = new Uint8Array(chunk.byteLength);
+                      chunk.copyTo(bytes);
+                      packets.push({ bytes, duration: inputDurations.shift() || chunk.duration || 20000 });
+                    },
+                    error: (error) => {
+                      encodingError = error;
+                    },
+                  });
+                  encoder.configure(config);
+                }
+
+                inputDurations.push(audioData.duration || 20000);
+                encoder.encode(audioData);
+                audioData.close();
+              }
+            } catch (error) {
+              encodingError = error;
+            }
+          })();
+
+          return {
+            get state() {
+              return state;
+            },
+            async stop() {
+              if (state !== "recording") {
+                return;
+              }
+
+              state = "inactive";
+              stream.getTracks().forEach((item) => item.stop());
+              await consumeAudio;
+
+              if (encodingError) {
+                throw encodingError;
+              }
+
+              if (!encoder) {
+                throw new Error("A gravação não produziu áudio.");
+              }
+
+              await encoder.flush();
+              encoder.close();
+              return buildOggOpusFile(packets, channels, inputSampleRate);
+            },
+          };
+        };
 
         const setRecordButton = (recording) => {
           recordButton.innerHTML = recording
@@ -1185,7 +1410,7 @@ foreach ($whatsappTemplates as $template) {
           const hasContent = Boolean(messageInput.value.trim() || mediaInput.files?.length);
           recordButton.hidden = hasContent;
           sendButton.hidden = !hasContent;
-          if (!recorder || recorder.state !== "recording") {
+          if ((!recorder || recorder.state !== "recording") && (!compatibleAudioRecorder || compatibleAudioRecorder.state !== "recording")) {
             setRecordButton(false);
           }
         };
@@ -1256,6 +1481,25 @@ foreach ($whatsappTemplates as $template) {
         syncComposerAction();
 
         recordButton?.addEventListener("click", async () => {
+          if (compatibleAudioRecorder?.state === "recording") {
+            try {
+              const file = await compatibleAudioRecorder.stop();
+              const transfer = new DataTransfer();
+              transfer.items.add(file);
+              mediaInput.files = transfer.files;
+              renderMediaPreview(file);
+            } catch (error) {
+              recorderStream?.getTracks().forEach((track) => track.stop());
+              window.alert("Não foi possível preparar um áudio compatível com o WhatsApp.");
+            } finally {
+              compatibleAudioRecorder = null;
+              recorderStream = null;
+              setRecordButton(false);
+            }
+
+            return;
+          }
+
           if (recorder && recorder.state === "recording") {
             recorder.stop();
             return;
@@ -1268,6 +1512,13 @@ foreach ($whatsappTemplates as $template) {
 
           try {
             recorderStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            compatibleAudioRecorder = createCompatibleAudioRecorder(recorderStream);
+
+            if (compatibleAudioRecorder) {
+              setRecordButton(true);
+              return;
+            }
+
             const recordingTypes = [
               { mimeType: "audio/ogg;codecs=opus", fileType: "audio/ogg", extension: "ogg" },
               // Meta accepts MP4 only when it contains AAC. A generic
