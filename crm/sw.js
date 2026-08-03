@@ -1,5 +1,11 @@
-const CACHE_NAME = "publi-crm-v2";
-const APP_SHELL = ["./assets/crm.css", "./assets/crm.js", "./assets/icon.svg", "./assets/icon-192.png", "./assets/icon-512.png"];
+const CACHE_NAME = "publi-crm-v3";
+const APP_SHELL = [
+  "./assets/crm.css?v=20260803-mobile-drag-v7",
+  "./assets/crm.js?v=20260803-mobile-drag-v7",
+  "./assets/icon.svg",
+  "./assets/icon-192.png",
+  "./assets/icon-512.png",
+];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)));
