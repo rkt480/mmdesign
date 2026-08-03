@@ -370,37 +370,85 @@ function pilot_status_extract_delivery_event(array $payload): array
     $event = strtolower(trim((string) ($payload['event'] ?? '')));
     $deliveryEvents = ['message.sent', 'message.delivered', 'message.read', 'message.failed'];
 
-    if (!in_array($event, $deliveryEvents, true)) {
-        return ['event' => '', 'id' => '', 'error' => ''];
+    if (in_array($event, $deliveryEvents, true)) {
+        $data = is_array($payload['data'] ?? null) ? $payload['data'] : [];
+        $messageId = '';
+
+        foreach (['id', 'internalMessageId', 'message_id', 'messageId'] as $key) {
+            if (is_scalar($data[$key] ?? null) && trim((string) $data[$key]) !== '') {
+                $messageId = trim((string) $data[$key]);
+                break;
+            }
+        }
+
+        if ($messageId === '' && is_scalar($payload['id'] ?? null)) {
+            $messageId = trim((string) $payload['id']);
+        }
+
+        $errorParts = [];
+
+        foreach (['errorMessage', 'error', 'errorCode', 'reason'] as $key) {
+            if (is_scalar($data[$key] ?? null) && trim((string) $data[$key]) !== '') {
+                $errorParts[] = trim((string) $data[$key]);
+            }
+        }
+
+        return [
+            'event' => $event,
+            'id' => $messageId,
+            'destination' => '',
+            'error' => implode(' | ', array_values(array_unique($errorParts))),
+        ];
     }
 
-    $data = is_array($payload['data'] ?? null) ? $payload['data'] : [];
-    $messageId = '';
+    // Pilot Status forwards official Meta delivery notifications in the native
+    // WhatsApp webhook envelope, where the state lives in entry[].changes[].
+    // value.statuses[] rather than in a top-level `event` field.
+    foreach ($payload['entry'] ?? [] as $entry) {
+        foreach (is_array($entry['changes'] ?? null) ? $entry['changes'] : [] as $change) {
+            $value = is_array($change['value'] ?? null) ? $change['value'] : [];
 
-    foreach (['id', 'internalMessageId', 'message_id', 'messageId'] as $key) {
-        if (is_scalar($data[$key] ?? null) && trim((string) $data[$key]) !== '') {
-            $messageId = trim((string) $data[$key]);
-            break;
+            foreach (is_array($value['statuses'] ?? null) ? $value['statuses'] : [] as $status) {
+                $statusName = strtolower(trim((string) ($status['status'] ?? '')));
+                $mappedEvent = match ($statusName) {
+                    'sent' => 'message.sent',
+                    'delivered' => 'message.delivered',
+                    'read' => 'message.read',
+                    'failed' => 'message.failed',
+                    default => '',
+                };
+
+                if ($mappedEvent === '') {
+                    continue;
+                }
+
+                $errorParts = [];
+
+                foreach (is_array($status['errors'] ?? null) ? $status['errors'] : [] as $error) {
+                    foreach (['code', 'title', 'message'] as $key) {
+                        if (is_scalar($error[$key] ?? null) && trim((string) $error[$key]) !== '') {
+                            $errorParts[] = trim((string) $error[$key]);
+                        }
+                    }
+
+                    $details = $error['error_data']['details'] ?? null;
+
+                    if (is_scalar($details) && trim((string) $details) !== '') {
+                        $errorParts[] = trim((string) $details);
+                    }
+                }
+
+                return [
+                    'event' => $mappedEvent,
+                    'id' => trim((string) ($status['id'] ?? '')),
+                    'destination' => trim((string) ($status['recipient_id'] ?? '')),
+                    'error' => implode(' | ', array_values(array_unique($errorParts))),
+                ];
+            }
         }
     }
 
-    if ($messageId === '' && is_scalar($payload['id'] ?? null)) {
-        $messageId = trim((string) $payload['id']);
-    }
-
-    $errorParts = [];
-
-    foreach (['errorMessage', 'error', 'errorCode', 'reason'] as $key) {
-        if (is_scalar($data[$key] ?? null) && trim((string) $data[$key]) !== '') {
-            $errorParts[] = trim((string) $data[$key]);
-        }
-    }
-
-    return [
-        'event' => $event,
-        'id' => $messageId,
-        'error' => implode(' | ', array_values(array_unique($errorParts))),
-    ];
+    return ['event' => '', 'id' => '', 'destination' => '', 'error' => ''];
 }
 
 function pilot_status_send_text(string $number, string $text): array
@@ -530,20 +578,6 @@ function pilot_status_publish_media(string $filePath, string $mimeType, string $
     return ['ok' => true, 'url' => rtrim($baseUrl, '/') . '/' . rawurlencode($storedName)];
 }
 
-function pilot_status_media_data_uri(string $filePath, string $mimeType): array
-{
-    $contents = @file_get_contents($filePath);
-
-    if ($contents === false || $contents === '') {
-        return ['ok' => false, 'error' => 'Não foi possível preparar o áudio para envio.'];
-    }
-
-    return [
-        'ok' => true,
-        'media' => 'data:' . $mimeType . ';base64,' . base64_encode($contents),
-    ];
-}
-
 function pilot_status_send_media(
     string $number,
     string $filePath,
@@ -570,23 +604,6 @@ function pilot_status_send_media(
 
     if ($fileSize === false || $fileSize < 1) {
         return ['ok' => false, 'error' => 'Não foi possível ler o arquivo de mídia.'];
-    }
-
-    // The official Meta connection accepts a base64 data URI. Unlike the
-    // temporary URL used by the other media types, it does not require Pilot
-    // Status to reach this CRM's host to download the voice note.
-    if ($mediaType === 'audio') {
-        $encodedMedia = pilot_status_media_data_uri($filePath, $mimeType);
-
-        if (($encodedMedia['ok'] ?? false) !== true) {
-            return $encodedMedia;
-        }
-
-        return pilot_status_request('/messages/send', [
-            'destinationNumber' => $to,
-            'media' => (string) ($encodedMedia['media'] ?? ''),
-            'mediaType' => 'audio',
-        ], 60);
     }
 
     pilot_status_cleanup_public_media();

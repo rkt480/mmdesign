@@ -554,7 +554,7 @@ foreach ($whatsappTemplates as $template) {
         </header>
 
         <?php if ($sent): ?>
-          <div class="wa-toast success">Mensagem enviada.</div>
+          <div class="wa-toast success">Solicitação de envio aceita. Aguardando confirmação do WhatsApp.</div>
         <?php endif; ?>
 
         <?php if ($sendError !== ''): ?>

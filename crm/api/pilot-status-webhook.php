@@ -56,6 +56,13 @@ if ($delivery['event'] !== '') {
     $messageId = (string) $delivery['id'];
     $lead = $messageId !== '' ? crm_find_lead_by_pilot_status_message_id($messageId) : null;
 
+    // Official Meta status payloads identify the message with a WhatsApp
+    // wamid, while the CRM stores Pilot Status' internal message ID. When the
+    // IDs differ, the recipient lets us still update the affected conversation.
+    if ($lead === null && trim((string) ($delivery['destination'] ?? '')) !== '') {
+        $lead = crm_find_lead_by_whatsapp((string) $delivery['destination']);
+    }
+
     if ($lead === null) {
         pilot_status_log('Evento de entrega sem lead correspondente.', ['delivery' => $delivery]);
         echo json_encode(['ok' => true, 'processed' => false, 'reason' => 'Mensagem não vinculada ao CRM.']);
