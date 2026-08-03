@@ -112,6 +112,9 @@ const touchDragState = {
   pointerId: null,
   startX: 0,
   startY: 0,
+  lastX: 0,
+  lastY: 0,
+  dropzone: null,
   holdTimer: null,
   active: false,
 };
@@ -153,6 +156,9 @@ function resetTouchDragState() {
   touchDragState.previousParent = null;
   touchDragState.previousNextSibling = null;
   touchDragState.pointerId = null;
+  touchDragState.lastX = 0;
+  touchDragState.lastY = 0;
+  touchDragState.dropzone = null;
   touchDragState.active = false;
   document.body.classList.remove("touch-dragging");
   clearTouchDropzoneState();
@@ -188,6 +194,41 @@ function activateTouchKanbanDrag(card) {
   document.body.classList.add("touch-dragging");
 }
 
+function getTouchDropzone(clientX, clientY) {
+  const target = document.elementFromPoint(clientX, clientY);
+  const directZone = target?.closest(".kanban-dropzone");
+
+  if (directZone) {
+    return directZone;
+  }
+
+  const directColumn = target?.closest(".kanban-column");
+
+  if (directColumn) {
+    return directColumn.querySelector(".kanban-dropzone");
+  }
+
+  return [...document.querySelectorAll(".kanban-column")].find((column) => {
+    const rect = column.getBoundingClientRect();
+    return clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom;
+  })?.querySelector(".kanban-dropzone") || null;
+}
+
+function placeTouchCardInDropzone(card, zone, clientY) {
+  if (!zone || !document.body.contains(zone)) {
+    return;
+  }
+
+  const cardAfterPointer = getCardAfterPointer(zone, clientY);
+  const alreadyInPosition = card.parentElement === zone
+    && (cardAfterPointer === card || card.nextElementSibling === cardAfterPointer);
+
+  if (!alreadyInPosition) {
+    zone.insertBefore(card, cardAfterPointer);
+    updateColumnCounts();
+  }
+}
+
 function beginTouchKanbanDrag(event) {
   if (!isTouchKanbanEvent(event) || isKanbanInteractiveTarget(event.target)) {
     return;
@@ -208,6 +249,9 @@ function beginTouchKanbanDrag(event) {
   touchDragState.pointerId = getGesturePointerId(event);
   touchDragState.startX = point.clientX;
   touchDragState.startY = point.clientY;
+  touchDragState.lastX = point.clientX;
+  touchDragState.lastY = point.clientY;
+  touchDragState.dropzone = card.parentElement?.closest(".kanban-dropzone") || null;
   touchDragState.active = false;
   touchDragState.holdTimer = window.setTimeout(() => {
     activateTouchKanbanDrag(card);
@@ -236,24 +280,21 @@ function moveTouchKanbanDrag(event) {
   }
 
   event.preventDefault();
+  touchDragState.lastX = point.clientX;
+  touchDragState.lastY = point.clientY;
   updateBoardAutoScroll(point.clientX);
 
-  const target = document.elementFromPoint(point.clientX, point.clientY);
-  const zone = target?.closest(".kanban-dropzone");
+  const zone = getTouchDropzone(point.clientX, point.clientY);
 
-  if (!zone || !document.body.contains(zone)) {
+  if (!zone) {
     return;
   }
 
   clearTouchDropzoneState();
   zone.classList.add("is-over");
   const card = touchDragState.card;
-  const cardAfterPointer = getCardAfterPointer(zone, point.clientY);
-
-  if (cardAfterPointer !== card && card.nextElementSibling !== cardAfterPointer) {
-    zone.insertBefore(card, cardAfterPointer);
-    updateColumnCounts();
-  }
+  touchDragState.dropzone = zone;
+  placeTouchCardInDropzone(card, zone, point.clientY);
 }
 
 async function finishTouchKanbanDrag(event, cancelled = false) {
@@ -277,6 +318,12 @@ async function finishTouchKanbanDrag(event, cancelled = false) {
   const previousParent = touchDragState.previousParent;
   const previousNextSibling = touchDragState.previousNextSibling;
   const previousStatus = previousParent?.dataset.status || "";
+  const lastDropzone = touchDragState.dropzone || getTouchDropzone(touchDragState.lastX, touchDragState.lastY);
+
+  if (!cancelled && lastDropzone) {
+    placeTouchCardInDropzone(card, lastDropzone, touchDragState.lastY);
+  }
+
   const finalParent = card.parentElement;
   const finalStatus = finalParent?.dataset.status || previousStatus;
   const leadId = card.dataset.leadId || "";
