@@ -1,7 +1,7 @@
-const CACHE_NAME = "publi-crm-v3";
+const CACHE_NAME = "publi-crm-v4";
 const APP_SHELL = [
-  "./assets/crm.css?v=20260803-mobile-drag-v7",
-  "./assets/crm.js?v=20260803-mobile-drag-v7",
+  "./assets/crm.css?v=20260803-mobile-drag-v8",
+  "./assets/crm.js?v=20260803-mobile-drag-v8",
   "./assets/icon.svg",
   "./assets/icon-192.png",
   "./assets/icon-512.png",

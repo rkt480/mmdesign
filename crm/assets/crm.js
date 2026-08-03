@@ -9,6 +9,7 @@ const csrfToken = document.querySelector("meta[name='csrf-token']")?.content || 
 let draggedCard = null;
 let boardScrollFrame = null;
 let boardScrollSpeed = 0;
+let localKanbanMoveUntil = 0;
 const modalOrigins = new WeakMap();
 
 function updateColumnCounts() {
@@ -55,6 +56,37 @@ function getCardAfterPointer(zone, clientY) {
 
 function getLeadOrder(zone) {
   return [...zone.querySelectorAll(".kanban-card")].map((card) => card.dataset.leadId);
+}
+
+function markLocalKanbanMove() {
+  localKanbanMoveUntil = Date.now() + 12000;
+}
+
+function consumeLocalKanbanMove() {
+  const isRecent = Date.now() <= localKanbanMoveUntil;
+  localKanbanMoveUntil = 0;
+  return isRecent;
+}
+
+function keepKanbanCardInView(card) {
+  if (!kanbanBoard || !card || !window.matchMedia("(max-width: 880px), (pointer: coarse)").matches) {
+    return;
+  }
+
+  const column = card.closest(".kanban-column");
+
+  if (!column) {
+    return;
+  }
+
+  const boardRect = kanbanBoard.getBoundingClientRect();
+  const columnRect = column.getBoundingClientRect();
+  const targetLeft = kanbanBoard.scrollLeft
+    + columnRect.left
+    - boardRect.left
+    - Math.max(0, (boardRect.width - columnRect.width) / 2);
+
+  kanbanBoard.scrollTo({ left: Math.max(0, targetLeft), behavior: "smooth" });
 }
 
 function stopBoardAutoScroll() {
@@ -346,6 +378,7 @@ async function finishTouchKanbanDrag(event, cancelled = false) {
       orders[previousStatus] = getLeadOrder(previousParent);
     }
 
+    markLocalKanbanMove();
     await persistLeadStatus(leadId, finalStatus, orders);
     card.querySelectorAll("input[name='status']").forEach((input) => {
       input.value = finalStatus;
@@ -356,7 +389,10 @@ async function finishTouchKanbanDrag(event, cancelled = false) {
     if (mobileStatus) {
       mobileStatus.value = finalStatus;
     }
+
+    keepKanbanCardInView(card);
   } catch (error) {
+    localKanbanMoveUntil = 0;
     restoreTouchCard(card, previousParent, previousNextSibling, previousStatus);
     updateColumnCounts();
     alert("Não foi possível mover o lead. Tente novamente.");
@@ -460,10 +496,11 @@ dropzones.forEach((zone) => {
         [targetStatus]: getLeadOrder(zone),
       };
 
-      if (previousParent !== zone) {
-        orders[previousStatus] = getLeadOrder(previousParent);
-      }
+    if (previousParent !== zone) {
+      orders[previousStatus] = getLeadOrder(previousParent);
+    }
 
+      markLocalKanbanMove();
       await persistLeadStatus(leadId, targetStatus, orders);
       const statusInput = movedCard.querySelector("input[name='status']");
 
@@ -476,7 +513,10 @@ dropzones.forEach((zone) => {
       if (mobileStatus) {
         mobileStatus.value = targetStatus;
       }
+
+      keepKanbanCardInView(movedCard);
     } catch (error) {
+      localKanbanMoveUntil = 0;
       previousParent.insertBefore(
         movedCard,
         previousNextSibling?.parentElement === previousParent ? previousNextSibling : null
@@ -518,6 +558,7 @@ mobileStatusControls.forEach((control) => {
     updateColumnCounts();
 
     try {
+      markLocalKanbanMove();
       await persistLeadStatus(leadId, targetStatus, {
         [previousStatus]: getLeadOrder(previousParent),
         [targetStatus]: getLeadOrder(targetZone),
@@ -526,7 +567,10 @@ mobileStatusControls.forEach((control) => {
       card.querySelectorAll("input[name='status']").forEach((input) => {
         input.value = targetStatus;
       });
+
+      keepKanbanCardInView(card);
     } catch (error) {
+      localKanbanMoveUntil = 0;
       previousParent.insertBefore(
         card,
         previousNextSibling?.parentElement === previousParent ? previousNextSibling : null
@@ -1277,6 +1321,11 @@ if (document.body.classList.contains("leads-page")) {
 
       if (leadFeedVersion !== data.version) {
         leadFeedVersion = data.version;
+
+        if (consumeLocalKanbanMove()) {
+          return;
+        }
+
         leadFeedReloadScheduled = true;
         showLeadFeedRefreshNotice();
         window.setTimeout(() => window.location.reload(), 350);
