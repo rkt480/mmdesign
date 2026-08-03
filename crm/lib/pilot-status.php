@@ -347,7 +347,7 @@ function pilot_status_delete_template(string $templateId): array
 
 function pilot_status_send_template(string $number, array $template, array $variables = []): array
 {
-    $to = crm_normalize_whatsapp_number($number);
+    $to = pilot_status_normalize_destination_number($number);
     $templateId = trim((string) ($template['meta_template_id'] ?? ''));
 
     if ($to === '') {
@@ -405,7 +405,7 @@ function pilot_status_extract_delivery_event(array $payload): array
 
 function pilot_status_send_text(string $number, string $text): array
 {
-    $to = crm_normalize_whatsapp_number($number);
+    $to = pilot_status_normalize_destination_number($number);
 
     if ($to === '') {
         return ['ok' => false, 'error' => 'WhatsApp inválido.'];
@@ -415,6 +415,13 @@ function pilot_status_send_text(string $number, string $text): array
         'destinationNumber' => $to,
         'text' => $text,
     ]);
+}
+
+function pilot_status_normalize_destination_number(string $number): string
+{
+    $number = crm_normalize_whatsapp_number($number);
+
+    return $number === '' ? '' : '+' . $number;
 }
 
 function pilot_status_public_media_directory(): string
@@ -523,6 +530,20 @@ function pilot_status_publish_media(string $filePath, string $mimeType, string $
     return ['ok' => true, 'url' => rtrim($baseUrl, '/') . '/' . rawurlencode($storedName)];
 }
 
+function pilot_status_media_data_uri(string $filePath, string $mimeType): array
+{
+    $contents = @file_get_contents($filePath);
+
+    if ($contents === false || $contents === '') {
+        return ['ok' => false, 'error' => 'Não foi possível preparar o áudio para envio.'];
+    }
+
+    return [
+        'ok' => true,
+        'media' => 'data:' . $mimeType . ';base64,' . base64_encode($contents),
+    ];
+}
+
 function pilot_status_send_media(
     string $number,
     string $filePath,
@@ -531,7 +552,7 @@ function pilot_status_send_media(
     string $caption = '',
     string $fileName = ''
 ): array {
-    $to = crm_normalize_whatsapp_number($number);
+    $to = pilot_status_normalize_destination_number($number);
 
     if ($to === '') {
         return ['ok' => false, 'error' => 'WhatsApp inválido.'];
@@ -549,6 +570,23 @@ function pilot_status_send_media(
 
     if ($fileSize === false || $fileSize < 1) {
         return ['ok' => false, 'error' => 'Não foi possível ler o arquivo de mídia.'];
+    }
+
+    // The official Meta connection accepts a base64 data URI. Unlike the
+    // temporary URL used by the other media types, it does not require Pilot
+    // Status to reach this CRM's host to download the voice note.
+    if ($mediaType === 'audio') {
+        $encodedMedia = pilot_status_media_data_uri($filePath, $mimeType);
+
+        if (($encodedMedia['ok'] ?? false) !== true) {
+            return $encodedMedia;
+        }
+
+        return pilot_status_request('/messages/send', [
+            'destinationNumber' => $to,
+            'media' => (string) ($encodedMedia['media'] ?? ''),
+            'mediaType' => 'audio',
+        ], 60);
     }
 
     pilot_status_cleanup_public_media();
