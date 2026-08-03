@@ -1268,17 +1268,23 @@ foreach ($whatsappTemplates as $template) {
 
           try {
             recorderStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            const preferredType = MediaRecorder.isTypeSupported("audio/ogg;codecs=opus")
-              ? "audio/ogg;codecs=opus"
-              : (MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus" : "audio/webm");
+            const recordingTypes = [
+              { mimeType: "audio/ogg;codecs=opus", fileType: "audio/ogg", extension: "ogg" },
+              { mimeType: "audio/mp4", fileType: "audio/mp4", extension: "m4a" },
+              { mimeType: "audio/webm;codecs=opus", fileType: "audio/webm", extension: "webm" },
+            ];
+            const recordingType = recordingTypes.find((candidate) => MediaRecorder.isTypeSupported(candidate.mimeType));
             const chunks = [];
-            recorder = new MediaRecorder(recorderStream, { mimeType: preferredType });
+            recorder = recordingType
+              ? new MediaRecorder(recorderStream, { mimeType: recordingType.mimeType })
+              : new MediaRecorder(recorderStream);
             recorder.addEventListener("dataavailable", (event) => {
               if (event.data.size > 0) chunks.push(event.data);
             });
             recorder.addEventListener("stop", () => {
-              const extension = preferredType.startsWith("audio/ogg") ? "ogg" : "webm";
-              const file = new File(chunks, `audio-whatsapp.${extension}`, { type: preferredType.split(";")[0] });
+              const actualMimeType = recorder?.mimeType.split(";")[0] || recordingType?.fileType || "audio/webm";
+              const extension = recordingType?.extension || (actualMimeType === "audio/mp4" ? "m4a" : "webm");
+              const file = new File(chunks, `audio-whatsapp.${extension}`, { type: actualMimeType });
               const transfer = new DataTransfer();
               transfer.items.add(file);
               mediaInput.files = transfer.files;
