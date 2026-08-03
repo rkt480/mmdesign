@@ -117,7 +117,11 @@ const touchDragState = {
 };
 
 function isTouchKanbanEvent(event) {
-  return event.type.startsWith("touch") || event.pointerType === "touch";
+  if (event.type.startsWith("pointer")) {
+    return event.pointerType === "touch";
+  }
+
+  return !window.PointerEvent && event.type.startsWith("touch");
 }
 
 function getGesturePoint(event) {
@@ -172,7 +176,7 @@ function restoreTouchCard(card, parent, nextSibling, status) {
   }
 }
 
-function activateTouchKanbanDrag(card, pointerId) {
+function activateTouchKanbanDrag(card) {
   if (touchDragState.card !== card || touchDragState.active) {
     return;
   }
@@ -182,9 +186,6 @@ function activateTouchKanbanDrag(card, pointerId) {
   draggedCard = card;
   card.classList.add("is-dragging", "is-touch-dragging");
   document.body.classList.add("touch-dragging");
-  if (typeof pointerId === "number") {
-    card.setPointerCapture?.(pointerId);
-  }
 }
 
 function beginTouchKanbanDrag(event) {
@@ -208,16 +209,17 @@ function beginTouchKanbanDrag(event) {
   touchDragState.startX = point.clientX;
   touchDragState.startY = point.clientY;
   touchDragState.active = false;
-  if (typeof event.pointerId === "number") {
-    card.setPointerCapture?.(event.pointerId);
-  }
   touchDragState.holdTimer = window.setTimeout(() => {
-    activateTouchKanbanDrag(card, touchDragState.pointerId);
+    activateTouchKanbanDrag(card);
   }, 180);
 }
 
 function moveTouchKanbanDrag(event) {
   if (!touchDragState.card) {
+    return;
+  }
+
+  if (event.type.startsWith("pointer") && event.pointerId !== touchDragState.pointerId) {
     return;
   }
 
@@ -227,7 +229,7 @@ function moveTouchKanbanDrag(event) {
     const distance = Math.hypot(point.clientX - touchDragState.startX, point.clientY - touchDragState.startY);
 
     if (distance > 10) {
-      activateTouchKanbanDrag(touchDragState.card, getGesturePointerId(event));
+      activateTouchKanbanDrag(touchDragState.card);
     } else {
       return;
     }
@@ -256,6 +258,10 @@ function moveTouchKanbanDrag(event) {
 
 async function finishTouchKanbanDrag(event, cancelled = false) {
   if (!touchDragState.card) {
+    return;
+  }
+
+  if (event.type.startsWith("pointer") && event.pointerId !== touchDragState.pointerId) {
     return;
   }
 
@@ -324,27 +330,30 @@ cards.forEach((card) => {
   });
 
   card.addEventListener("pointerdown", beginTouchKanbanDrag);
-  card.addEventListener("pointermove", moveTouchKanbanDrag, { passive: false });
-  card.addEventListener("pointerup", finishTouchKanbanDrag);
-  card.addEventListener("pointercancel", (event) => finishTouchKanbanDrag(event, true));
-  card.addEventListener("touchstart", beginTouchKanbanDrag, { passive: false });
 });
 
-document.addEventListener("pointerup", (event) => {
-  if (touchDragState.card && touchDragState.pointerId === event.pointerId && !touchDragState.active) {
+document.addEventListener("pointermove", moveTouchKanbanDrag, { passive: false });
+document.addEventListener("pointerup", finishTouchKanbanDrag, { passive: false });
+document.addEventListener("pointercancel", (event) => finishTouchKanbanDrag(event, true), { passive: false });
+
+document.addEventListener("pointerdown", (event) => {
+  if (event.pointerType !== "touch" || !touchDragState.card) {
+    return;
+  }
+
+  if (event.pointerId !== touchDragState.pointerId) {
     resetTouchDragState();
   }
 });
 
-document.addEventListener("pointercancel", (event) => {
-  if (touchDragState.card && touchDragState.pointerId === event.pointerId) {
-    resetTouchDragState();
-  }
-});
-
-document.addEventListener("touchmove", moveTouchKanbanDrag, { passive: false });
-document.addEventListener("touchend", finishTouchKanbanDrag, { passive: false });
-document.addEventListener("touchcancel", (event) => finishTouchKanbanDrag(event, true), { passive: false });
+if (!window.PointerEvent) {
+  cards.forEach((card) => {
+    card.addEventListener("touchstart", beginTouchKanbanDrag, { passive: false });
+  });
+  document.addEventListener("touchmove", moveTouchKanbanDrag, { passive: false });
+  document.addEventListener("touchend", finishTouchKanbanDrag, { passive: false });
+  document.addEventListener("touchcancel", (event) => finishTouchKanbanDrag(event, true), { passive: false });
+}
 
 const syncMobileDraggable = () => {
   const isMobile = window.matchMedia("(max-width: 880px), (pointer: coarse)").matches;
