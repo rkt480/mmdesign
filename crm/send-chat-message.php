@@ -95,7 +95,17 @@ if ($hasMedia) {
     $fileName = preg_replace('/[^A-Za-z0-9._-]+/', '_', basename((string) ($media['name'] ?? ''))) ?? '';
     $fileName = trim($fileName, '._-') ?: 'documento';
     $imageTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
-    $audioTypes = ['audio/aac', 'audio/amr', 'audio/m4a', 'audio/mp4', 'audio/mpeg', 'audio/ogg', 'audio/opus', 'audio/webm', 'video/webm', 'audio/wav', 'audio/x-wav'];
+    $audioTypes = ['audio/aac', 'audio/amr', 'audio/m4a', 'audio/x-m4a', 'audio/mp4', 'audio/mpeg', 'audio/ogg', 'audio/opus', 'audio/webm', 'video/webm', 'audio/wav', 'audio/x-wav'];
+    $audioMimeByExtension = [
+        'aac' => 'audio/aac',
+        'amr' => 'audio/amr',
+        'm4a' => 'audio/mp4',
+        'mp3' => 'audio/mpeg',
+        'ogg' => 'audio/ogg',
+        'opus' => 'audio/opus',
+        'wav' => 'audio/wav',
+        'webm' => 'audio/webm',
+    ];
     $documentTypes = [
         'application/pdf',
         'application/msword',
@@ -108,6 +118,17 @@ if ($hasMedia) {
         'text/csv',
         'text/plain',
     ];
+
+    // Browser recordings sometimes arrive as application/octet-stream or
+    // video/mp4 despite their File object being correctly marked as audio.
+    // Accept this only for a known audio extension and a matching upload MIME.
+    $uploadMimeType = strtolower(trim(explode(';', (string) ($media['type'] ?? ''))[0]));
+    $extension = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
+    $isBrowserAudioUpload = str_starts_with($uploadMimeType, 'audio/') || $uploadMimeType === 'video/webm';
+
+    if (!in_array($mimeType, $audioTypes, true) && $isBrowserAudioUpload && isset($audioMimeByExtension[$extension])) {
+        $mimeType = $audioMimeByExtension[$extension];
+    }
 
     if (in_array($mimeType, $imageTypes, true)) {
         $mediaType = 'image';
