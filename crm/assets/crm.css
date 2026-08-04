@@ -4356,10 +4356,13 @@ textarea:focus {
 }
 
 .whatsapp-crm-page .wa-message {
+  /* A message must always keep the height required by its contents.  Without
+     this, the column flex container may shrink every bubble to fit its
+     viewport when the conversation is long. */
+  flex: 0 0 auto;
   max-width: min(70%, 620px);
   min-width: 0;
   padding: 10px 12px 8px;
-  overflow: hidden;
   border-radius: 16px;
   box-shadow: 0 10px 24px rgba(48, 63, 91, 0.08);
 }
@@ -4372,8 +4375,11 @@ textarea:focus {
 }
 
 .whatsapp-crm-page .wa-message-media {
+  width: fit-content;
   max-width: 100%;
   margin-bottom: 8px;
+  overflow: hidden;
+  border-radius: 10px;
 }
 
 .whatsapp-crm-page .wa-received-media {
@@ -4695,7 +4701,7 @@ textarea:focus {
   }
 }
 
-@media (max-width: 820px) {
+@media (max-width: 760px) {
   .whatsapp-crm-page {
     overflow: auto;
   }
@@ -5543,7 +5549,7 @@ textarea:focus {
   }
 }
 
-@media (max-width: 1024px) {
+@media (max-width: 760px) {
   .whatsapp-crm-page {
     min-height: 100dvh;
     overflow: auto;
@@ -5559,40 +5565,8 @@ textarea:focus {
     overflow: visible;
   }
 
-  .whatsapp-crm-page .sidebar {
-    display: flex;
-    width: 100%;
-    height: auto;
-    min-height: 64px;
-    align-items: center;
-    justify-content: space-between;
-    margin: 0;
-    padding: 10px 12px;
-    border-radius: 22px;
-  }
-
-  .whatsapp-crm-page .brand {
-    width: auto;
-    grid-auto-flow: column;
-    gap: 8px;
-  }
-
-  .whatsapp-crm-page .sidebar-tabs,
-  .whatsapp-crm-page .sidebar-exit {
-    margin-top: 0;
-  }
-
-  .whatsapp-crm-page .sidebar-tabs {
-    display: flex;
-    width: auto;
-    gap: 6px;
-  }
-
-  .whatsapp-crm-page .sidebar-tabs a,
-  .whatsapp-crm-page .sidebar-exit {
-    width: 44px;
-    height: 44px;
-    min-height: 44px;
+  .whatsapp-crm-page .wa-rail {
+    display: none;
   }
 
   .wa-mobile-tabs {
@@ -5656,6 +5630,7 @@ textarea:focus {
   .whatsapp-crm-page .wa-thread {
     grid-template-rows: 68px minmax(280px, 1fr) auto;
     min-height: calc(100dvh - 152px);
+    max-height: calc(100dvh - 152px);
   }
 
   .whatsapp-crm-page .wa-thread-header {
