@@ -184,7 +184,7 @@ if (($result['ok'] ?? false) === true) {
     }
     crm_append_lead_note(
         $leadId,
-        ($hasMedia ? 'Mídia enviada via ' : 'Mensagem enviada via ') . $providerLabel . ' em ' . date('d/m/Y H:i') . ":\n" . $sentDescription
+        ($hasMedia ? 'Mídia enviada via ' : 'Mensagem enviada via ') . $providerLabel . ' em ' . date('d/m/Y H:i:s') . ":\n" . $sentDescription
     );
     crm_update_whatsapp_status($leadId, $pilotStatusQueued ? 'aguardando' : 'enviado');
     header('Location: ' . $redirect . '&sent=1');
@@ -194,7 +194,7 @@ if (($result['ok'] ?? false) === true) {
 $error = 'Falha ao enviar via ' . $providerLabel . ': ' . (string) ($result['error'] ?? 'Erro desconhecido.');
 crm_append_lead_note(
     $leadId,
-    'Falha ao enviar via ' . $providerLabel . ' em ' . date('d/m/Y H:i') . ":\n" . $error
+    'Falha ao enviar via ' . $providerLabel . ' em ' . date('d/m/Y H:i:s') . ":\n" . $error
 );
 
 header('Location: ' . $redirect . '&send_error=' . rawurlencode($error));

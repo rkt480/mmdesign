@@ -86,7 +86,9 @@ function whatsapp_page_provider_badge_class(string $provider): string
 
 function whatsapp_page_parse_br_datetime(string $value): string
 {
-    $date = DateTime::createFromFormat('d/m/Y H:i', trim($value));
+    $value = trim($value);
+    $date = DateTime::createFromFormat('d/m/Y H:i:s', $value);
+    $date = $date instanceof DateTime ? $date : DateTime::createFromFormat('d/m/Y H:i', $value);
 
     return $date instanceof DateTime ? $date->format('Y-m-d H:i:s') : date('Y-m-d H:i:s');
 }
@@ -309,7 +311,7 @@ function whatsapp_page_messages_for_lead(array $lead): array
                 continue;
             }
 
-            if (preg_match('/^Mensagem recebida pelo provedor anterior em ([0-9]{2}\/[0-9]{2}\/[0-9]{4} [0-9]{2}:[0-9]{2}):\n(.+)$/s', $block, $match) === 1) {
+            if (preg_match('/^Mensagem recebida pelo provedor anterior em ([0-9]{2}\/[0-9]{2}\/[0-9]{4} [0-9]{2}:[0-9]{2}(?::[0-9]{2})?):\n(.+)$/s', $block, $match) === 1) {
                 $messages[] = [
                     'direction' => 'incoming',
                     'provider' => 'pilot_status',
@@ -320,7 +322,7 @@ function whatsapp_page_messages_for_lead(array $lead): array
                 continue;
             }
 
-            if (preg_match('/^Mensagem recebida pela Meta Cloud API em ([0-9]{2}\/[0-9]{2}\/[0-9]{4} [0-9]{2}:[0-9]{2}):\n(.+)$/s', $block, $match) === 1) {
+            if (preg_match('/^Mensagem recebida pela Meta Cloud API em ([0-9]{2}\/[0-9]{2}\/[0-9]{4} [0-9]{2}:[0-9]{2}(?::[0-9]{2})?):\n(.+)$/s', $block, $match) === 1) {
                 $messages[] = [
                     'direction' => 'incoming',
                     'provider' => 'meta_cloud',
@@ -331,7 +333,7 @@ function whatsapp_page_messages_for_lead(array $lead): array
                 continue;
             }
 
-            if (preg_match('/^Mensagem recebida pela Pilot Status em ([0-9]{2}\/[0-9]{2}\/[0-9]{4} [0-9]{2}:[0-9]{2}):\n(.+)$/s', $block, $match) === 1) {
+            if (preg_match('/^Mensagem recebida pela Pilot Status em ([0-9]{2}\/[0-9]{2}\/[0-9]{4} [0-9]{2}:[0-9]{2}(?::[0-9]{2})?):\n(.+)$/s', $block, $match) === 1) {
                 $messages[] = [
                     'direction' => 'incoming',
                     'provider' => 'pilot_status',
@@ -342,7 +344,7 @@ function whatsapp_page_messages_for_lead(array $lead): array
                 continue;
             }
 
-            if (preg_match('/^Mídia recebida pela Pilot Status em ([0-9]{2}\/[0-9]{2}\/[0-9]{4} [0-9]{2}:[0-9]{2}):\n\[crm_media\](.+)$/s', $block, $match) === 1) {
+            if (preg_match('/^Mídia recebida pela Pilot Status em ([0-9]{2}\/[0-9]{2}\/[0-9]{4} [0-9]{2}:[0-9]{2}(?::[0-9]{2})?):\n\[crm_media\](.+)$/s', $block, $match) === 1) {
                 $media = json_decode((string) $match[2], true);
 
                 if (is_array($media) && whatsapp_page_media_url((string) ($media['url'] ?? '')) !== '') {
@@ -359,7 +361,7 @@ function whatsapp_page_messages_for_lead(array $lead): array
                 }
             }
 
-            if (preg_match('/^Mídia enviada via (.+) em ([0-9]{2}\/[0-9]{2}\/[0-9]{4} [0-9]{2}:[0-9]{2}):\n\[crm_media\]([^\r\n]+)(?:\R(.*))?$/s', $block, $match) === 1) {
+            if (preg_match('/^Mídia enviada via (.+) em ([0-9]{2}\/[0-9]{2}\/[0-9]{4} [0-9]{2}:[0-9]{2}(?::[0-9]{2})?):\n\[crm_media\]([^\r\n]+)(?:\R(.*))?$/s', $block, $match) === 1) {
                 $media = json_decode((string) $match[3], true);
 
                 if (is_array($media) && whatsapp_page_media_url((string) ($media['url'] ?? '')) !== '') {
@@ -377,7 +379,7 @@ function whatsapp_page_messages_for_lead(array $lead): array
                 }
             }
 
-            if (preg_match('/^(?:Mensagem|Mídia) enviada via (.+) em ([0-9]{2}\/[0-9]{2}\/[0-9]{4} [0-9]{2}:[0-9]{2}):\n(.+)$/s', $block, $match) === 1) {
+            if (preg_match('/^(?:Mensagem|Mídia) enviada via (.+) em ([0-9]{2}\/[0-9]{2}\/[0-9]{4} [0-9]{2}:[0-9]{2}(?::[0-9]{2})?):\n(.+)$/s', $block, $match) === 1) {
                 $sentProviderLabel = strtolower((string) $match[1]);
                 $sentText = whatsapp_page_clean_sent_message_text(trim((string) $match[3]));
                 $messages[] = [
@@ -390,7 +392,7 @@ function whatsapp_page_messages_for_lead(array $lead): array
                 continue;
             }
 
-            if (preg_match('/^Falha ao enviar via (.+?) em ([0-9]{2}\/[0-9]{2}\/[0-9]{4} [0-9]{2}:[0-9]{2}):\n(.+)$/s', $block, $match) === 1) {
+            if (preg_match('/^Falha ao enviar via (.+?) em ([0-9]{2}\/[0-9]{2}\/[0-9]{4} [0-9]{2}:[0-9]{2}(?::[0-9]{2})?):\n(.+)$/s', $block, $match) === 1) {
                 $displayFailureText = preg_replace('/\bPilot Status\b|\bMeta Cloud API\b/iu', 'WhatsApp', $block) ?? $block;
                 $displayFailureText = preg_replace('/Falha ao enviar via WhatsApp/iu', 'Falha ao enviar mensagem', $displayFailureText) ?? $displayFailureText;
                 $messages[] = [
@@ -417,6 +419,11 @@ function whatsapp_page_messages_for_lead(array $lead): array
         }
     }
 
+    foreach ($messages as $sequence => &$message) {
+        $message['_sequence'] = $sequence;
+    }
+    unset($message);
+
     usort($messages, static function (array $a, array $b): int {
         $timestampComparison = strtotime((string) $a['at']) <=> strtotime((string) $b['at']);
 
@@ -424,10 +431,10 @@ function whatsapp_page_messages_for_lead(array $lead): array
             return $timestampComparison;
         }
 
-        $priority = ['note' => 0, 'incoming' => 1, 'outgoing' => 2];
-
-        return ($priority[(string) ($a['direction'] ?? '')] ?? 1)
-            <=> ($priority[(string) ($b['direction'] ?? '')] ?? 1);
+        // Legacy notes did not store seconds. Preserve their original note
+        // order instead of always moving a received attachment above an
+        // attachment that was sent earlier in the same minute.
+        return ((int) ($a['_sequence'] ?? 0)) <=> ((int) ($b['_sequence'] ?? 0));
     });
 
     return $messages;
@@ -496,7 +503,7 @@ foreach ($conversationGroups as $whatsapp => $conversation) {
             (string) ($message['provider'] ?? ''),
             $messageTimestamp > 0 ? date('Y-m-d H:i', $messageTimestamp) : '',
             trim((string) ($message['text'] ?? '')),
-            trim((string) (($message['media'] ?? [])['url'] ?? '')),
+            trim((string) (($message['media'] ?? [])['crm_message_id'] ?? ($message['media'] ?? [])['id'] ?? ($message['media'] ?? [])['url'] ?? '')),
         ]);
 
         $uniqueMessages[$key] = $message;

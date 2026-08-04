@@ -94,7 +94,7 @@ if ($delivery['event'] !== '') {
     crm_update_whatsapp_status((string) $lead['id'], $status, $delivery['event'] === 'message.failed' ? $delivery['error'] : null);
     crm_append_lead_note(
         (string) $lead['id'],
-        $eventMarker . ' em ' . date('d/m/Y H:i') . ":\n" . $statusText
+        $eventMarker . ' em ' . date('d/m/Y H:i:s') . ":\n" . $statusText
     );
 
     echo json_encode(['ok' => true, 'processed' => true, 'lead_id' => $lead['id'], 'status' => $status]);
@@ -120,6 +120,8 @@ foreach ($incomingMessages as $incoming) {
     $message = trim((string) ($incoming['text'] ?? ''));
     $media = is_array($incoming['media'] ?? null) ? $incoming['media'] : [];
     $mediaUrl = trim((string) ($media['url'] ?? ''));
+    $incomingMessageId = trim((string) ($incoming['id'] ?? ''));
+    $incomingMediaId = trim((string) ($media['id'] ?? ''));
     $name = trim((string) ($incoming['name'] ?? ''));
     $profilePictureUrl = crm_normalize_profile_picture_url((string) ($incoming['profile_picture_url'] ?? ''));
 
@@ -185,23 +187,44 @@ foreach ($incomingMessages as $incoming) {
         }
 
         if ($mediaUrl !== '') {
+            $dedupeMarker = $incomingMessageId !== ''
+                ? '"crm_message_id":' . json_encode($incomingMessageId, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+                : ($incomingMediaId !== ''
+                    ? '"id":' . json_encode($incomingMediaId, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+                    : '');
+
+            if ($dedupeMarker !== '' && str_contains((string) ($lead['notes'] ?? ''), $dedupeMarker)) {
+                $results[] = [
+                    'ok' => true,
+                    'whatsapp' => $whatsapp,
+                    'lead_id' => $lead['id'],
+                    'duplicate' => true,
+                ];
+                continue;
+            }
+
             $media['url'] = $mediaUrl;
             $media['type'] = trim((string) ($media['type'] ?? ''));
             $media['caption'] = trim((string) ($media['caption'] ?? '')) ?: $message;
             $media['mime_type'] = trim((string) ($media['mime_type'] ?? ''));
             $media['filename'] = trim((string) ($media['filename'] ?? ''));
+
+            if ($incomingMessageId !== '') {
+                $media['crm_message_id'] = $incomingMessageId;
+            }
+
             $mediaJson = json_encode($media, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
             if (is_string($mediaJson) && $mediaJson !== '') {
                 crm_append_lead_note(
                     (string) $lead['id'],
-                    'Mídia recebida pela Pilot Status em ' . date('d/m/Y H:i') . ":\n[crm_media]" . $mediaJson
+                    'Mídia recebida pela Pilot Status em ' . date('d/m/Y H:i:s') . ":\n[crm_media]" . $mediaJson
                 );
             }
         } elseif (($leadResult['created'] ?? false) === false && $message !== '') {
             crm_append_lead_note(
                 (string) $lead['id'],
-                'Mensagem recebida pela Pilot Status em ' . date('d/m/Y H:i') . ":\n" . $message
+                'Mensagem recebida pela Pilot Status em ' . date('d/m/Y H:i:s') . ":\n" . $message
             );
         }
     } catch (Throwable $error) {
