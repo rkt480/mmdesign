@@ -553,7 +553,7 @@ foreach ($whatsappTemplates as $template) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="csrf-token" content="<?= htmlspecialchars(crm_csrf_token()) ?>" />
     <title>WhatsApp | Publi CRM</title>
-    <link rel="stylesheet" href="./assets/crm.css?v=20260802-composer" />
+    <link rel="stylesheet" href="./assets/crm.css?v=<?= rawurlencode((string) (filemtime(__DIR__ . '/assets/crm.css') ?: time())) ?>" />
   </head>
   <body class="whatsapp-page whatsapp-crm-page" data-wa-initial-view="<?= is_array($activeLead) ? 'thread' : 'inbox' ?>">
     <main class="wa-web-shell" aria-label="Atendimento WhatsApp do CRM">
@@ -1190,6 +1190,7 @@ foreach ($whatsappTemplates as $template) {
 
           if (currentSurface && refreshedSurface && currentSurface.innerHTML !== refreshedSurface.innerHTML) {
             const wasAtBottom = currentSurface.scrollHeight - currentSurface.scrollTop - currentSurface.clientHeight < 80;
+            const previousScrollTop = currentSurface.scrollTop;
             const currentIncomingMessages = new Set(
               Array.from(currentSurface.querySelectorAll(".wa-message-incoming")).map((message) => message.innerHTML),
             );
@@ -1204,6 +1205,11 @@ foreach ($whatsappTemplates as $template) {
 
             if (wasAtBottom) {
               refreshedSurface.scrollTop = refreshedSurface.scrollHeight;
+            } else {
+              // Refreshing the thread must not send an attendant who is
+              // reading older messages back to the top when a media message
+              // arrives in the background.
+              refreshedSurface.scrollTop = previousScrollTop;
             }
           } else if (!currentSurface && refreshedSurface) {
             // Se a primeira mensagem chegou enquanto a tela estava sem conversa,
