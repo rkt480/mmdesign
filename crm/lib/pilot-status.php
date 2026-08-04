@@ -659,6 +659,38 @@ function pilot_status_store_inbound_media_data_uri(string $dataUri, string $mime
     ];
 }
 
+/**
+ * Keeps an attachment sent by the attendant available to the CRM history.
+ * The provider upload may be temporary, while the conversation needs a URL
+ * that remains playable when the screen is refreshed.
+ */
+function pilot_status_store_crm_media_file(string $filePath, string $mimeType, string $fileName = ''): array
+{
+    if (!is_file($filePath) || !is_readable($filePath)) {
+        return ['ok' => false, 'error' => 'O arquivo de mídia enviado não está mais disponível.'];
+    }
+
+    $size = @filesize($filePath);
+
+    if ($size === false || $size < 1 || $size > 25 * 1024 * 1024) {
+        return ['ok' => false, 'error' => 'O arquivo de mídia enviado excede o limite do histórico.'];
+    }
+
+    $contents = @file_get_contents($filePath);
+
+    if (!is_string($contents) || $contents === '') {
+        return ['ok' => false, 'error' => 'Não foi possível ler o arquivo de mídia enviado.'];
+    }
+
+    $normalizedMimeType = pilot_status_normalize_media_mime_type($mimeType) ?: 'application/octet-stream';
+
+    return pilot_status_store_inbound_media_data_uri(
+        'data:' . $normalizedMimeType . ';base64,' . base64_encode($contents),
+        $normalizedMimeType,
+        $fileName
+    );
+}
+
 function pilot_status_media_extension(string $mimeType, string $fileName): string
 {
     $mimeType = pilot_status_normalize_media_mime_type($mimeType);

@@ -152,9 +152,29 @@ if (($result['ok'] ?? false) === true) {
     $response = is_array($result['response'] ?? null) ? $result['response'] : [];
     $pilotStatusMessageId = trim((string) ($response['id'] ?? ''));
     $pilotStatusQueued = crm_whatsapp_provider() === 'pilot_status';
-    $sentDescription = $hasMedia
-        ? ucfirst($mediaType) . ($mediaType === 'audio' ? ' enviada' : ' enviada com legenda') . ":\n" . $messageWithSender
-        : $messageWithSender;
+    $storedMedia = $hasMedia
+        ? pilot_status_store_crm_media_file($mediaPath, $mimeType, $fileName)
+        : [];
+    $mediaForHistory = ($storedMedia['ok'] ?? false) === true
+        ? [
+            'url' => (string) ($storedMedia['url'] ?? ''),
+            'type' => $mediaType,
+            'mime_type' => (string) ($storedMedia['mime_type'] ?? $mimeType),
+            'filename' => (string) ($storedMedia['filename'] ?? $fileName),
+            'caption' => $message,
+        ]
+        : null;
+
+    if ($hasMedia && $mediaForHistory === null) {
+        error_log('Não foi possível preservar a mídia enviada no histórico do CRM: ' . (string) ($storedMedia['error'] ?? 'erro desconhecido.'));
+    }
+
+    $sentDescription = !$hasMedia
+        ? $messageWithSender
+        : ($mediaForHistory !== null
+            ? '[crm_media]' . json_encode($mediaForHistory, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)
+                . ($message !== '' ? "\n" . $message : '')
+            : ucfirst($mediaType) . ($mediaType === 'audio' ? ' enviada' : ' enviada com legenda') . ":\n" . $messageWithSender);
     $sentDescription .= $pilotStatusQueued
         ? "\nStatus inicial: aceito pela Pilot Status; aguardando confirmação de entrega."
         : "\nStatus: aceito pela API.";
