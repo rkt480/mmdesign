@@ -123,6 +123,27 @@ foreach ($incomingMessages as $incoming) {
     $name = trim((string) ($incoming['name'] ?? ''));
     $profilePictureUrl = crm_normalize_profile_picture_url((string) ($incoming['profile_picture_url'] ?? ''));
 
+    if ($mediaUrl !== '' && ($media['temporary_url'] ?? false) === true) {
+        $storedMedia = pilot_status_store_inbound_media(
+            $mediaUrl,
+            (string) ($media['mime_type'] ?? ''),
+            (string) ($media['type'] ?? '')
+        );
+
+        if (($storedMedia['ok'] ?? false) === true) {
+            $mediaUrl = (string) ($storedMedia['url'] ?? '');
+            $media['mime_type'] = (string) ($storedMedia['mime_type'] ?? ($media['mime_type'] ?? ''));
+        } else {
+            // Keep the signed source URL as a short-lived fallback, but log
+            // the failure so it can be diagnosed before that URL expires.
+            pilot_status_log('Falha ao salvar mídia nativa recebida.', [
+                'message_id' => (string) ($incoming['id'] ?? ''),
+                'type' => (string) ($media['type'] ?? ''),
+                'error' => (string) ($storedMedia['error'] ?? 'Erro desconhecido.'),
+            ]);
+        }
+    }
+
     if ($whatsapp === '' || ($message === '' && $mediaUrl === '')) {
         continue;
     }
