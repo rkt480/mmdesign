@@ -4357,7 +4357,9 @@ textarea:focus {
 
 .whatsapp-crm-page .wa-message {
   max-width: min(70%, 620px);
+  min-width: 0;
   padding: 10px 12px 8px;
+  overflow: hidden;
   border-radius: 16px;
   box-shadow: 0 10px 24px rgba(48, 63, 91, 0.08);
 }
@@ -4370,6 +4372,7 @@ textarea:focus {
 }
 
 .whatsapp-crm-page .wa-message-media {
+  max-width: 100%;
   margin-bottom: 8px;
 }
 
@@ -4381,9 +4384,9 @@ textarea:focus {
 
 .whatsapp-crm-page .wa-received-image,
 .whatsapp-crm-page .wa-received-video {
-  width: auto;
+  width: min(100%, 280px);
   height: auto;
-  max-width: min(100%, 280px);
+  max-width: 100%;
   max-height: min(42vh, 300px);
   object-fit: contain;
   background: #0f172a;
