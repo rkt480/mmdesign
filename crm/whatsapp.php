@@ -113,6 +113,49 @@ function whatsapp_page_short_text(string $text, int $limit = 92): string
     return strlen($text) > $limit ? substr($text, 0, $limit - 3) . '...' : $text;
 }
 
+function whatsapp_page_media_url(string $url): string
+{
+    $url = trim($url);
+    $parts = $url !== '' ? parse_url($url) : false;
+    $scheme = is_array($parts) ? strtolower((string) ($parts['scheme'] ?? '')) : '';
+
+    return in_array($scheme, ['http', 'https'], true) ? $url : '';
+}
+
+function whatsapp_page_media_label(array $media): string
+{
+    return match ((string) ($media['type'] ?? '')) {
+        'image' => 'Imagem recebida',
+        'audio' => 'Áudio recebido',
+        'video' => 'Vídeo recebido',
+        'document' => 'Documento recebido',
+        'sticker' => 'Sticker recebido',
+        default => 'Mídia recebida',
+    };
+}
+
+function whatsapp_page_received_media_markup(array $media): string
+{
+    $url = whatsapp_page_media_url((string) ($media['url'] ?? ''));
+
+    if ($url === '') {
+        return '';
+    }
+
+    $type = (string) ($media['type'] ?? '');
+    $mimeType = trim((string) ($media['mime_type'] ?? ''));
+    $safeUrl = htmlspecialchars($url, ENT_QUOTES, 'UTF-8');
+    $safeMimeType = htmlspecialchars($mimeType, ENT_QUOTES, 'UTF-8');
+    $safeLabel = htmlspecialchars(whatsapp_page_media_label($media), ENT_QUOTES, 'UTF-8');
+
+    return match ($type) {
+        'image', 'sticker' => '<img class="wa-received-media wa-received-image" src="' . $safeUrl . '" alt="' . $safeLabel . '" loading="lazy" />',
+        'audio' => '<audio class="wa-received-media wa-received-audio" controls preload="metadata"><source src="' . $safeUrl . '"' . ($safeMimeType !== '' ? ' type="' . $safeMimeType . '"' : '') . ' />Seu navegador não suporta este áudio.</audio>',
+        'video' => '<video class="wa-received-media wa-received-video" controls preload="metadata"><source src="' . $safeUrl . '"' . ($safeMimeType !== '' ? ' type="' . $safeMimeType . '"' : '') . ' />Seu navegador não suporta este vídeo.</video>',
+        default => '<a class="wa-received-file" href="' . $safeUrl . '" target="_blank" rel="noopener noreferrer">Abrir ' . $safeLabel . '</a>',
+    };
+}
+
 function whatsapp_page_avatar_markup(array $lead, string $modifier = ''): string
 {
     $name = trim((string) ($lead['name'] ?? 'Contato WhatsApp')) ?: 'Contato WhatsApp';
@@ -285,6 +328,23 @@ function whatsapp_page_messages_for_lead(array $lead): array
                     'label' => 'Recebida',
                 ];
                 continue;
+            }
+
+            if (preg_match('/^Mídia recebida pela Pilot Status em ([0-9]{2}\/[0-9]{2}\/[0-9]{4} [0-9]{2}:[0-9]{2}):\n\[crm_media\](.+)$/s', $block, $match) === 1) {
+                $media = json_decode((string) $match[2], true);
+
+                if (is_array($media) && whatsapp_page_media_url((string) ($media['url'] ?? '')) !== '') {
+                    $caption = trim((string) ($media['caption'] ?? ''));
+                    $messages[] = [
+                        'direction' => 'incoming',
+                        'provider' => 'pilot_status',
+                        'at' => whatsapp_page_parse_br_datetime((string) $match[1]),
+                        'text' => $caption !== '' ? $caption : whatsapp_page_media_label($media),
+                        'media' => $media,
+                        'label' => 'Recebida',
+                    ];
+                    continue;
+                }
             }
 
             if (preg_match('/^(?:Mensagem|Mídia) enviada via (.+) em ([0-9]{2}\/[0-9]{2}\/[0-9]{4} [0-9]{2}:[0-9]{2}):\n(.+)$/s', $block, $match) === 1) {
@@ -635,7 +695,12 @@ foreach ($whatsappTemplates as $template) {
 
             <?php foreach ($activeMessages as $message): ?>
               <article class="wa-message wa-message-<?= htmlspecialchars((string) $message['direction']) ?>">
-                <p><?= nl2br(htmlspecialchars((string) $message['text'])) ?></p>
+                <?php if (is_array($message['media'] ?? null)): ?>
+                  <div class="wa-message-media"><?= whatsapp_page_received_media_markup($message['media']) ?></div>
+                <?php endif; ?>
+                <?php if (trim((string) $message['text']) !== ''): ?>
+                  <p><?= nl2br(htmlspecialchars((string) $message['text'])) ?></p>
+                <?php endif; ?>
                 <footer>
                   <span><?= htmlspecialchars((string) $message['label']) ?></span>
                   <time><?= htmlspecialchars(whatsapp_page_time_label((string) $message['at'])) ?></time>
