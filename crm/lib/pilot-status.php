@@ -552,30 +552,49 @@ function pilot_status_normalize_media_mime_type(string $mimeType): string
     return strtolower(trim((string) preg_replace('/;.*$/', '', $mimeType)));
 }
 
-function pilot_status_is_trusted_inbound_media_url(string $url): bool
+function pilot_status_download_inbound_media(string $mediaId, string $phoneNumberId): array
 {
-    $parsed = parse_url($url);
+    $mediaId = trim($mediaId);
+    $phoneNumberId = trim($phoneNumberId);
 
-    if (!is_array($parsed) || strtolower((string) ($parsed['scheme'] ?? '')) !== 'https') {
-        return false;
+    if ($mediaId === '' || $phoneNumberId === '') {
+        return ['ok' => false, 'error' => 'A mídia recebida não informou os identificadores necessários para download.'];
     }
 
-    // The native Meta webhook gives a short-lived signed attachment URL on
-    // this host. Restricting downloads prevents the public webhook from being
-    // used as a server-side request proxy when a webhook secret is not set.
-    return strtolower((string) ($parsed['host'] ?? '')) === 'lookaside.fbsbx.com';
+    // Meta attachment URLs sent in a webhook are not browser-accessible and
+    // expire after a few minutes. Pilot Status exposes the authenticated
+    // download endpoint precisely to retrieve the original binary in time.
+    $result = pilot_status_api_request(
+        '/media/' . rawurlencode($mediaId),
+        'GET',
+        ['phoneNumberId' => $phoneNumberId],
+        30
+    );
+
+    if (($result['ok'] ?? false) !== true || !is_array($result['response'] ?? null)) {
+        return [
+            'ok' => false,
+            'error' => (string) ($result['error'] ?? 'A Pilot Status não retornou a mídia recebida.'),
+        ];
+    }
+
+    $response = $result['response'];
+    $base64 = pilot_status_first_payload_value($response, [['base64'], ['data', 'base64']]);
+
+    if ($base64 === '') {
+        return ['ok' => false, 'error' => 'A Pilot Status retornou a mídia sem o conteúdo.'];
+    }
+
+    return [
+        'ok' => true,
+        'base64' => $base64,
+        'mime_type' => pilot_status_normalize_media_mime_type(pilot_status_first_payload_value($response, [['mimeType'], ['mime_type'], ['data', 'mimeType'], ['data', 'mime_type']])),
+        'filename' => pilot_status_first_payload_value($response, [['fileName'], ['file_name'], ['data', 'fileName'], ['data', 'file_name']]),
+    ];
 }
 
-function pilot_status_store_inbound_media(string $sourceUrl, string $mimeType, string $mediaType): array
+function pilot_status_store_inbound_media_data_uri(string $dataUri, string $mimeType = '', string $fileName = ''): array
 {
-    if (!pilot_status_is_trusted_inbound_media_url($sourceUrl)) {
-        return ['ok' => false, 'error' => 'URL temporária de mídia inválida.'];
-    }
-
-    if (!in_array($mediaType, ['image', 'audio', 'video', 'document', 'sticker'], true)) {
-        return ['ok' => false, 'error' => 'Tipo de mídia recebida não suportado.'];
-    }
-
     $baseUrl = pilot_status_inbound_media_base_url();
 
     if ($baseUrl === '') {
@@ -590,80 +609,43 @@ function pilot_status_store_inbound_media(string $sourceUrl, string $mimeType, s
 
     pilot_status_cleanup_inbound_media();
 
-    $stream = tmpfile();
+    $matches = [];
 
-    if ($stream === false) {
-        return ['ok' => false, 'error' => 'Não foi possível preparar o download da mídia recebida.'];
+    if (preg_match('#^data:([a-z0-9.+/-]+)(?:;[^,]*)?;base64,([a-z0-9+/=\r\n]+)$#iD', trim($dataUri), $matches) !== 1) {
+        return ['ok' => false, 'error' => 'A Pilot Status retornou uma mídia em formato inválido.'];
     }
 
-    $downloadedBytes = 0;
-    $maxBytes = 25 * 1024 * 1024;
-    $ch = curl_init($sourceUrl);
+    $encoded = preg_replace('/\s+/', '', (string) $matches[2]);
 
-    if ($ch === false) {
-        fclose($stream);
-        return ['ok' => false, 'error' => 'Não foi possível iniciar o download da mídia recebida.'];
+    if (!is_string($encoded) || strlen($encoded) > 36 * 1024 * 1024) {
+        return ['ok' => false, 'error' => 'A mídia recebida excede o limite de 25 MB.'];
     }
 
-    curl_setopt_array($ch, [
-        CURLOPT_RETURNTRANSFER => false,
-        CURLOPT_FOLLOWLOCATION => false,
-        CURLOPT_CONNECTTIMEOUT => 5,
-        CURLOPT_TIMEOUT => 30,
-        CURLOPT_USERAGENT => 'PubliCRM/1.0',
-        CURLOPT_WRITEFUNCTION => static function ($handle, string $data) use ($stream, &$downloadedBytes, $maxBytes): int {
-            $downloadedBytes += strlen($data);
+    $contents = base64_decode($encoded, true);
 
-            if ($downloadedBytes > $maxBytes) {
-                return 0;
-            }
-
-            $written = fwrite($stream, $data);
-
-            return $written === false ? 0 : $written;
-        },
-    ]);
-
-    $curlResult = curl_exec($ch);
-    $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $curlError = curl_error($ch);
-    curl_close($ch);
-
-    if ($curlResult === false || $curlError !== '' || $httpCode < 200 || $httpCode >= 300 || $downloadedBytes < 1) {
-        fclose($stream);
-        return ['ok' => false, 'error' => $curlError !== '' ? $curlError : 'A mídia temporária não pôde ser baixada.'];
+    if ($contents === false || $contents === '') {
+        return ['ok' => false, 'error' => 'Não foi possível decodificar a mídia recebida.'];
     }
 
-    $mimeType = pilot_status_normalize_media_mime_type($mimeType);
+    if (strlen($contents) > 25 * 1024 * 1024) {
+        return ['ok' => false, 'error' => 'A mídia recebida excede o limite de 25 MB.'];
+    }
+
+    $mimeType = pilot_status_normalize_media_mime_type($mimeType ?: (string) $matches[1]);
 
     if ($mimeType === '') {
-        $mimeType = match ($mediaType) {
-            'image' => 'image/jpeg',
-            'audio' => 'audio/ogg',
-            'video' => 'video/mp4',
-            'document' => 'application/octet-stream',
-            'sticker' => 'image/webp',
-        };
+        $mimeType = 'application/octet-stream';
     }
 
+    // Do not derive the extension from the remote filename. Files are served
+    // publicly, so only a MIME-mapped extension can reach this directory.
     $extension = pilot_status_media_extension($mimeType, '');
     $storedName = bin2hex(random_bytes(16)) . '.' . $extension;
     $storedPath = $directory . '/' . $storedName;
-    rewind($stream);
-    $output = @fopen($storedPath, 'xb');
 
-    if ($output === false) {
-        fclose($stream);
-        return ['ok' => false, 'error' => 'Não foi possível salvar a mídia recebida.'];
-    }
-
-    $copied = stream_copy_to_stream($stream, $output);
-    fclose($output);
-    fclose($stream);
-
-    if ($copied === false || $copied < 1) {
+    if (@file_put_contents($storedPath, $contents, LOCK_EX) !== strlen($contents)) {
         @unlink($storedPath);
-        return ['ok' => false, 'error' => 'Não foi possível salvar o conteúdo da mídia recebida.'];
+        return ['ok' => false, 'error' => 'Não foi possível salvar a mídia recebida.'];
     }
 
     @chmod($storedPath, 0644);
@@ -672,7 +654,8 @@ function pilot_status_store_inbound_media(string $sourceUrl, string $mimeType, s
         'ok' => true,
         'url' => rtrim($baseUrl, '/') . '/' . rawurlencode($storedName),
         'mime_type' => $mimeType,
-        'size' => $downloadedBytes,
+        'filename' => trim($fileName),
+        'size' => strlen($contents),
     ];
 }
 
@@ -1082,6 +1065,14 @@ function pilot_status_extract_incoming_media(array $payload): array
         'caption' => pilot_status_first_payload_value($payload, $captionPaths),
         'filename' => pilot_status_first_payload_value($payload, $filenamePaths),
         'id' => pilot_status_first_payload_value($payload, $mediaIdPaths),
+        'phone_number_id' => pilot_status_first_payload_value($payload, [
+            ['_metadata', 'phone_number_id'],
+            ['metadata', 'phone_number_id'],
+            ['phoneNumberId'],
+            ['phone_number_id'],
+            ['data', 'phoneNumberId'],
+            ['data', 'phone_number_id'],
+        ]),
         'temporary_url' => $temporaryUrl,
     ];
 }
