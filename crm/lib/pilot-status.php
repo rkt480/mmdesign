@@ -477,7 +477,7 @@ function pilot_status_public_media_directory(): string
     return dirname(__DIR__) . '/whatsapp-media';
 }
 
-function pilot_status_public_media_base_url(): string
+function pilot_status_public_crm_base_url(): string
 {
     $host = trim((string) ($_SERVER['HTTP_HOST'] ?? ''));
 
@@ -491,11 +491,195 @@ function pilot_status_public_media_base_url(): string
     $scriptName = str_replace('\\', '/', (string) ($_SERVER['SCRIPT_NAME'] ?? '/crm/send-chat-message.php'));
     $scriptDirectory = rtrim(str_replace('\\', '/', dirname($scriptName)), '/');
 
-    return $scheme . '://' . $host . $scriptDirectory . '/whatsapp-media';
+    // The webhook is served from /crm/api, while the chat sender is served
+    // from /crm. Both must generate public URLs rooted at /crm.
+    if (preg_match('#^(.*?/crm)(?:/|$)#', $scriptName, $matches) === 1) {
+        $scriptDirectory = rtrim((string) $matches[1], '/');
+    }
+
+    return $scheme . '://' . $host . $scriptDirectory;
+}
+
+function pilot_status_public_media_base_url(): string
+{
+    $baseUrl = pilot_status_public_crm_base_url();
+
+    return $baseUrl === '' ? '' : $baseUrl . '/whatsapp-media';
+}
+
+function pilot_status_inbound_media_directory(): string
+{
+    return dirname(__DIR__) . '/inbound-media';
+}
+
+function pilot_status_inbound_media_base_url(): string
+{
+    $baseUrl = pilot_status_public_crm_base_url();
+
+    return $baseUrl === '' ? '' : $baseUrl . '/inbound-media';
+}
+
+function pilot_status_cleanup_inbound_media(int $maxAge = 2592000): void
+{
+    $directory = pilot_status_inbound_media_directory();
+
+    if (!is_dir($directory)) {
+        return;
+    }
+
+    $cutoff = time() - max(86400, $maxAge);
+    $entries = scandir($directory);
+
+    if ($entries === false) {
+        return;
+    }
+
+    foreach ($entries as $entry) {
+        if ($entry === '.' || $entry === '..' || $entry === '.htaccess' || $entry === '.gitkeep') {
+            continue;
+        }
+
+        $path = $directory . '/' . $entry;
+
+        if (is_file($path) && (int) @filemtime($path) < $cutoff) {
+            @unlink($path);
+        }
+    }
+}
+
+function pilot_status_normalize_media_mime_type(string $mimeType): string
+{
+    return strtolower(trim((string) preg_replace('/;.*$/', '', $mimeType)));
+}
+
+function pilot_status_is_trusted_inbound_media_url(string $url): bool
+{
+    $parsed = parse_url($url);
+
+    if (!is_array($parsed) || strtolower((string) ($parsed['scheme'] ?? '')) !== 'https') {
+        return false;
+    }
+
+    // The native Meta webhook gives a short-lived signed attachment URL on
+    // this host. Restricting downloads prevents the public webhook from being
+    // used as a server-side request proxy when a webhook secret is not set.
+    return strtolower((string) ($parsed['host'] ?? '')) === 'lookaside.fbsbx.com';
+}
+
+function pilot_status_store_inbound_media(string $sourceUrl, string $mimeType, string $mediaType): array
+{
+    if (!pilot_status_is_trusted_inbound_media_url($sourceUrl)) {
+        return ['ok' => false, 'error' => 'URL temporária de mídia inválida.'];
+    }
+
+    if (!in_array($mediaType, ['image', 'audio', 'video', 'document', 'sticker'], true)) {
+        return ['ok' => false, 'error' => 'Tipo de mídia recebida não suportado.'];
+    }
+
+    $baseUrl = pilot_status_inbound_media_base_url();
+
+    if ($baseUrl === '') {
+        return ['ok' => false, 'error' => 'Não foi possível gerar a URL pública da mídia recebida.'];
+    }
+
+    $directory = pilot_status_inbound_media_directory();
+
+    if (!is_dir($directory) && !@mkdir($directory, 0755, true) && !is_dir($directory)) {
+        return ['ok' => false, 'error' => 'Não foi possível preparar o armazenamento da mídia recebida.'];
+    }
+
+    pilot_status_cleanup_inbound_media();
+
+    $stream = tmpfile();
+
+    if ($stream === false) {
+        return ['ok' => false, 'error' => 'Não foi possível preparar o download da mídia recebida.'];
+    }
+
+    $downloadedBytes = 0;
+    $maxBytes = 25 * 1024 * 1024;
+    $ch = curl_init($sourceUrl);
+
+    if ($ch === false) {
+        fclose($stream);
+        return ['ok' => false, 'error' => 'Não foi possível iniciar o download da mídia recebida.'];
+    }
+
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => false,
+        CURLOPT_FOLLOWLOCATION => false,
+        CURLOPT_CONNECTTIMEOUT => 5,
+        CURLOPT_TIMEOUT => 30,
+        CURLOPT_USERAGENT => 'PubliCRM/1.0',
+        CURLOPT_WRITEFUNCTION => static function ($handle, string $data) use ($stream, &$downloadedBytes, $maxBytes): int {
+            $downloadedBytes += strlen($data);
+
+            if ($downloadedBytes > $maxBytes) {
+                return 0;
+            }
+
+            $written = fwrite($stream, $data);
+
+            return $written === false ? 0 : $written;
+        },
+    ]);
+
+    $curlResult = curl_exec($ch);
+    $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curlError = curl_error($ch);
+    curl_close($ch);
+
+    if ($curlResult === false || $curlError !== '' || $httpCode < 200 || $httpCode >= 300 || $downloadedBytes < 1) {
+        fclose($stream);
+        return ['ok' => false, 'error' => $curlError !== '' ? $curlError : 'A mídia temporária não pôde ser baixada.'];
+    }
+
+    $mimeType = pilot_status_normalize_media_mime_type($mimeType);
+
+    if ($mimeType === '') {
+        $mimeType = match ($mediaType) {
+            'image' => 'image/jpeg',
+            'audio' => 'audio/ogg',
+            'video' => 'video/mp4',
+            'document' => 'application/octet-stream',
+            'sticker' => 'image/webp',
+        };
+    }
+
+    $extension = pilot_status_media_extension($mimeType, '');
+    $storedName = bin2hex(random_bytes(16)) . '.' . $extension;
+    $storedPath = $directory . '/' . $storedName;
+    rewind($stream);
+    $output = @fopen($storedPath, 'xb');
+
+    if ($output === false) {
+        fclose($stream);
+        return ['ok' => false, 'error' => 'Não foi possível salvar a mídia recebida.'];
+    }
+
+    $copied = stream_copy_to_stream($stream, $output);
+    fclose($output);
+    fclose($stream);
+
+    if ($copied === false || $copied < 1) {
+        @unlink($storedPath);
+        return ['ok' => false, 'error' => 'Não foi possível salvar o conteúdo da mídia recebida.'];
+    }
+
+    @chmod($storedPath, 0644);
+
+    return [
+        'ok' => true,
+        'url' => rtrim($baseUrl, '/') . '/' . rawurlencode($storedName),
+        'mime_type' => $mimeType,
+        'size' => $downloadedBytes,
+    ];
 }
 
 function pilot_status_media_extension(string $mimeType, string $fileName): string
 {
+    $mimeType = pilot_status_normalize_media_mime_type($mimeType);
+
     // The Pilot Status API fetches this public URL before forwarding it to
     // WhatsApp. Use the canonical extension for audio before trusting the
     // browser-provided filename, so the web server and the remote fetcher
@@ -823,23 +1007,6 @@ function pilot_status_extract_text(array $payload): string
 
 function pilot_status_extract_incoming_media(array $payload): array
 {
-    $url = pilot_status_first_payload_value($payload, [
-        ['mediaLink'],
-        ['media_link'],
-        ['media', 'url'],
-        ['data', 'mediaLink'],
-        ['data', 'media_link'],
-        ['data', 'media', 'url'],
-        ['message', 'mediaLink'],
-        ['message', 'media', 'url'],
-    ]);
-    $parsedUrl = $url !== '' ? parse_url($url) : false;
-    $scheme = is_array($parsedUrl) ? strtolower((string) ($parsedUrl['scheme'] ?? '')) : '';
-
-    if (!in_array($scheme, ['http', 'https'], true)) {
-        $url = '';
-    }
-
     $type = strtolower(pilot_status_first_payload_value($payload, [
         ['mediaType'],
         ['media_type'],
@@ -855,19 +1022,67 @@ function pilot_status_extract_incoming_media(array $payload): array
         $type = '';
     }
 
+    $urlPaths = [
+        ['mediaLink'],
+        ['media_link'],
+        ['media', 'url'],
+        ['data', 'mediaLink'],
+        ['data', 'media_link'],
+        ['data', 'media', 'url'],
+        ['message', 'mediaLink'],
+        ['message', 'media', 'url'],
+    ];
+
+    // Pilot Status sends the native Meta envelope when all events are
+    // selected. In it, the attachment belongs to a type-specific object such
+    // as audio.url or image.url instead of the simplified mediaLink field.
+    $nativeUrl = '';
+
+    if ($type !== '') {
+        $urlPaths[] = [$type, 'url'];
+        $urlPaths[] = ['data', $type, 'url'];
+        $urlPaths[] = ['message', $type, 'url'];
+        $nativeUrl = pilot_status_first_payload_value($payload, [[$type, 'url']]);
+    }
+
+    $url = pilot_status_first_payload_value($payload, $urlPaths);
+    $parsedUrl = $url !== '' ? parse_url($url) : false;
+    $scheme = is_array($parsedUrl) ? strtolower((string) ($parsedUrl['scheme'] ?? '')) : '';
+
+    if (!in_array($scheme, ['http', 'https'], true)) {
+        $url = '';
+    }
+
+    $mimePaths = [
+        ['mediaMimeType'], ['media_mime_type'], ['media', 'mimeType'],
+        ['data', 'mediaMimeType'], ['data', 'media_mime_type'], ['data', 'media', 'mimeType'],
+    ];
+    $captionPaths = [
+        ['mediaCaption'], ['media_caption'], ['data', 'mediaCaption'], ['data', 'media_caption'],
+    ];
+    $filenamePaths = [
+        ['mediaFilename'], ['media_filename'], ['data', 'mediaFilename'], ['data', 'media_filename'],
+    ];
+    $mediaIdPaths = [];
+
+    if ($type !== '') {
+        $mimePaths[] = [$type, 'mime_type'];
+        $mimePaths[] = [$type, 'mimeType'];
+        $captionPaths[] = [$type, 'caption'];
+        $filenamePaths[] = [$type, 'filename'];
+        $mediaIdPaths[] = [$type, 'id'];
+    }
+
+    $temporaryUrl = $nativeUrl !== '' && $url === $nativeUrl;
+
     return [
         'url' => $url,
         'type' => $type,
-        'mime_type' => pilot_status_first_payload_value($payload, [
-            ['mediaMimeType'], ['media_mime_type'], ['media', 'mimeType'],
-            ['data', 'mediaMimeType'], ['data', 'media_mime_type'], ['data', 'media', 'mimeType'],
-        ]),
-        'caption' => pilot_status_first_payload_value($payload, [
-            ['mediaCaption'], ['media_caption'], ['data', 'mediaCaption'], ['data', 'media_caption'],
-        ]),
-        'filename' => pilot_status_first_payload_value($payload, [
-            ['mediaFilename'], ['media_filename'], ['data', 'mediaFilename'], ['data', 'media_filename'],
-        ]),
+        'mime_type' => pilot_status_normalize_media_mime_type(pilot_status_first_payload_value($payload, $mimePaths)),
+        'caption' => pilot_status_first_payload_value($payload, $captionPaths),
+        'filename' => pilot_status_first_payload_value($payload, $filenamePaths),
+        'id' => pilot_status_first_payload_value($payload, $mediaIdPaths),
+        'temporary_url' => $temporaryUrl,
     ];
 }
 
