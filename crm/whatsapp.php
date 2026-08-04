@@ -909,6 +909,7 @@ foreach ($whatsappTemplates as $template) {
         <?php endif; ?>
       </aside>
     </main>
+    <script src="assets/vendor/opus-media-recorder/OpusMediaRecorder.umd.js"></script>
     <script>
       const waTemplateData = <?= json_encode($waTemplateData, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
 
@@ -1399,6 +1400,40 @@ foreach ($whatsappTemplates as $template) {
           };
         };
 
+        const opusRecorderAssetBase = new URL("assets/vendor/opus-media-recorder/", window.location.href);
+        const opusRecorderWorkerOptions = {
+          encoderWorkerFactory: () => new Worker(new URL("encoderWorker.umd.js", opusRecorderAssetBase)),
+          OggOpusEncoderWasmPath: new URL("OggOpusEncoder.wasm", opusRecorderAssetBase).toString(),
+        };
+
+        const validateRecordedAudio = (file) => new Promise((resolve) => {
+          const audio = document.createElement("audio");
+          const source = URL.createObjectURL(file);
+          let settled = false;
+          const finish = (isValid) => {
+            if (settled) {
+              return;
+            }
+
+            settled = true;
+            URL.revokeObjectURL(source);
+            resolve(isValid);
+          };
+          const timeout = window.setTimeout(() => finish(false), 6000);
+
+          audio.preload = "metadata";
+          audio.addEventListener("loadedmetadata", () => {
+            window.clearTimeout(timeout);
+            finish(Number.isFinite(audio.duration) && audio.duration >= 0.1);
+          }, { once: true });
+          audio.addEventListener("error", () => {
+            window.clearTimeout(timeout);
+            finish(false);
+          }, { once: true });
+          audio.src = source;
+          audio.load();
+        });
+
         const setRecordButton = (recording) => {
           recordButton.innerHTML = recording
             ? '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2" /></svg>'
@@ -1505,19 +1540,17 @@ foreach ($whatsappTemplates as $template) {
             return;
           }
 
-          if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
+          if (!navigator.mediaDevices?.getUserMedia || (!window.MediaRecorder && !window.OpusMediaRecorder)) {
             window.alert("Seu navegador não permite gravar áudio. Selecione um arquivo de áudio.");
             return;
           }
 
           try {
             recorderStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            compatibleAudioRecorder = createCompatibleAudioRecorder(recorderStream);
-
-            if (compatibleAudioRecorder) {
-              setRecordButton(true);
-              return;
-            }
+            // Use the bundled encoder. It produces a complete Ogg/Opus
+            // stream, including its container metadata, unlike a manually
+            // assembled stream from browser encoder chunks.
+            const useBundledOggRecorder = typeof window.OpusMediaRecorder === "function";
 
             const recordingTypes = [
               { mimeType: "audio/ogg;codecs=opus", fileType: "audio/ogg", extension: "ogg" },
@@ -1527,18 +1560,35 @@ foreach ($whatsappTemplates as $template) {
               { mimeType: "audio/mp4;codecs=mp4a.40.2", fileType: "audio/mp4", extension: "mp4" },
               { mimeType: "audio/webm;codecs=opus", fileType: "audio/webm", extension: "webm" },
             ];
-            const recordingType = recordingTypes.find((candidate) => MediaRecorder.isTypeSupported(candidate.mimeType));
+            const recordingType = useBundledOggRecorder
+              ? recordingTypes[0]
+              : recordingTypes.find((candidate) => MediaRecorder.isTypeSupported(candidate.mimeType));
             const chunks = [];
-            recorder = recordingType
+            recorder = useBundledOggRecorder
+              ? new window.OpusMediaRecorder(
+                recorderStream,
+                { mimeType: "audio/ogg", audioBitsPerSecond: 32000 },
+                opusRecorderWorkerOptions
+              )
+              : recordingType
               ? new MediaRecorder(recorderStream, { mimeType: recordingType.mimeType, audioBitsPerSecond: 64000 })
               : new MediaRecorder(recorderStream);
             recorder.addEventListener("dataavailable", (event) => {
               if (event.data.size > 0) chunks.push(event.data);
             });
-            recorder.addEventListener("stop", () => {
+            recorder.addEventListener("stop", async () => {
               const actualMimeType = recorder?.mimeType.split(";")[0] || recordingType?.fileType || "audio/webm";
               const extension = recordingType?.extension || (actualMimeType === "audio/mp4" ? "m4a" : "webm");
               const file = new File(chunks, `audio-whatsapp.${extension}`, { type: actualMimeType });
+
+              if (actualMimeType === "audio/ogg" && !(await validateRecordedAudio(file))) {
+                recorderStream?.getTracks().forEach((track) => track.stop());
+                recorderStream = null;
+                setRecordButton(false);
+                window.alert("A gravação ficou inválida ou sem duração. Tente gravar novamente.");
+                return;
+              }
+
               const transfer = new DataTransfer();
               transfer.items.add(file);
               mediaInput.files = transfer.files;
