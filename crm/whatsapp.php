@@ -134,6 +134,18 @@ function whatsapp_page_media_label(array $media): string
     };
 }
 
+function whatsapp_page_sent_media_label(array $media): string
+{
+    return match ((string) ($media['type'] ?? '')) {
+        'image' => 'Imagem enviada',
+        'audio' => 'Áudio enviado',
+        'video' => 'Vídeo enviado',
+        'document' => 'Documento enviado',
+        'sticker' => 'Sticker enviado',
+        default => 'Mídia enviada',
+    };
+}
+
 function whatsapp_page_received_media_markup(array $media): string
 {
     $url = whatsapp_page_media_url((string) ($media['url'] ?? ''));
@@ -347,6 +359,24 @@ function whatsapp_page_messages_for_lead(array $lead): array
                 }
             }
 
+            if (preg_match('/^Mídia enviada via (.+) em ([0-9]{2}\/[0-9]{2}\/[0-9]{4} [0-9]{2}:[0-9]{2}):\n\[crm_media\]([^\r\n]+)(?:\R(.*))?$/s', $block, $match) === 1) {
+                $media = json_decode((string) $match[3], true);
+
+                if (is_array($media) && whatsapp_page_media_url((string) ($media['url'] ?? '')) !== '') {
+                    $sentProviderLabel = strtolower((string) $match[1]);
+                    $caption = whatsapp_page_clean_sent_message_text(trim((string) ($match[4] ?? '')));
+                    $messages[] = [
+                        'direction' => 'outgoing',
+                        'provider' => str_contains($sentProviderLabel, 'meta') ? 'meta_cloud' : 'pilot_status',
+                        'at' => whatsapp_page_parse_br_datetime((string) $match[2]),
+                        'text' => $caption !== '' ? $caption : whatsapp_page_sent_media_label($media),
+                        'media' => $media,
+                        'label' => 'Enviada',
+                    ];
+                    continue;
+                }
+            }
+
             if (preg_match('/^(?:Mensagem|Mídia) enviada via (.+) em ([0-9]{2}\/[0-9]{2}\/[0-9]{4} [0-9]{2}:[0-9]{2}):\n(.+)$/s', $block, $match) === 1) {
                 $sentProviderLabel = strtolower((string) $match[1]);
                 $sentText = whatsapp_page_clean_sent_message_text(trim((string) $match[3]));
@@ -466,6 +496,7 @@ foreach ($conversationGroups as $whatsapp => $conversation) {
             (string) ($message['provider'] ?? ''),
             $messageTimestamp > 0 ? date('Y-m-d H:i', $messageTimestamp) : '',
             trim((string) ($message['text'] ?? '')),
+            trim((string) (($message['media'] ?? [])['url'] ?? '')),
         ]);
 
         $uniqueMessages[$key] = $message;
@@ -762,6 +793,15 @@ foreach ($whatsappTemplates as $template) {
             <input type="hidden" name="provider_filter" value="<?= htmlspecialchars($providerFilter) ?>" />
             <div class="wa-composer-main">
               <div class="wa-media-preview" data-wa-preview hidden></div>
+              <div class="wa-recording-preview" data-wa-recording-preview hidden aria-live="polite">
+                <button class="wa-recording-discard" type="button" title="Descartar gravação" aria-label="Descartar gravação" data-wa-record-discard>
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M7.5 7l.7 12h7.6l.7-12M10 11v4M14 11v4" /></svg>
+                </button>
+                <span class="wa-recording-dot" aria-hidden="true"></span>
+                <time data-wa-recording-time>0:00</time>
+                <span class="wa-recording-wave" data-wa-recording-wave aria-hidden="true"></span>
+                <span class="wa-recording-label">Gravando</span>
+              </div>
               <textarea name="message" rows="1" maxlength="2000" placeholder="Digite uma mensagem" data-wa-message></textarea>
             </div>
             <button class="wa-record-button" type="button" title="Gravar áudio" data-wa-record aria-label="Gravar áudio">
@@ -1244,12 +1284,19 @@ foreach ($whatsappTemplates as $template) {
         const recordButton = form.querySelector("[data-wa-record]");
         const mediaInput = form.querySelector("[data-wa-media]");
         const preview = form.querySelector("[data-wa-preview]");
+        const recordingPreview = form.querySelector("[data-wa-recording-preview]");
+        const recordingTime = form.querySelector("[data-wa-recording-time]");
+        const recordingWave = form.querySelector("[data-wa-recording-wave]");
+        const recordingDiscardButton = form.querySelector("[data-wa-record-discard]");
         const messageInput = form.querySelector("[data-wa-message]");
         const sendButton = form.querySelector("[data-wa-send], .wa-send-button");
         let previewUrl = "";
         let recorder = null;
         let recorderStream = null;
         let compatibleAudioRecorder = null;
+        let recordingStartedAt = 0;
+        let recordingTimer = null;
+        let discardCurrentRecording = false;
 
         const concatAudioBytes = (parts) => {
           const length = parts.reduce((total, part) => total + part.length, 0);
@@ -1509,23 +1556,74 @@ foreach ($whatsappTemplates as $template) {
           audio.load();
         });
 
+        const renderRecordingTime = () => {
+          if (!recordingTime || !recordingStartedAt) return;
+
+          const elapsedSeconds = Math.max(0, Math.floor((Date.now() - recordingStartedAt) / 1000));
+          const minutes = String(Math.floor(elapsedSeconds / 60)).padStart(1, "0");
+          const seconds = String(elapsedSeconds % 60).padStart(2, "0");
+          recordingTime.textContent = `${minutes}:${seconds}`;
+        };
+
+        const setRecordingMode = (recording) => {
+          if (recording) {
+            discardCurrentRecording = false;
+            recordingStartedAt = Date.now();
+            renderRecordingTime();
+            recordingPreview.hidden = false;
+            messageInput.hidden = true;
+            attachButton.hidden = true;
+            emojiButton.hidden = true;
+            sendButton.hidden = true;
+
+            if (recordingWave && recordingWave.childElementCount === 0) {
+              Array.from({ length: 24 }, (_, index) => {
+                const bar = document.createElement("span");
+                bar.style.setProperty("--wa-wave-height", `${7 + ((index * 7) % 16)}px`);
+                bar.style.setProperty("--wa-wave-delay", `${(index % 6) * -110}ms`);
+                recordingWave.appendChild(bar);
+              });
+            }
+
+            window.clearInterval(recordingTimer);
+            recordingTimer = window.setInterval(renderRecordingTime, 250);
+            return;
+          }
+
+          window.clearInterval(recordingTimer);
+          recordingTimer = null;
+          recordingStartedAt = 0;
+          recordingPreview.hidden = true;
+          messageInput.hidden = false;
+          attachButton.hidden = false;
+          emojiButton.hidden = false;
+        };
+
         const setRecordButton = (recording) => {
           recordButton.innerHTML = recording
             ? '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2" /></svg>'
             : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 14.5a3.5 3.5 0 0 0 3.5-3.5V6a3.5 3.5 0 0 0-7 0v5a3.5 3.5 0 0 0 3.5 3.5Z" /><path d="M19 11a7 7 0 0 1-14 0M12 18v3M8.5 21h7" /></svg>';
           recordButton.title = recording ? "Parar gravação" : "Gravar áudio";
+          recordButton.setAttribute("aria-label", recordButton.title);
         };
 
         const syncComposerAction = () => {
+          const isRecording = recorder?.state === "recording" || compatibleAudioRecorder?.state === "recording";
+
+          if (isRecording) {
+            recordButton.hidden = false;
+            sendButton.hidden = true;
+            return;
+          }
+
           const hasContent = Boolean(messageInput.value.trim() || mediaInput.files?.length);
           recordButton.hidden = hasContent;
           sendButton.hidden = !hasContent;
-          if ((!recorder || recorder.state !== "recording") && (!compatibleAudioRecorder || compatibleAudioRecorder.state !== "recording")) {
-            setRecordButton(false);
-          }
+          setRecordButton(false);
         };
 
         const renderMediaPreview = (file) => {
+          setRecordingMode(false);
           preview.replaceChildren();
           preview.hidden = !file;
 
@@ -1590,21 +1688,56 @@ foreach ($whatsappTemplates as $template) {
         messageInput?.addEventListener("input", syncComposerAction);
         syncComposerAction();
 
+        recordingDiscardButton?.addEventListener("click", async () => {
+          if (compatibleAudioRecorder?.state !== "recording" && (!recorder || recorder.state !== "recording")) {
+            return;
+          }
+
+          discardCurrentRecording = true;
+          recordingDiscardButton.disabled = true;
+
+          if (compatibleAudioRecorder?.state === "recording") {
+            try {
+              await compatibleAudioRecorder.stop();
+            } catch (error) {
+              // Discarding may interrupt the encoder before it can finish.
+            } finally {
+              compatibleAudioRecorder = null;
+              recorderStream = null;
+              mediaInput.value = "";
+              setRecordingMode(false);
+              setRecordButton(false);
+              syncComposerAction();
+              recordingDiscardButton.disabled = false;
+            }
+
+            return;
+          }
+
+          recorder?.stop();
+        });
+
         recordButton?.addEventListener("click", async () => {
           if (compatibleAudioRecorder?.state === "recording") {
             try {
               const file = await compatibleAudioRecorder.stop();
-              const transfer = new DataTransfer();
-              transfer.items.add(file);
-              mediaInput.files = transfer.files;
-              renderMediaPreview(file);
+              if (!discardCurrentRecording) {
+                const transfer = new DataTransfer();
+                transfer.items.add(file);
+                mediaInput.files = transfer.files;
+                renderMediaPreview(file);
+              }
             } catch (error) {
               recorderStream?.getTracks().forEach((track) => track.stop());
-              window.alert("Não foi possível preparar um áudio compatível com o WhatsApp.");
+              if (!discardCurrentRecording) {
+                window.alert("Não foi possível preparar um áudio compatível com o WhatsApp.");
+              }
             } finally {
               compatibleAudioRecorder = null;
               recorderStream = null;
+              setRecordingMode(false);
               setRecordButton(false);
+              syncComposerAction();
             }
 
             return;
@@ -1652,6 +1785,7 @@ foreach ($whatsappTemplates as $template) {
               if (event.data.size > 0) chunks.push(event.data);
             });
             recorder.addEventListener("stop", async () => {
+              const wasDiscarded = discardCurrentRecording;
               const actualMimeType = recorder?.mimeType.split(";")[0] || recordingType?.fileType || "audio/webm";
               const extension = recordingType?.extension || (actualMimeType === "audio/mp4" ? "m4a" : "webm");
               const file = new File(chunks, `audio-whatsapp.${extension}`, { type: actualMimeType });
@@ -1659,24 +1793,42 @@ foreach ($whatsappTemplates as $template) {
               if (actualMimeType === "audio/ogg" && !(await validateRecordedAudio(file))) {
                 recorderStream?.getTracks().forEach((track) => track.stop());
                 recorderStream = null;
+                recorder = null;
+                setRecordingMode(false);
                 setRecordButton(false);
-                window.alert("A gravação ficou inválida ou sem duração. Tente gravar novamente.");
+                if (!wasDiscarded) {
+                  window.alert("A gravação ficou inválida ou sem duração. Tente gravar novamente.");
+                }
+                recordingDiscardButton.disabled = false;
+                syncComposerAction();
                 return;
               }
 
-              const transfer = new DataTransfer();
-              transfer.items.add(file);
-              mediaInput.files = transfer.files;
-              renderMediaPreview(file);
+              if (!wasDiscarded) {
+                const transfer = new DataTransfer();
+                transfer.items.add(file);
+                mediaInput.files = transfer.files;
+                renderMediaPreview(file);
+              } else {
+                mediaInput.value = "";
+                setRecordingMode(false);
+              }
               recorderStream?.getTracks().forEach((track) => track.stop());
               recorderStream = null;
+              recorder = null;
+              setRecordButton(false);
+              recordingDiscardButton.disabled = false;
+              syncComposerAction();
             });
             recorder.start();
+            setRecordingMode(true);
             setRecordButton(true);
           } catch (error) {
             recorderStream?.getTracks().forEach((track) => track.stop());
             recorderStream = null;
+            setRecordingMode(false);
             setRecordButton(false);
+            syncComposerAction();
             window.alert("Não foi possível acessar o microfone.");
           }
         });
