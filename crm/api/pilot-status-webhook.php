@@ -118,10 +118,12 @@ $results = [];
 foreach ($incomingMessages as $incoming) {
     $whatsapp = (string) ($incoming['number'] ?? '');
     $message = trim((string) ($incoming['text'] ?? ''));
+    $media = is_array($incoming['media'] ?? null) ? $incoming['media'] : [];
+    $mediaUrl = trim((string) ($media['url'] ?? ''));
     $name = trim((string) ($incoming['name'] ?? ''));
     $profilePictureUrl = crm_normalize_profile_picture_url((string) ($incoming['profile_picture_url'] ?? ''));
 
-    if ($whatsapp === '' || $message === '') {
+    if ($whatsapp === '' || ($message === '' && $mediaUrl === '')) {
         continue;
     }
 
@@ -136,7 +138,10 @@ foreach ($incomingMessages as $incoming) {
         'company' => 'Não informado',
         'segment' => 'WhatsApp',
         'advertises' => 'whatsapp',
-        'message' => $message,
+        // Media is stored as a structured conversation note below. Keeping
+        // it out of the lead's initial text lets the chat render the actual
+        // image, audio player or file link instead of a plain placeholder.
+        'message' => $mediaUrl === '' ? $message : '',
         'page' => 'Pilot Status',
         'utm_source' => 'pilot_status',
         'utm_medium' => 'whatsapp',
@@ -152,7 +157,21 @@ foreach ($incomingMessages as $incoming) {
             crm_update_lead_profile_picture((string) $lead['id'], $profilePictureUrl);
         }
 
-        if (($leadResult['created'] ?? false) === false && $message !== '') {
+        if ($mediaUrl !== '') {
+            $media['url'] = $mediaUrl;
+            $media['type'] = trim((string) ($media['type'] ?? ''));
+            $media['caption'] = trim((string) ($media['caption'] ?? '')) ?: $message;
+            $media['mime_type'] = trim((string) ($media['mime_type'] ?? ''));
+            $media['filename'] = trim((string) ($media['filename'] ?? ''));
+            $mediaJson = json_encode($media, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+            if (is_string($mediaJson) && $mediaJson !== '') {
+                crm_append_lead_note(
+                    (string) $lead['id'],
+                    'Mídia recebida pela Pilot Status em ' . date('d/m/Y H:i') . ":\n[crm_media]" . $mediaJson
+                );
+            }
+        } elseif (($leadResult['created'] ?? false) === false && $message !== '') {
             crm_append_lead_note(
                 (string) $lead['id'],
                 'Mensagem recebida pela Pilot Status em ' . date('d/m/Y H:i') . ":\n" . $message

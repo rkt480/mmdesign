@@ -821,6 +821,56 @@ function pilot_status_extract_text(array $payload): string
     ]);
 }
 
+function pilot_status_extract_incoming_media(array $payload): array
+{
+    $url = pilot_status_first_payload_value($payload, [
+        ['mediaLink'],
+        ['media_link'],
+        ['media', 'url'],
+        ['data', 'mediaLink'],
+        ['data', 'media_link'],
+        ['data', 'media', 'url'],
+        ['message', 'mediaLink'],
+        ['message', 'media', 'url'],
+    ]);
+    $parsedUrl = $url !== '' ? parse_url($url) : false;
+    $scheme = is_array($parsedUrl) ? strtolower((string) ($parsedUrl['scheme'] ?? '')) : '';
+
+    if (!in_array($scheme, ['http', 'https'], true)) {
+        $url = '';
+    }
+
+    $type = strtolower(pilot_status_first_payload_value($payload, [
+        ['mediaType'],
+        ['media_type'],
+        ['type'],
+        ['media', 'type'],
+        ['data', 'mediaType'],
+        ['data', 'media_type'],
+        ['data', 'type'],
+        ['data', 'media', 'type'],
+    ]));
+
+    if (!in_array($type, ['image', 'audio', 'video', 'document', 'sticker'], true)) {
+        $type = '';
+    }
+
+    return [
+        'url' => $url,
+        'type' => $type,
+        'mime_type' => pilot_status_first_payload_value($payload, [
+            ['mediaMimeType'], ['media_mime_type'], ['media', 'mimeType'],
+            ['data', 'mediaMimeType'], ['data', 'media_mime_type'], ['data', 'media', 'mimeType'],
+        ]),
+        'caption' => pilot_status_first_payload_value($payload, [
+            ['mediaCaption'], ['media_caption'], ['data', 'mediaCaption'], ['data', 'media_caption'],
+        ]),
+        'filename' => pilot_status_first_payload_value($payload, [
+            ['mediaFilename'], ['media_filename'], ['data', 'mediaFilename'], ['data', 'media_filename'],
+        ]),
+    ];
+}
+
 function pilot_status_extract_name(array $payload): string
 {
     return pilot_status_first_payload_value($payload, [
@@ -985,6 +1035,7 @@ function pilot_status_extract_single_incoming_message(array $payload): array
         'raw_number' => $phone['raw'],
         'number' => $phone['number'],
         'text' => pilot_status_extract_text($payload),
+        'media' => pilot_status_extract_incoming_media($payload),
         'name' => pilot_status_extract_name($payload),
         'profile_picture_url' => pilot_status_extract_profile_picture_url($payload),
         'from_me' => pilot_status_payload_is_from_me($payload),
@@ -1103,7 +1154,9 @@ function pilot_status_extract_incoming_messages(array $payload): array
             continue;
         }
 
-        if (trim((string) ($incoming['text'] ?? '')) === '') {
+        $mediaUrl = trim((string) (($incoming['media']['url'] ?? '')));
+
+        if (trim((string) ($incoming['text'] ?? '')) === '' && $mediaUrl === '') {
             continue;
         }
 
