@@ -694,9 +694,13 @@ foreach ($whatsappTemplates as $template) {
             <?php endif; ?>
 
             <?php foreach ($activeMessages as $message): ?>
+              <?php
+                $messageMediaType = is_array($message['media'] ?? null) ? (string) ($message['media']['type'] ?? '') : '';
+                $messageMediaType = in_array($messageMediaType, ['image', 'sticker', 'audio', 'video', 'document'], true) ? $messageMediaType : 'file';
+              ?>
               <article class="wa-message wa-message-<?= htmlspecialchars((string) $message['direction']) ?>">
                 <?php if (is_array($message['media'] ?? null)): ?>
-                  <div class="wa-message-media"><?= whatsapp_page_received_media_markup($message['media']) ?></div>
+                  <div class="wa-message-media wa-message-media-<?= htmlspecialchars($messageMediaType) ?>"><?= whatsapp_page_received_media_markup($message['media']) ?></div>
                 <?php endif; ?>
                 <?php if (trim((string) $message['text']) !== ''): ?>
                   <p><?= nl2br(htmlspecialchars((string) $message['text'])) ?></p>
