@@ -206,7 +206,35 @@ function whatsapp_page_clean_sent_message_text(string $text): string
 
 function whatsapp_page_is_technical_delivery_note(string $text): bool
 {
-    return preg_match('/^Pilot Status evento:/iu', trim($text)) === 1;
+    return preg_match(
+        '/^(?:Pilot Status evento:|wamid\.|WhatsApp confirmou (?:o envio|a entrega|a leitura)|Status inicial:|Pilot Status ID:)/iu',
+        trim($text)
+    ) === 1;
+}
+
+/**
+ * Older notes can be saved back through a textarea and lose their blank-line
+ * separators. Split known CRM/Pilot Status records again so a delivery event
+ * never turns the complete conversation into one generic CRM observation.
+ *
+ * @return list<string>
+ */
+function whatsapp_page_note_blocks(string $notes): array
+{
+    $recordStart = '(?:Mensagem recebida pelo provedor anterior|Mensagem recebida pela Meta Cloud API|Mensagem recebida pela Pilot Status|Mídia recebida pela Pilot Status|Mídia enviada via|Mensagem enviada via|Falha ao enviar via|Pilot Status evento:)';
+    $blocks = [];
+
+    foreach (preg_split('/(?:\R){2,}/u', trim($notes)) ?: [] as $group) {
+        foreach (preg_split('/(?=^' . $recordStart . ')/mu', $group) ?: [] as $block) {
+            $block = trim($block);
+
+            if ($block !== '') {
+                $blocks[] = $block;
+            }
+        }
+    }
+
+    return $blocks;
 }
 
 function whatsapp_template_status_label_for_conversation(array $template): string
@@ -304,7 +332,7 @@ function whatsapp_page_messages_for_lead(array $lead): array
     $notes = trim((string) ($lead['notes'] ?? ''));
 
     if ($notes !== '') {
-        foreach (preg_split("/\n{2,}/", $notes) ?: [] as $block) {
+        foreach (whatsapp_page_note_blocks($notes) as $block) {
             $block = trim($block);
 
             if ($block === '') {
@@ -937,11 +965,18 @@ foreach ($whatsappTemplates as $template) {
                 Tags
                 <input type="text" name="tags" value="<?= htmlspecialchars(implode(', ', $activeLeadTags)) ?>" placeholder="quente, proposta, retorno" />
               </label>
+              <button type="submit">Salvar tags</button>
+            </form>
+            <form class="wa-side-form" method="post" action="update.php">
+              <input type="hidden" name="_csrf_token" value="<?= htmlspecialchars(crm_csrf_token()) ?>" />
+              <input type="hidden" name="id" value="<?= htmlspecialchars((string) ($activeLead['id'] ?? '')) ?>" />
+              <input type="hidden" name="status" value="<?= htmlspecialchars((string) ($activeLead['status'] ?? 'novo')) ?>" />
+              <input type="hidden" name="redirect_to" value="<?= htmlspecialchars($activeLeadReturnUrl) ?>" />
               <label>
                 Observações comerciais
                 <textarea name="notes" rows="4" placeholder="Resumo, objeções, próximos passos..."><?= htmlspecialchars((string) ($activeLead['notes'] ?? '')) ?></textarea>
               </label>
-              <button type="submit">Salvar</button>
+              <button type="submit">Salvar observações</button>
             </form>
           </section>
 
