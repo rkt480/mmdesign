@@ -67,9 +67,15 @@ function crm_whatsapp_send_followup(array $queueItem): array
 
         $providerVariables = $variables['values'];
 
-        return crm_whatsapp_provider() === 'pilot_status'
+        $result = crm_whatsapp_provider() === 'pilot_status'
             ? pilot_status_send_template($number, $template, $providerVariables)
             : meta_whatsapp_send_template($number, $template, array_values($providerVariables));
+
+        if (($result['ok'] ?? false) === true) {
+            crm_record_followup_template_send($queueItem, $template, $providerVariables);
+        }
+
+        return $result;
     }
 
     $legacyLead = [
@@ -92,15 +98,15 @@ function crm_whatsapp_send_followup(array $queueItem): array
         $queueItem['message'] = '*' . $senderName . ", disse:*\n" . ltrim((string) ($queueItem['message'] ?? ''));
     }
 
-    if (crm_whatsapp_provider() === 'meta_cloud') {
-        return meta_whatsapp_send_followup($queueItem);
+    $result = crm_whatsapp_provider() === 'meta_cloud'
+        ? meta_whatsapp_send_followup($queueItem)
+        : pilot_status_send_followup($queueItem);
+
+    if (($result['ok'] ?? false) === true) {
+        crm_record_followup_text_send($queueItem);
     }
 
-    if (crm_whatsapp_provider() === 'pilot_status') {
-        return pilot_status_send_followup($queueItem);
-    }
-
-    return pilot_status_send_followup($queueItem);
+    return $result;
 }
 
 function crm_whatsapp_followup_template_variables(array $queueItem, array $template): array
@@ -114,6 +120,7 @@ function crm_whatsapp_followup_template_variables(array $queueItem, array $templ
         'segment' => (string) ($queueItem['segment'] ?? ''),
         'message' => (string) ($queueItem['lead_message'] ?? ''),
         'whatsapp' => (string) ($queueItem['whatsapp'] ?? ''),
+        'seller' => crm_whatsapp_followup_seller_name($queueItem),
     ];
     $values = [];
 
@@ -127,6 +134,7 @@ function crm_whatsapp_followup_template_variables(array $queueItem, array $templ
                 'segment', 'segmento' => 'segment',
                 'message', 'mensagem' => 'message',
                 'whatsapp', 'phone', 'telefone' => 'whatsapp',
+                'seller', 'vendedor', 'atendente' => 'seller',
                 default => ['name', 'company', 'segment', 'message'][$index] ?? 'name',
             };
         }
@@ -145,4 +153,55 @@ function crm_whatsapp_followup_template_variables(array $queueItem, array $templ
     }
 
     return ['ok' => true, 'values' => $values];
+}
+
+function crm_whatsapp_followup_seller_name(array $queueItem): string
+{
+    $seller = trim((string) ($queueItem['assigned_user_name'] ?? ''));
+
+    if ($seller === '') {
+        $seller = trim((string) ($queueItem['assigned_username'] ?? ''));
+    }
+
+    return $seller !== '' ? $seller : 'Equipe comercial';
+}
+
+function crm_record_followup_template_send(array $queueItem, array $template, array $providerVariables): void
+{
+    $provider = crm_whatsapp_provider();
+    $providerLabel = crm_whatsapp_provider_label($provider);
+    $renderContext = $queueItem + [
+        'seller' => crm_whatsapp_followup_seller_name($queueItem),
+    ];
+    $renderedBody = crm_whatsapp_template_render(
+        (string) ($template['body_text'] ?? ''),
+        $providerVariables,
+        $renderContext
+    );
+    $seller = crm_whatsapp_followup_seller_name($queueItem);
+    $note = 'Mensagem enviada via ' . $providerLabel . ' em ' . date('d/m/Y H:i:s') . ":\n"
+        . 'Follow-up · template "' . (string) ($template['name'] ?? 'sem nome') . '" · vendedor: ' . $seller . "\n"
+        . $renderedBody;
+
+    try {
+        crm_append_lead_note((string) ($queueItem['lead_id'] ?? ''), $note);
+        crm_update_whatsapp_status((string) ($queueItem['lead_id'] ?? ''), $provider === 'pilot_status' ? 'aguardando' : 'enviado');
+    } catch (Throwable $error) {
+        error_log('Follow-up enviado, mas não foi possível registrar o histórico do lead: ' . $error->getMessage());
+    }
+}
+
+function crm_record_followup_text_send(array $queueItem): void
+{
+    $provider = crm_whatsapp_provider();
+    $note = 'Mensagem enviada via ' . crm_whatsapp_provider_label($provider) . ' em ' . date('d/m/Y H:i:s') . ":\n"
+        . 'Follow-up · vendedor: ' . crm_whatsapp_followup_seller_name($queueItem) . "\n"
+        . (string) ($queueItem['message'] ?? '');
+
+    try {
+        crm_append_lead_note((string) ($queueItem['lead_id'] ?? ''), $note);
+        crm_update_whatsapp_status((string) ($queueItem['lead_id'] ?? ''), $provider === 'pilot_status' ? 'aguardando' : 'enviado');
+    } catch (Throwable $error) {
+        error_log('Follow-up enviado, mas não foi possível registrar o histórico do lead: ' . $error->getMessage());
+    }
 }

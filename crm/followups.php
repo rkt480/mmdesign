@@ -124,7 +124,7 @@ function human_delay(int $minutes): string
     <main class="dashboard automation-layout">
       <section class="automation-card">
         <h2>Criar novo fluxo</h2>
-        <p>Monte a sequência escolhendo os templates aprovados pela Meta. As mensagens livres ficam disponíveis apenas para compatibilidade com fluxos antigos e dependem da janela de atendimento.</p>
+        <p>Monte a sequência escolhendo os templates aprovados pela Meta. Para mostrar o vendedor no WhatsApp, inclua uma variável no template e mapeie-a para “Vendedor responsável”. As mensagens livres ficam disponíveis apenas para compatibilidade com fluxos antigos e dependem da janela de atendimento.</p>
         <form class="flow-form" method="post" action="save-followup.php" id="flowForm">
           <input type="hidden" name="_csrf_token" value="<?= htmlspecialchars(crm_csrf_token()) ?>" />
           <input type="hidden" name="id" id="flowId" value="" />
