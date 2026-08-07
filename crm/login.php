@@ -45,7 +45,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Login | CRM Publi AI Soluções</title>
+    <meta name="theme-color" content="#0b1018" />
+    <meta name="apple-mobile-web-app-title" content="CRM MM Design" />
+    <title>CRM MM Design</title>
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="apple-touch-icon" sizes="180x180" href="./assets/icon-180.png" />
     <link rel="stylesheet" href="./assets/crm.css" />
   </head>
   <body class="auth-page">

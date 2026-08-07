@@ -1,12 +1,13 @@
 {
-  "name": "MM Design",
-  "short_name": "MM Design",
-  "description": "CRM de leads e atendimento comercial.",
+  "name": "CRM MM Design",
+  "short_name": "CRM MM Design",
+  "description": "CRM MM Design para leads e atendimento comercial.",
   "lang": "pt-BR",
   "start_url": "./index.php",
   "scope": "./",
   "display": "standalone",
   "orientation": "any",
+  "id": "./index.php",
   "theme_color": "#0b1018",
   "background_color": "#edf2f8",
   "icons": [

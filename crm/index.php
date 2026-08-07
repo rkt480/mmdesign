@@ -183,9 +183,10 @@ function lead_money_input(array $lead, string $field): string
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="csrf-token" content="<?= htmlspecialchars(crm_csrf_token()) ?>" />
     <meta name="theme-color" content="#0b1018" />
-    <title>CRM de Contatos | <?= htmlspecialchars((string) $config['company_name']) ?></title>
+    <meta name="apple-mobile-web-app-title" content="CRM MM Design" />
+    <title>CRM MM Design</title>
     <link rel="manifest" href="./manifest.webmanifest" />
-    <link rel="apple-touch-icon" href="./assets/icon-192.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="./assets/icon-180.png" />
     <link rel="stylesheet" href="./assets/crm.css?v=20260807-brand-logo" />
   </head>
   <body class="leads-page">
