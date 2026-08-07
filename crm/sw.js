@@ -58,7 +58,7 @@ self.addEventListener("push", (event) => {
     data = { body: event.data ? event.data.text() : "Novo evento no CRM." };
   }
 
-  const title = data.title || "Publi CRM";
+  const title = data.title || "MM Design";
   const options = {
     body: data.body || "Você tem uma nova atualização.",
     icon: data.icon || "./assets/icon-192.png",

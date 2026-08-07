@@ -618,15 +618,14 @@ foreach ($whatsappTemplates as $template) {
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="csrf-token" content="<?= htmlspecialchars(crm_csrf_token()) ?>" />
-    <title>WhatsApp | Publi CRM</title>
+    <title>WhatsApp | MM Design</title>
     <link rel="stylesheet" href="./assets/crm.css?v=<?= rawurlencode((string) (filemtime(__DIR__ . '/assets/crm.css') ?: time())) ?>" />
   </head>
   <body class="whatsapp-page whatsapp-crm-page" data-wa-initial-view="<?= is_array($activeLead) ? 'thread' : 'inbox' ?>">
     <main class="wa-web-shell" aria-label="Atendimento WhatsApp do CRM">
       <aside class="sidebar" aria-label="Navegação do CRM">
         <a class="brand" href="index.php" aria-label="Início">
-          <span class="brand-mark">P</span>
-          <span>Publi CRM</span>
+          <span class="brand-mark"><img src="./assets/mmdesign-mark.png" alt="MM DESIGN" /></span>
         </a>
         <nav class="sidebar-tabs" aria-label="Atalhos do CRM">
           <a class="active" href="whatsapp.php" title="Conversas do WhatsApp" aria-label="Conversas do WhatsApp">
@@ -1217,7 +1216,7 @@ foreach ($whatsappTemplates as $template) {
 
       const updateUnreadTitle = () => {
         const unreadCount = document.querySelectorAll(".wa-chat-item.has-unread").length;
-        document.title = unreadCount > 0 ? `(${unreadCount}) Nova mensagem | Publi CRM` : "WhatsApp | Publi CRM";
+        document.title = unreadCount > 0 ? `(${unreadCount}) Nova mensagem | MM Design` : "WhatsApp | MM Design";
       };
 
       const decorateUnreadConversations = (currentList, refreshedList) => {
@@ -1435,7 +1434,7 @@ foreach ($whatsappTemplates as $template) {
           headView.setInt16(16, 0, true);
           opusHead[18] = 0;
 
-          const vendor = encoder.encode("Publi CRM");
+          const vendor = encoder.encode("MM Design");
           const opusTags = new Uint8Array(16 + vendor.length);
           const tagsView = new DataView(opusTags.buffer);
           opusTags.set(encoder.encode("OpusTags"));

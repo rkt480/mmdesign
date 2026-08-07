@@ -81,12 +81,12 @@ $bodyVariables = crm_whatsapp_template_variables((string) ($currentTemplate['bod
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="csrf-token" content="<?= htmlspecialchars(crm_csrf_token()) ?>" />
     <title>Templates WhatsApp | CRM</title>
-    <link rel="stylesheet" href="./assets/crm.css?v=20260802-wa-template-layout" />
+    <link rel="stylesheet" href="./assets/crm.css?v=20260807-brand-logo" />
   </head>
   <body class="wa-templates-page">
     <div class="app-shell">
       <aside class="sidebar" aria-label="Navegação do CRM">
-        <a class="brand" href="index.php" aria-label="Início"><span class="brand-mark">P</span><span>Publi CRM</span></a>
+        <a class="brand" href="index.php" aria-label="Início"><span class="brand-mark"><img src="./assets/mmdesign-mark.png" alt="MM DESIGN" /></span></a>
         <nav class="sidebar-tabs" aria-label="Atalhos do CRM">
           <a href="whatsapp.php" title="Conversas do WhatsApp" aria-label="Conversas do WhatsApp"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7.4 14.8H6.2a4 4 0 0 1-4-4V7.2a4 4 0 0 1 4-4h7.1a4 4 0 0 1 4 4v.6" /><path d="M10.7 8.2h6.2a4 4 0 0 1 4 4v2.7a4 4 0 0 1-4 4h-2.5L11 21v-2.1h-.3a4 4 0 0 1-4-4v-2.7a4 4 0 0 1 4-4Z" /></svg></a>
           <a class="active" href="whatsapp-templates.php" title="Templates WhatsApp" aria-label="Templates WhatsApp"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4.5h14v15H5z" /><path d="M8 8h8M8 12h8M8 16h5" /></svg></a>
@@ -117,7 +117,7 @@ $bodyVariables = crm_whatsapp_template_variables((string) ($currentTemplate['bod
                 <label>Categoria<select name="category"><option value="UTILITY" <?= (($currentTemplate['category'] ?? 'UTILITY') === 'UTILITY') ? 'selected' : '' ?>>Utilidade</option><option value="MARKETING" <?= (($currentTemplate['category'] ?? '') === 'MARKETING') ? 'selected' : '' ?>>Marketing</option></select></label>
                 <label class="field-wide">Cabeçalho <span>opcional · texto</span><input type="text" name="header_text" value="<?= htmlspecialchars((string) ($currentTemplate['header_text'] ?? '')) ?>" maxlength="60" placeholder="Ex.: Atendimento Publi" /></label>
                 <label class="field-wide">Corpo da mensagem <span><?= $provider === 'pilot_status' ? 'use {{nome}}, {{pedido}} para campos variáveis · mantenha pelo menos 3 palavras fixas por variável' : 'use {{1}}, {{2}} para campos variáveis' ?></span><textarea name="body_text" rows="8" maxlength="1024" placeholder="<?= $provider === 'pilot_status' ? 'Olá, {{nome}}! Recebemos seu contato e vamos continuar seu atendimento por aqui.' : 'Olá, {{1}}! Recebemos seu contato e vamos continuar seu atendimento por aqui.' ?>" required><?= htmlspecialchars((string) ($currentTemplate['body_text'] ?? '')) ?></textarea></label>
-                <label class="field-wide">Rodapé <span>opcional</span><input type="text" name="footer_text" value="<?= htmlspecialchars((string) ($currentTemplate['footer_text'] ?? '')) ?>" maxlength="60" placeholder="Publi CRM" /></label>
+                <label class="field-wide">Rodapé <span>opcional</span><input type="text" name="footer_text" value="<?= htmlspecialchars((string) ($currentTemplate['footer_text'] ?? '')) ?>" maxlength="60" placeholder="MM Design" /></label>
               </div>
               <div class="wa-template-help"><strong>Como funciona</strong><span><?= $provider === 'pilot_status' ? 'O Pilot Status envia o template para a Meta quando o número é oficial. Depois de aprovado, ele ficará disponível na aba Conversas.' : 'A Meta analisa o conteúdo antes de liberar o envio. Depois de aprovado, ele ficará disponível na aba Conversas.' ?></span></div>
               <div class="builder-actions"><button type="submit" name="action" value="save">Salvar rascunho</button><?php if ($providerConfigured): ?><button class="secondary-action" type="submit" name="action" value="submit_provider">Salvar e enviar para aprovação</button><?php else: ?><span class="wa-template-config-note"><?= $provider === 'pilot_status' ? 'Configure a API key do Pilot Status para enviar o template.' : 'Configure a Meta Cloud API e o WABA ID para enviar à aprovação.' ?></span><?php endif; ?><?php if (!$isNew): ?><button class="danger" type="submit" name="action" value="delete" onclick="return confirm('Excluir este template? Essa ação não pode ser desfeita.');">Excluir template</button><?php endif; ?></div>
