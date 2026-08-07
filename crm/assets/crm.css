@@ -5643,6 +5643,7 @@ textarea:focus {
   }
 
   .sidebar {
+    height: 64px;
     min-height: 64px;
     margin-bottom: 10px;
     padding: 10px 12px;
