@@ -1201,13 +1201,23 @@ textarea:focus {
 
 .auth-page {
   display: grid;
+  width: 100%;
+  min-width: 0;
   place-items: center;
   padding: 20px;
 }
 
 .auth-card {
-  width: min(440px, 100%);
+  width: min(440px, calc(100vw - 40px));
+  min-width: 0;
+  max-width: 100%;
   padding: 30px;
+}
+
+.auth-card form,
+.auth-card label,
+.auth-card input {
+  min-width: 0;
 }
 
 .automation-layout {
