@@ -9,6 +9,7 @@ const flowDescription = document.querySelector("#flowDescription");
 const saveFlowButton = document.querySelector("#saveFlowButton");
 const cancelEditButton = document.querySelector("#cancelEditFlow");
 const csrfToken = document.querySelector("meta[name='csrf-token']")?.content || "";
+const templateCatalog = Array.isArray(window.followupTemplateCatalog) ? window.followupTemplateCatalog : [];
 const emojis = [
   ["😀", "feliz sorriso rosto"], ["😃", "feliz sorriso"], ["😄", "alegre sorriso"], ["😁", "sorrindo"], ["😊", "sorriso fofo"], ["🙂", "leve sorriso"],
   ["😉", "piscada"], ["😍", "apaixonado amor"], ["🥰", "carinho amor"], ["😘", "beijo"], ["😎", "confiante legal"], ["🤩", "uau estrela"],
@@ -42,10 +43,108 @@ function createStep(stepData = { delay_minutes: 0, message: "" }) {
   clone.querySelector("[data-name='delay_value']").value = delay.value;
   clone.querySelector("[data-name='delay_unit']").value = delay.unit;
   clone.querySelector("[data-name='message']").value = stepData.message || "";
+  clone.querySelector("[data-name='message_type']").value = stepData.message_type || "template";
+  populateTemplateSelect(clone, Number(stepData.template_id || 0));
+  renderTemplateVariables(clone, stepData.variable_mapping || {});
+  updateStepType(clone);
   bindRemoveButton(clone);
   renderEmojiPickers(clone);
 
   return clone;
+}
+
+function defaultVariableField(variable, index) {
+  const normalized = String(variable || "").trim().toLowerCase();
+  const namedFields = {
+    name: "name",
+    nome: "name",
+    company: "company",
+    empresa: "company",
+    segment: "segment",
+    segmento: "segment",
+    whatsapp: "whatsapp",
+    phone: "whatsapp",
+    telefone: "whatsapp",
+    message: "message",
+    mensagem: "message",
+  };
+
+  return namedFields[normalized] || ["name", "company", "segment", "message"][index] || "name";
+}
+
+function selectedTemplate(step) {
+  const id = Number(step.querySelector("[data-name='template_id']")?.value || 0);
+  return templateCatalog.find((item) => Number(item.id) === id) || null;
+}
+
+function populateTemplateSelect(step, selectedId = 0) {
+  const select = step.querySelector("[data-name='template_id']");
+
+  if (!select) {
+    return;
+  }
+
+  select.replaceChildren(new Option("Selecione um template aprovado", ""));
+  templateCatalog.forEach((item) => select.appendChild(new Option(item.name, String(item.id))));
+
+  if (selectedId > 0 && !templateCatalog.some((item) => Number(item.id) === selectedId)) {
+    select.appendChild(new Option("Template não disponível ou não aprovado", String(selectedId)));
+  }
+
+  select.value = selectedId > 0 ? String(selectedId) : "";
+}
+
+function renderTemplateVariables(step, mapping = {}) {
+  const container = step.querySelector("[data-template-variables]");
+
+  if (!container) {
+    return;
+  }
+
+  container.replaceChildren();
+  const template = selectedTemplate(step);
+  const variables = Array.isArray(template?.variables) ? template.variables : [];
+
+  if (variables.length === 0) {
+    return;
+  }
+
+  const title = document.createElement("strong");
+  title.textContent = "Preenchimento das variáveis";
+  container.appendChild(title);
+
+  const fields = [
+    ["name", "Nome do lead"],
+    ["company", "Empresa"],
+    ["segment", "Segmento"],
+    ["message", "Mensagem original"],
+    ["whatsapp", "WhatsApp"],
+  ];
+
+  variables.forEach((variable, index) => {
+    const label = document.createElement("label");
+    label.textContent = `{{${variable}}}`;
+    const select = document.createElement("select");
+    select.dataset.variableKey = variable;
+
+    fields.forEach(([value, text]) => select.appendChild(new Option(text, value)));
+    select.value = String(mapping[variable] || defaultVariableField(variable, index));
+    label.appendChild(select);
+    container.appendChild(label);
+  });
+}
+
+function updateStepType(step) {
+  const type = step.querySelector("[data-name='message_type']")?.value || "template";
+  const templateField = step.querySelector("[data-template-field]");
+  const templateVariables = step.querySelector("[data-template-variables]");
+  const textField = step.querySelector("[data-text-field]");
+  const templateSelect = step.querySelector("[data-name='template_id']");
+
+  if (templateField) templateField.hidden = type !== "template";
+  if (templateVariables) templateVariables.hidden = type !== "template";
+  if (textField) textField.hidden = type === "template";
+  if (templateSelect) templateSelect.required = type === "template";
 }
 
 function refreshStepNames() {
@@ -139,6 +238,9 @@ function syncStepsJson() {
       delay_value: Number(delayValueField?.value || 0),
       delay_unit: String(delayUnitField?.value || "minutes"),
       message: String(messageField?.value || ""),
+      message_type: String(step.querySelector("[data-name='message_type']")?.value || "template"),
+      template_id: Number(step.querySelector("[data-name='template_id']")?.value || 0),
+      variable_mapping: Object.fromEntries(Array.from(step.querySelectorAll("[data-variable-key]")).map((field) => [field.dataset.variableKey, field.value])),
     };
   });
 
@@ -146,16 +248,33 @@ function syncStepsJson() {
 }
 
 stepsContainer.querySelectorAll("[data-step]").forEach(bindRemoveButton);
+stepsContainer.querySelectorAll("[data-step]").forEach((step) => {
+  populateTemplateSelect(step, Number(step.querySelector("[data-name='template_id']")?.value || 0));
+  renderTemplateVariables(step);
+  updateStepType(step);
+});
 
 addStepButton.addEventListener("click", () => {
-  const clone = createStep({ delay_minutes: 1440, message: "" });
+  const clone = createStep({ delay_minutes: 1440, message: "", message_type: "template" });
   stepsContainer.appendChild(clone);
   refreshStepNames();
-  clone.querySelector("textarea")?.focus();
+  clone.querySelector("[data-name='template_id']")?.focus();
 });
 
 stepsContainer.addEventListener("input", syncStepsJson);
-stepsContainer.addEventListener("change", syncStepsJson);
+stepsContainer.addEventListener("change", (event) => {
+  const step = event.target.closest("[data-step]");
+
+  if (step && event.target.matches("[data-name='message_type']")) {
+    updateStepType(step);
+  }
+
+  if (step && event.target.matches("[data-name='template_id']")) {
+    renderTemplateVariables(step);
+  }
+
+  syncStepsJson();
+});
 stepsContainer.addEventListener("click", (event) => {
   const toggle = event.target.closest("[data-emoji-toggle]");
 

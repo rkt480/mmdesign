@@ -174,7 +174,11 @@ CREATE TABLE IF NOT EXISTS followup_steps (
   step_order INT NOT NULL,
   delay_minutes INT NOT NULL DEFAULT 0,
   message TEXT NOT NULL,
+  message_type VARCHAR(20) NOT NULL DEFAULT 'text',
+  template_id INT NULL,
+  variable_mapping LONGTEXT NULL,
   created_at DATETIME NOT NULL,
+  INDEX idx_followup_steps_template (template_id),
   FOREIGN KEY (flow_id) REFERENCES followup_flows(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
