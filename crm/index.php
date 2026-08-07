@@ -186,14 +186,13 @@ function lead_money_input(array $lead, string $field): string
     <title>CRM de Contatos | <?= htmlspecialchars((string) $config['company_name']) ?></title>
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="apple-touch-icon" href="./assets/icon-192.png" />
-    <link rel="stylesheet" href="./assets/crm.css?v=20260803-mobile-drag-v8" />
+    <link rel="stylesheet" href="./assets/crm.css?v=20260807-brand-logo" />
   </head>
   <body class="leads-page">
     <div class="app-shell">
       <aside class="sidebar" aria-label="Navegação do CRM">
         <a class="brand" href="index.php" aria-label="Início">
-          <span class="brand-mark">P</span>
-          <span>Publi CRM</span>
+          <span class="brand-mark"><img src="./assets/mmdesign-mark.png" alt="MM DESIGN" /></span>
         </a>
         <nav class="sidebar-tabs" aria-label="Atalhos do CRM">
           <a href="whatsapp.php" title="Conversas do WhatsApp" aria-label="Conversas do WhatsApp">

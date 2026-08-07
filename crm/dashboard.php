@@ -129,14 +129,13 @@ arsort($lostReasons);
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Dashboard | CRM</title>
-    <link rel="stylesheet" href="./assets/crm.css?v=20260719-manager-dashboard" />
+    <link rel="stylesheet" href="./assets/crm.css?v=20260807-brand-logo" />
   </head>
   <body class="settings-page dashboard-page">
     <div class="app-shell">
       <aside class="sidebar" aria-label="Navegação do CRM">
         <a class="brand" href="index.php" aria-label="Início">
-          <span class="brand-mark">P</span>
-          <span>Publi CRM</span>
+          <span class="brand-mark"><img src="./assets/mmdesign-mark.png" alt="MM DESIGN" /></span>
         </a>
         <nav class="sidebar-tabs" aria-label="Atalhos do CRM">
           <a href="whatsapp.php" title="Conversas do WhatsApp" aria-label="Conversas do WhatsApp">

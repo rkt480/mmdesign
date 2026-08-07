@@ -121,7 +121,7 @@ function meta_capi_send_event(string $eventName, array $lead, array $context = [
             'lead_id' => (string) ($lead['id'] ?? ''),
             'status' => (string) ($context['status'] ?? ($lead['status'] ?? '')),
             'company' => (string) ($lead['company'] ?? ''),
-            'content_name' => (string) ($context['content_name'] ?? 'Publi CRM'),
+            'content_name' => (string) ($context['content_name'] ?? 'MM Design'),
             'currency' => (string) ($context['currency'] ?? ''),
             'value' => $context['value'] ?? null,
         ], static fn($value): bool => $value !== '' && $value !== null),

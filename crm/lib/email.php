@@ -30,7 +30,7 @@ function crm_send_lead_email_notification(array $lead): array
     $headers = [
         'MIME-Version: 1.0',
         'Content-Type: text/plain; charset=UTF-8',
-        'From: Publi CRM <' . crm_email_sender() . '>',
+        'From: MM Design <' . crm_email_sender() . '>',
         'Reply-To: ' . crm_email_sender(),
     ];
 

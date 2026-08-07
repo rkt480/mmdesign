@@ -50,9 +50,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   </head>
   <body class="auth-page">
     <main class="auth-card">
-      <p class="eyebrow">Painel privado</p>
-      <h1>CRM de leads</h1>
-      <p>Acesse os contatos recebidos pela landing page.</p>
+      <div class="auth-brand">
+        <img src="./assets/mmdesign-source.png" alt="MM DESIGN" />
+      </div>
+      <p class="auth-description">Acesse sua conta para visualizar e gerenciar os contatos recebidos</p>
 
       <?php if ($error !== ''): ?>
         <div class="alert"><?= htmlspecialchars($error) ?></div>
