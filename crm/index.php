@@ -454,19 +454,19 @@ function lead_money_input(array $lead, string $field): string
       <section class="metrics">
         <article>
           <span>Total</span>
-          <strong><?= count($leads) ?></strong>
+          <strong data-dashboard-metric="total"><?= count($leads) ?></strong>
         </article>
         <article>
           <span>Novos</span>
-          <strong><?= count(array_filter($leads, fn(array $lead): bool => ($lead['status'] ?? '') === 'novo')) ?></strong>
+          <strong data-dashboard-metric="new"><?= count(array_filter($leads, fn(array $lead): bool => ($lead['status'] ?? '') === 'novo')) ?></strong>
         </article>
         <article>
           <span>Em contato</span>
-          <strong><?= count(array_filter($leads, fn(array $lead): bool => in_array(($lead['status'] ?? ''), ['contatado', 'proposta'], true))) ?></strong>
+          <strong data-dashboard-metric="contact"><?= count(array_filter($leads, fn(array $lead): bool => in_array(($lead['status'] ?? ''), ['contatado', 'proposta'], true))) ?></strong>
         </article>
         <article>
           <span>Fechados</span>
-          <strong><?= count(array_filter($leads, fn(array $lead): bool => ($lead['status'] ?? '') === 'fechado')) ?></strong>
+          <strong data-dashboard-metric="closed"><?= count(array_filter($leads, fn(array $lead): bool => ($lead['status'] ?? '') === 'fechado')) ?></strong>
         </article>
       </section>
 
@@ -804,6 +804,6 @@ function lead_money_input(array $lead, string $field): string
     </main>
       </div>
     </div>
-    <script src="./assets/crm.js?v=20260803-mobile-drag-v8"></script>
+    <script src="./assets/crm.js?v=20260807-live-metrics-v1"></script>
   </body>
 </html>

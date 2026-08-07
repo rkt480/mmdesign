@@ -23,6 +23,47 @@ function updateColumnCounts() {
   });
 }
 
+function dashboardMetricBucket(status) {
+  if (status === "novo") {
+    return "new";
+  }
+
+  if (["contatado", "proposta"].includes(status)) {
+    return "contact";
+  }
+
+  if (status === "fechado") {
+    return "closed";
+  }
+
+  return null;
+}
+
+function updateDashboardMetrics(previousStatus, nextStatus) {
+  const previousBucket = dashboardMetricBucket(previousStatus);
+  const nextBucket = dashboardMetricBucket(nextStatus);
+
+  if (previousBucket === nextBucket) {
+    return;
+  }
+
+  if (previousBucket) {
+    const previousMetric = document.querySelector(`[data-dashboard-metric="${previousBucket}"]`);
+
+    if (previousMetric) {
+      previousMetric.textContent = String(Math.max(0, Number(previousMetric.textContent) - 1));
+    }
+  }
+
+  if (nextBucket) {
+    const nextMetric = document.querySelector(`[data-dashboard-metric="${nextBucket}"]`);
+
+    if (nextMetric) {
+      nextMetric.textContent = String(Number(nextMetric.textContent) + 1);
+    }
+  }
+}
+
 async function persistLeadStatus(leadId, status, orders) {
   const response = await fetch("./api/update-status.php", {
     method: "POST",
@@ -390,6 +431,7 @@ async function finishTouchKanbanDrag(event, cancelled = false) {
       mobileStatus.value = finalStatus;
     }
 
+    updateDashboardMetrics(previousStatus, finalStatus);
     keepKanbanCardInView(card);
   } catch (error) {
     localKanbanMoveUntil = 0;
@@ -514,6 +556,7 @@ dropzones.forEach((zone) => {
         mobileStatus.value = targetStatus;
       }
 
+      updateDashboardMetrics(previousStatus, targetStatus);
       keepKanbanCardInView(movedCard);
     } catch (error) {
       localKanbanMoveUntil = 0;
@@ -568,6 +611,7 @@ mobileStatusControls.forEach((control) => {
         input.value = targetStatus;
       });
 
+      updateDashboardMetrics(previousStatus, targetStatus);
       keepKanbanCardInView(card);
     } catch (error) {
       localKanbanMoveUntil = 0;
