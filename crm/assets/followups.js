@@ -67,6 +67,9 @@ function defaultVariableField(variable, index) {
     telefone: "whatsapp",
     message: "message",
     mensagem: "message",
+    seller: "seller",
+    vendedor: "seller",
+    atendente: "seller",
   };
 
   return namedFields[normalized] || ["name", "company", "segment", "message"][index] || "name";
@@ -119,6 +122,7 @@ function renderTemplateVariables(step, mapping = {}) {
     ["segment", "Segmento"],
     ["message", "Mensagem original"],
     ["whatsapp", "WhatsApp"],
+    ["seller", "Vendedor responsável"],
   ];
 
   variables.forEach((variable, index) => {

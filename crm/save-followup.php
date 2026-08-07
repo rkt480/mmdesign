@@ -51,7 +51,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $message = (string) ($template['body_text'] ?? '');
             $templateVariables = crm_whatsapp_template_variable_keys($message);
-            $allowedFields = ['name', 'company', 'segment', 'message', 'whatsapp'];
+            $allowedFields = ['name', 'company', 'segment', 'message', 'whatsapp', 'seller'];
 
             foreach ($templateVariables as $variable) {
                 $mappedField = trim((string) ($variableMapping[$variable] ?? ''));
