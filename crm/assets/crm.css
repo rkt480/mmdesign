@@ -5673,6 +5673,10 @@ textarea:focus {
     min-height: 44px;
   }
 
+  .sidebar-exit {
+    align-self: center;
+  }
+
   .sidebar-tabs a svg {
     width: 21px;
     height: 21px;
