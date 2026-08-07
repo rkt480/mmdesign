@@ -1,6 +1,6 @@
-const CACHE_NAME = "mm-design-crm-v9";
+const CACHE_NAME = "mm-design-crm-v10";
 const APP_SHELL = [
-  "./assets/crm.css?v=20260807-mobile-header-v5",
+  "./assets/crm.css?v=20260807-mobile-header-v6",
   "./assets/crm.js?v=20260803-mobile-drag-v8",
   "./assets/icon.svg",
   "./assets/icon-180.png",
