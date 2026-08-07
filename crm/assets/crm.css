@@ -5980,6 +5980,10 @@ textarea:focus {
     font-weight: 700;
   }
 
+  .leads-page .lead-chat-action {
+    display: none;
+  }
+
   .mobile-status-move select {
     width: 100%;
     min-height: 42px;
