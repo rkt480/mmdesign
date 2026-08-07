@@ -9,7 +9,7 @@ require_once __DIR__ . '/lib/meta-whatsapp.php';
 require_once __DIR__ . '/lib/pilot-status.php';
 require_once __DIR__ . '/lib/whatsapp-templates.php';
 
-crm_require_admin();
+crm_require_whatsapp_template_manager();
 
 $templates = crm_read_whatsapp_templates();
 $requestedId = (int) ($_GET['id'] ?? 0);

@@ -1807,6 +1807,27 @@ textarea:focus {
   align-items: center;
 }
 
+.followup-template-variables {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 16px;
+}
+
+.followup-template-variables strong {
+  color: var(--text);
+  font-size: 0.86rem;
+}
+
+.followup-template-variables label {
+  display: grid;
+  grid-template-columns: minmax(60px, 0.35fr) minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+}
+
 .emoji-picker {
   position: relative;
   width: max-content;

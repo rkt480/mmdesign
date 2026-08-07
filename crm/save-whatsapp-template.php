@@ -8,7 +8,7 @@ require_once __DIR__ . '/lib/meta-whatsapp.php';
 require_once __DIR__ . '/lib/pilot-status.php';
 require_once __DIR__ . '/lib/whatsapp-templates.php';
 
-crm_require_admin();
+crm_require_whatsapp_template_manager();
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     header('Location: whatsapp-templates.php');

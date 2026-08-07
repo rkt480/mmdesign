@@ -4,11 +4,27 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/lib/auth.php';
 require_once __DIR__ . '/lib/storage.php';
+require_once __DIR__ . '/lib/whatsapp-templates.php';
 
 crm_require_sales_manager();
 
 $canManageSettings = crm_current_user_is_admin();
+$canManageTemplates = crm_current_user_can_manage_whatsapp_templates();
 $flows = crm_read_followup_flows();
+$approvedTemplates = array_values(array_filter(
+    crm_read_whatsapp_templates(true),
+    static fn(array $template): bool => crm_whatsapp_template_is_sendable($template)
+));
+$templateCatalog = array_map(
+    static fn(array $template): array => [
+        'id' => (int) $template['id'],
+        'name' => (string) ($template['name'] ?? ''),
+        'body' => (string) ($template['body_text'] ?? ''),
+        'language' => (string) ($template['language'] ?? 'pt_BR'),
+        'variables' => crm_whatsapp_template_variable_keys((string) ($template['body_text'] ?? '')),
+    ],
+    $approvedTemplates
+);
 
 function short_text(string $text, int $limit = 120): string
 {
@@ -52,7 +68,7 @@ function human_delay(int $minutes): string
               <path d="M10.7 8.2h6.2a4 4 0 0 1 4 4v2.7a4 4 0 0 1-4 4h-2.5L11 21v-2.1h-.3a4 4 0 0 1-4-4v-2.7a4 4 0 0 1 4-4Z" />
             </svg>
           </a>
-          <?php if ($canManageSettings): ?>
+          <?php if ($canManageTemplates): ?>
             <a href="whatsapp-templates.php" title="Templates WhatsApp" aria-label="Templates WhatsApp">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4.5h14v15H5z" /><path d="M8 8h8M8 12h8M8 16h5" /></svg>
             </a>
@@ -88,7 +104,11 @@ function human_delay(int $minutes): string
             <a href="dashboard.php">Dashboard</a>
             <?php if ($canManageSettings): ?>
               <a href="commercial.php">Comercial</a>
+            <?php endif; ?>
+            <?php if ($canManageTemplates): ?>
               <a href="whatsapp-templates.php">Templates</a>
+            <?php endif; ?>
+            <?php if ($canManageSettings): ?>
               <a href="settings.php">Configurações</a>
             <?php endif; ?>
           </nav>
@@ -104,7 +124,7 @@ function human_delay(int $minutes): string
     <main class="dashboard automation-layout">
       <section class="automation-card">
         <h2>Criar novo fluxo</h2>
-        <p>Monte a sequência como você falaria no comercial. Use <code>{{name}}</code>, <code>{{company}}</code> e <code>{{segment}}</code>.</p>
+        <p>Monte a sequência escolhendo os templates aprovados pela Meta. As mensagens livres ficam disponíveis apenas para compatibilidade com fluxos antigos e dependem da janela de atendimento.</p>
         <form class="flow-form" method="post" action="save-followup.php" id="flowForm">
           <input type="hidden" name="_csrf_token" value="<?= htmlspecialchars(crm_csrf_token()) ?>" />
           <input type="hidden" name="id" id="flowId" value="" />
@@ -139,16 +159,35 @@ function human_delay(int $minutes): string
                 </label>
               </div>
               <label>
-                Mensagem
-                <div class="emoji-picker" data-emoji-picker>
-                  <button class="emoji-picker-toggle" type="button" data-emoji-toggle title="Abrir emojis">😀</button>
-                  <div class="emoji-picker-panel" data-emoji-panel hidden>
-                    <input type="search" data-emoji-search placeholder="Buscar emoji" autocomplete="off" />
-                    <div class="emoji-picker-grid" data-emoji-grid aria-label="Emojis"></div>
-                  </div>
-                </div>
-                <textarea name="steps[0][message]" rows="4" placeholder="Ex: Oi {{name}}, vi que você pediu uma demonstração. Posso te mostrar como funciona?"></textarea>
+                Tipo de envio
+                <select data-name="message_type">
+                  <option value="template" selected>Template aprovado</option>
+                  <option value="text">Mensagem livre (compatibilidade)</option>
+                </select>
               </label>
+              <label data-template-field>
+                Template aprovado
+                <select data-name="template_id">
+                  <option value="">Selecione um template aprovado</option>
+                  <?php foreach ($approvedTemplates as $template): ?>
+                    <option value="<?= (int) $template['id'] ?>"><?= htmlspecialchars((string) $template['name']) ?></option>
+                  <?php endforeach; ?>
+                </select>
+              </label>
+              <div class="followup-template-variables" data-template-variables></div>
+              <div data-text-field hidden>
+                <label>
+                  Mensagem livre
+                  <div class="emoji-picker" data-emoji-picker>
+                    <button class="emoji-picker-toggle" type="button" data-emoji-toggle title="Abrir emojis">😀</button>
+                    <div class="emoji-picker-panel" data-emoji-panel hidden>
+                      <input type="search" data-emoji-search placeholder="Buscar emoji" autocomplete="off" />
+                      <div class="emoji-picker-grid" data-emoji-grid aria-label="Emojis"></div>
+                    </div>
+                  </div>
+                  <textarea name="steps[0][message]" data-name="message" rows="4" placeholder="Ex: Oi {{name}}, vi que você pediu uma demonstração. Posso te mostrar como funciona?"></textarea>
+                </label>
+              </div>
             </article>
           </div>
 
@@ -177,6 +216,9 @@ function human_delay(int $minutes): string
                   'steps' => array_map(fn(array $step): array => [
                     'delay_minutes' => (int) $step['delay_minutes'],
                     'message' => (string) $step['message'],
+                    'message_type' => (string) ($step['message_type'] ?? 'text'),
+                    'template_id' => (int) ($step['template_id'] ?? 0),
+                    'variable_mapping' => json_decode((string) ($step['variable_mapping'] ?? ''), true) ?: [],
                   ], $steps),
                 ], JSON_UNESCAPED_UNICODE), ENT_QUOTES) ?>'
               >
@@ -189,7 +231,11 @@ function human_delay(int $minutes): string
                   <?php foreach ($steps as $step): ?>
                     <li>
                       <strong><?= human_delay((int) $step['delay_minutes']) ?></strong>
-                      <?= htmlspecialchars(short_text((string) $step['message'])) ?>
+                      <?php if ((string) ($step['message_type'] ?? 'text') === 'template' && trim((string) ($step['template_name'] ?? '')) !== ''): ?>
+                        Template: <?= htmlspecialchars((string) $step['template_name']) ?>
+                      <?php else: ?>
+                        <?= htmlspecialchars(short_text((string) $step['message'])) ?>
+                      <?php endif; ?>
                     </li>
                   <?php endforeach; ?>
                 </ol>
@@ -228,20 +274,37 @@ function human_delay(int $minutes): string
           </label>
         </div>
         <label>
-          Mensagem
-          <div class="emoji-picker" data-emoji-picker>
-            <button class="emoji-picker-toggle" type="button" data-emoji-toggle title="Abrir emojis">😀</button>
-            <div class="emoji-picker-panel" data-emoji-panel hidden>
-              <input type="search" data-emoji-search placeholder="Buscar emoji" autocomplete="off" />
-              <div class="emoji-picker-grid" data-emoji-grid aria-label="Emojis"></div>
-            </div>
-          </div>
-          <textarea data-name="message" rows="4" placeholder="Digite a mensagem do follow-up"></textarea>
+          Tipo de envio
+          <select data-name="message_type">
+            <option value="template" selected>Template aprovado</option>
+            <option value="text">Mensagem livre (compatibilidade)</option>
+          </select>
         </label>
+        <label data-template-field>
+          Template aprovado
+          <select data-name="template_id">
+            <option value="">Selecione um template aprovado</option>
+          </select>
+        </label>
+        <div class="followup-template-variables" data-template-variables></div>
+        <div data-text-field hidden>
+          <label>
+            Mensagem livre
+            <div class="emoji-picker" data-emoji-picker>
+              <button class="emoji-picker-toggle" type="button" data-emoji-toggle title="Abrir emojis">😀</button>
+              <div class="emoji-picker-panel" data-emoji-panel hidden>
+                <input type="search" data-emoji-search placeholder="Buscar emoji" autocomplete="off" />
+                <div class="emoji-picker-grid" data-emoji-grid aria-label="Emojis"></div>
+              </div>
+            </div>
+            <textarea data-name="message" rows="4" placeholder="Digite a mensagem do follow-up"></textarea>
+          </label>
+        </div>
       </article>
     </template>
       </div>
     </div>
-    <script src="./assets/followups.js?v=20260701-emoji-picker"></script>
+    <script>window.followupTemplateCatalog = <?= json_encode($templateCatalog, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;</script>
+    <script src="./assets/followups.js?v=20260807-template-picker"></script>
   </body>
 </html>

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/lib/auth.php';
 require_once __DIR__ . '/lib/storage.php';
+require_once __DIR__ . '/lib/whatsapp-templates.php';
 
 crm_require_sales_manager();
 
@@ -19,7 +20,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $postedSteps = $jsonSteps;
     }
 
-    foreach ($postedSteps as $step) {
+    foreach ($postedSteps as $stepPosition => $step) {
         $value = max(0, (int) ($step['delay_value'] ?? 0));
         $unit = (string) ($step['delay_unit'] ?? 'minutes');
         $multiplier = match ($unit) {
@@ -28,9 +29,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             default => 1,
         };
 
+        $messageType = trim((string) ($step['message_type'] ?? 'text')) === 'template' ? 'template' : 'text';
+        $templateId = max(0, (int) ($step['template_id'] ?? 0));
+        $message = trim((string) ($step['message'] ?? ''));
+        $variableMapping = is_array($step['variable_mapping'] ?? null) ? $step['variable_mapping'] : [];
+
+        if ((int) $stepPosition === 0 && $messageType !== 'template') {
+            http_response_code(422);
+            echo 'A primeira etapa do follow-up precisa usar um template aprovado.';
+            exit;
+        }
+
+        if ($messageType === 'template') {
+            $template = $templateId > 0 ? crm_find_whatsapp_template($templateId) : null;
+
+            if (!is_array($template) || !crm_whatsapp_template_is_sendable($template)) {
+                http_response_code(422);
+                echo 'Selecione um template aprovado e ativo para cada etapa automática.';
+                exit;
+            }
+
+            $message = (string) ($template['body_text'] ?? '');
+            $templateVariables = crm_whatsapp_template_variable_keys($message);
+            $allowedFields = ['name', 'company', 'segment', 'message', 'whatsapp'];
+
+            foreach ($templateVariables as $variable) {
+                $mappedField = trim((string) ($variableMapping[$variable] ?? ''));
+
+                if (!in_array($mappedField, $allowedFields, true)) {
+                    http_response_code(422);
+                    echo 'Mapeie todas as variáveis do template para um campo do lead.';
+                    exit;
+                }
+            }
+        } elseif ($message === '') {
+            continue;
+        }
+
         $steps[] = [
             'delay_minutes' => $value * $multiplier,
-            'message' => $step['message'] ?? '',
+            'message' => $message,
+            'message_type' => $messageType,
+            'template_id' => $templateId,
+            'variable_mapping' => $variableMapping,
         ];
     }
 

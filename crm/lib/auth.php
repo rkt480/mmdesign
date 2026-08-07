@@ -341,6 +341,11 @@ function crm_current_user_is_admin(): bool
     return crm_current_user_role() === 'admin';
 }
 
+function crm_current_user_can_manage_whatsapp_templates(): bool
+{
+    return in_array(crm_current_user_role(), ['admin', 'gestor', 'vendedor'], true);
+}
+
 function crm_forbid(string $message = 'Acesso não autorizado.'): void
 {
     http_response_code(403);
@@ -355,6 +360,15 @@ function crm_require_admin(): void
 
     if (!crm_current_user_is_admin()) {
         crm_forbid('Apenas administradores podem acessar esta área.');
+    }
+}
+
+function crm_require_whatsapp_template_manager(): void
+{
+    crm_require_login();
+
+    if (!crm_current_user_can_manage_whatsapp_templates()) {
+        crm_forbid('Você não tem permissão para gerenciar templates do WhatsApp.');
     }
 }
 

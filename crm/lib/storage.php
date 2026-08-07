@@ -220,7 +220,30 @@ function crm_ensure_crm_schema(PDO $pdo): void
         crm_ensure_flexible_lead_status($pdo);
     }
 
+    if (crm_table_exists($pdo, 'followup_steps')) {
+        crm_ensure_followup_step_columns($pdo);
+    }
+
     $checked = true;
+}
+
+function crm_ensure_followup_step_columns(PDO $pdo): void
+{
+    $columns = [
+        'message_type' => 'VARCHAR(20) NOT NULL DEFAULT "text" AFTER delay_minutes',
+        'template_id' => 'INT NULL AFTER message_type',
+        'variable_mapping' => 'LONGTEXT NULL AFTER template_id',
+    ];
+
+    foreach ($columns as $column => $definition) {
+        if (!crm_column_exists($pdo, 'followup_steps', $column)) {
+            $pdo->exec(sprintf('ALTER TABLE followup_steps ADD COLUMN %s %s', $column, $definition));
+        }
+    }
+
+    if (!crm_index_exists($pdo, 'followup_steps', 'idx_followup_steps_template')) {
+        $pdo->exec('ALTER TABLE followup_steps ADD INDEX idx_followup_steps_template (template_id)');
+    }
 }
 
 function crm_read_whatsapp_templates(bool $activeOnly = false): array
@@ -1760,7 +1783,15 @@ function crm_find_followup_flow(int $id): ?array
 
 function crm_read_followup_steps(int $flowId): array
 {
-    $stmt = crm_db()->prepare('SELECT * FROM followup_steps WHERE flow_id = :flow_id ORDER BY step_order ASC');
+    $stmt = crm_db()->prepare(
+        'SELECT s.*, t.name AS template_name, t.body_text AS template_body,
+                t.status AS template_status, t.meta_status AS template_meta_status,
+                t.active AS template_active
+         FROM followup_steps s
+         LEFT JOIN whatsapp_templates t ON t.id = s.template_id
+         WHERE s.flow_id = :flow_id
+         ORDER BY s.step_order ASC'
+    );
     $stmt->execute(['flow_id' => $flowId]);
 
     return $stmt->fetchAll();
@@ -1830,16 +1861,31 @@ function crm_replace_followup_steps(int $flowId, array $steps): void
     $delete->execute(['flow_id' => $flowId]);
 
     $insert = $db->prepare(
-        'INSERT INTO followup_steps (flow_id, step_order, delay_minutes, message, created_at)
-        VALUES (:flow_id, :step_order, :delay_minutes, :message, :created_at)'
+        'INSERT INTO followup_steps
+            (flow_id, step_order, delay_minutes, message, message_type, template_id, variable_mapping, created_at)
+        VALUES
+            (:flow_id, :step_order, :delay_minutes, :message, :message_type, :template_id, :variable_mapping, :created_at)'
     );
 
     $order = 1;
 
     foreach ($steps as $step) {
         $message = trim((string) ($step['message'] ?? ''));
+        $messageType = trim((string) ($step['message_type'] ?? 'text')) === 'template' ? 'template' : 'text';
+        $templateId = max(0, (int) ($step['template_id'] ?? 0));
+        $variableMapping = is_array($step['variable_mapping'] ?? null)
+            ? json_encode($step['variable_mapping'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+            : null;
 
-        if ($message === '') {
+        if ($messageType === 'template' && $templateId > 0) {
+            $template = crm_find_whatsapp_template($templateId);
+
+            if ($template !== null) {
+                $message = trim((string) ($template['body_text'] ?? ''));
+            }
+        }
+
+        if ($message === '' && $messageType !== 'template') {
             continue;
         }
 
@@ -1848,6 +1894,9 @@ function crm_replace_followup_steps(int $flowId, array $steps): void
             'step_order' => $order,
             'delay_minutes' => max(0, (int) ($step['delay_minutes'] ?? 0)),
             'message' => $message,
+            'message_type' => $messageType,
+            'template_id' => $templateId > 0 ? $templateId : null,
+            'variable_mapping' => $variableMapping,
             'created_at' => date('Y-m-d H:i:s'),
         ]);
         $order++;
@@ -2015,11 +2064,17 @@ function crm_assign_followup_flow(string $leadId, int $flowId): bool
 function crm_read_due_followups(int $limit = 20): array
 {
     $stmt = crm_db()->prepare(
-        'SELECT q.*, s.message, l.name, l.whatsapp, l.company, l.segment,
+        'SELECT q.*, s.message, s.message_type, s.template_id, s.variable_mapping,
+                l.name, l.whatsapp, l.company, l.segment,
+                l.created_at AS lead_created_at, l.message AS lead_message, l.notes AS lead_notes,
+                t.name AS template_name, t.body_text AS template_body,
+                t.language AS template_language, t.status AS template_status,
+                t.meta_status AS template_meta_status, t.meta_template_id,
                 crm_users.name AS assigned_user_name, crm_users.username AS assigned_username
         FROM followup_queue q
         JOIN followup_steps s ON s.id = q.step_id
         JOIN leads l ON l.id = q.lead_id
+        LEFT JOIN whatsapp_templates t ON t.id = s.template_id
         LEFT JOIN crm_users ON crm_users.id = l.assigned_user_id
         WHERE q.status = "pendente"
           AND q.scheduled_at <= :now_due
