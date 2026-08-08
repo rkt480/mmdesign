@@ -117,12 +117,12 @@ function renderTemplateVariables(step, mapping = {}) {
   container.appendChild(title);
 
   const fields = [
+    ["seller", "Vendedor responsável"],
     ["name", "Nome do lead"],
     ["company", "Empresa"],
     ["segment", "Segmento"],
     ["message", "Mensagem original"],
     ["whatsapp", "WhatsApp"],
-    ["seller", "Vendedor responsável"],
   ];
 
   variables.forEach((variable, index) => {
