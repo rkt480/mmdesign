@@ -2061,6 +2061,83 @@ function crm_assign_followup_flow(string $leadId, int $flowId): bool
     }
 }
 
+function crm_stop_followup_after_incoming_reply(string $leadId): array
+{
+    $leadId = trim($leadId);
+
+    if ($leadId === '') {
+        return [
+            'stopped' => false,
+            'cancelled' => 0,
+        ];
+    }
+
+    $db = crm_db();
+    $db->beginTransaction();
+
+    try {
+        $leadStmt = $db->prepare(
+            'SELECT id, status
+             FROM leads
+             WHERE id = :id
+             LIMIT 1
+             FOR UPDATE'
+        );
+        $leadStmt->execute(['id' => $leadId]);
+        $lead = $leadStmt->fetch();
+
+        if (!is_array($lead) || (string) ($lead['status'] ?? '') !== 'followup') {
+            $db->commit();
+
+            return [
+                'stopped' => false,
+                'cancelled' => 0,
+            ];
+        }
+
+        $now = date('Y-m-d H:i:s');
+        $updateLead = $db->prepare(
+            'UPDATE leads
+             SET status = "contatado",
+                 followup_flow_id = NULL,
+                 followup_started_at = NULL,
+                 last_activity_at = :last_activity_at,
+                 last_activity_type = "incoming_reply",
+                 updated_at = :updated_at
+             WHERE id = :id
+               AND status = "followup"'
+        );
+        $updateLead->execute([
+            'id' => $leadId,
+            'last_activity_at' => $now,
+            'updated_at' => $now,
+        ]);
+
+        $cancelQueue = $db->prepare(
+            'UPDATE followup_queue
+             SET status = "cancelado",
+                 sent_at = NULL,
+                 error = :error
+             WHERE lead_id = :lead_id
+               AND status = "pendente"'
+        );
+        $cancelQueue->execute([
+            'lead_id' => $leadId,
+            'error' => 'Cancelado automaticamente após resposta do lead.',
+        ]);
+
+        $db->commit();
+
+        return [
+            'stopped' => $updateLead->rowCount() > 0,
+            'cancelled' => $cancelQueue->rowCount(),
+        ];
+    } catch (Throwable $error) {
+        $db->rollBack();
+        throw $error;
+    }
+}
+
 function crm_read_due_followups(int $limit = 20): array
 {
     $stmt = crm_db()->prepare(
@@ -2077,6 +2154,7 @@ function crm_read_due_followups(int $limit = 20): array
         LEFT JOIN whatsapp_templates t ON t.id = s.template_id
         LEFT JOIN crm_users ON crm_users.id = l.assigned_user_id
         WHERE q.status = "pendente"
+          AND l.status = "followup"
           AND q.scheduled_at <= :now_due
           AND NOT EXISTS (
             SELECT 1
