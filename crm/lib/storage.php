@@ -211,6 +211,15 @@ function crm_ensure_crm_schema(PDO $pdo): void
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
     );
 
+    $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS crm_push_notification_events (
+            event_hash CHAR(64) PRIMARY KEY,
+            created_at DATETIME NOT NULL,
+            expires_at DATETIME NOT NULL,
+            INDEX idx_crm_push_notification_events_expires (expires_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
+    );
+
     crm_ensure_user_columns($pdo);
     crm_seed_default_admin_user($pdo);
     crm_seed_default_kanban_columns($pdo);

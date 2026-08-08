@@ -1153,7 +1153,7 @@ async function syncPushState() {
     // servidor perdeu a linha da assinatura (por exemplo, após uma limpeza
     // de sessão), reaproveitamos a inscrição existente sem pedir permissão
     // novamente ao vendedor.
-    if (subscription && permission === "granted" && Number(config.subscriptions || 0) === 0) {
+    if (subscription && permission === "granted" && Number(config.subscriptions || 0) !== 1) {
       const json = subscription.toJSON();
       await pushRequest("subscribe", {
         method: "POST",
@@ -1338,7 +1338,7 @@ if (installButton) {
 }
 
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("./sw.js?v=20260807-cache-v8", {
+  navigator.serviceWorker.register("./sw.js?v=20260808-push-dedupe-v1", {
     scope: "./",
     updateViaCache: "none",
   })

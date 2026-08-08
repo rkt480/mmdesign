@@ -128,6 +128,13 @@ CREATE TABLE IF NOT EXISTS publi_ai_crm.crm_push_subscriptions (
   INDEX idx_crm_push_user (user_id, updated_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS publi_ai_crm.crm_push_notification_events (
+  event_hash CHAR(64) PRIMARY KEY,
+  created_at DATETIME NOT NULL,
+  expires_at DATETIME NOT NULL,
+  INDEX idx_crm_push_notification_events_expires (expires_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS publi_ai_crm.lead_forms (
   id VARCHAR(32) PRIMARY KEY,
   slug VARCHAR(100) NOT NULL UNIQUE,
