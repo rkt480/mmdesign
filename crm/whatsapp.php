@@ -947,7 +947,7 @@ foreach ($whatsappTemplates as $template) {
           </section>
 
           <section class="wa-lead-block">
-            <h3>Tags e observações</h3>
+            <h3>Tags e observações do vendedor</h3>
             <?php if (count($activeLeadTags) > 0): ?>
               <div class="wa-lead-tags">
                 <?php foreach ($activeLeadTags as $tag): ?>
@@ -972,8 +972,8 @@ foreach ($whatsappTemplates as $template) {
               <input type="hidden" name="status" value="<?= htmlspecialchars((string) ($activeLead['status'] ?? 'novo')) ?>" />
               <input type="hidden" name="redirect_to" value="<?= htmlspecialchars($activeLeadReturnUrl) ?>" />
               <label>
-                Observações comerciais
-                <textarea name="notes" rows="4" placeholder="Resumo, objeções, próximos passos..."><?= htmlspecialchars((string) ($activeLead['notes'] ?? '')) ?></textarea>
+                Observações do vendedor
+                <textarea name="commercial_notes" rows="4" placeholder="Resumo, objeções, próximos passos..."><?= htmlspecialchars((string) ($activeLead['commercial_notes'] ?? '')) ?></textarea>
               </label>
               <button type="submit">Salvar observações</button>
             </form>

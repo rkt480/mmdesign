@@ -704,7 +704,7 @@ function lead_money_input(array $lead, string $field): string
                                 </section>
 
                                 <section class="commercial-block field-wide">
-                                  <h3>Observações comerciais</h3>
+                                  <h3>Observações do vendedor</h3>
                                   <form class="update-form" method="post" action="update.php">
                                     <input type="hidden" name="_csrf_token" value="<?= htmlspecialchars(crm_csrf_token()) ?>" />
                                     <input type="hidden" name="id" value="<?= htmlspecialchars((string) ($lead['id'] ?? '')) ?>" />
@@ -715,8 +715,8 @@ function lead_money_input(array $lead, string $field): string
                                       <span class="tag-preview" data-tags-preview hidden></span>
                                     </label>
                                     <label>
-                                      Observações comerciais
-                                      <textarea name="notes" rows="3" placeholder="Ex: pediu orçamento, retornar amanhã, perfil bom..."><?= htmlspecialchars((string) ($lead['notes'] ?? '')) ?></textarea>
+                                      Observações do vendedor
+                                      <textarea name="commercial_notes" rows="3" placeholder="Ex: pediu orçamento, retornar amanhã, perfil bom..."><?= htmlspecialchars((string) ($lead['commercial_notes'] ?? '')) ?></textarea>
                                     </label>
                                     <button type="submit">Salvar detalhes</button>
                                   </form>
