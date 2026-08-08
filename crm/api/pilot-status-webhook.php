@@ -181,6 +181,7 @@ foreach ($incomingMessages as $incoming) {
     try {
         $leadResult = crm_create_lead_once($leadPayload);
         $lead = $leadResult['lead'];
+        $followupAutomation = ['stopped' => false, 'cancelled' => 0];
 
         if ($profilePictureUrl !== '' && $profilePictureUrl !== (string) ($lead['profile_picture_url'] ?? '')) {
             crm_update_lead_profile_picture((string) $lead['id'], $profilePictureUrl);
@@ -203,6 +204,10 @@ foreach ($incomingMessages as $incoming) {
                 continue;
             }
 
+            if (($leadResult['created'] ?? false) === false) {
+                $followupAutomation = crm_stop_followup_after_incoming_reply((string) $lead['id']);
+            }
+
             $media['url'] = $mediaUrl;
             $media['type'] = trim((string) ($media['type'] ?? ''));
             $media['caption'] = trim((string) ($media['caption'] ?? '')) ?: $message;
@@ -222,9 +227,17 @@ foreach ($incomingMessages as $incoming) {
                 );
             }
         } elseif (($leadResult['created'] ?? false) === false && $message !== '') {
+            $followupAutomation = crm_stop_followup_after_incoming_reply((string) $lead['id']);
             crm_append_lead_note(
                 (string) $lead['id'],
                 'Mensagem recebida pela Pilot Status em ' . date('d/m/Y H:i:s') . ":\n" . $message
+            );
+        }
+
+        if (($followupAutomation['stopped'] ?? false) === true) {
+            crm_append_lead_note(
+                (string) $lead['id'],
+                'Follow-up cancelado automaticamente após resposta do lead; lead movido para Em contato.'
             );
         }
     } catch (Throwable $error) {
@@ -278,6 +291,7 @@ foreach ($incomingMessages as $incoming) {
         'lead_id' => $lead['id'],
         'created' => (bool) ($leadResult['created'] ?? false),
         'message_id' => (string) ($incoming['id'] ?? ''),
+        'followup' => $followupAutomation,
         'email' => $emailResult,
         'meta' => $metaResult,
     ];
