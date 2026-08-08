@@ -954,7 +954,14 @@ foreach ($whatsappTemplates as $template) {
               <input type="hidden" name="status" value="<?= htmlspecialchars((string) ($activeLead['status'] ?? 'novo')) ?>" />
               <input type="hidden" name="redirect_to" value="<?= htmlspecialchars($activeLeadReturnUrl) ?>" />
               <div class="tag-field">
-                <span class="tag-preview" data-tags-preview <?= count($activeLeadTags) === 0 ? 'hidden' : '' ?>></span>
+                <span class="tag-preview" data-tags-preview <?= count($activeLeadTags) === 0 ? 'hidden' : '' ?>>
+                  <?php foreach ($activeLeadTags as $tag): ?>
+                    <span>
+                      <?= htmlspecialchars($tag) ?>
+                      <button type="button" class="tag-preview-remove" data-wa-tag-remove="<?= htmlspecialchars($tag) ?>" title="Remover tag <?= htmlspecialchars($tag) ?>" aria-label="Remover tag <?= htmlspecialchars($tag) ?>">×</button>
+                    </span>
+                  <?php endforeach; ?>
+                </span>
                 <label>
                   Tags
                   <input type="text" name="tags" value="<?= htmlspecialchars(implode(', ', $activeLeadTags)) ?>" placeholder="quente, proposta, retorno" data-tags-input />
