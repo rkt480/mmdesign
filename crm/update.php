@@ -41,6 +41,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $updates['tags'] = $_POST['tags'];
     }
 
+    if (array_key_exists('remove_tag', $_POST)) {
+        $tagToRemove = trim((string) ($_POST['remove_tag'] ?? ''));
+        $currentTags = crm_parse_tags((string) ($_POST['tags'] ?? ''));
+        $updates['tags'] = implode(', ', array_values(array_filter(
+            $currentTags,
+            static fn(string $tag): bool => strcasecmp($tag, $tagToRemove) !== 0
+        )));
+    }
+
     if (array_key_exists('name', $_POST)) {
         $updates['name'] = $_POST['name'];
     }

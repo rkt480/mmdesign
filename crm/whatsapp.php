@@ -958,7 +958,7 @@ foreach ($whatsappTemplates as $template) {
                   <?php foreach ($activeLeadTags as $tag): ?>
                     <span>
                       <?= htmlspecialchars($tag) ?>
-                      <button type="button" class="tag-preview-remove" data-wa-tag-remove="<?= htmlspecialchars($tag) ?>" title="Remover tag <?= htmlspecialchars($tag) ?>" aria-label="Remover tag <?= htmlspecialchars($tag) ?>">×</button>
+                      <button type="submit" name="remove_tag" value="<?= htmlspecialchars($tag) ?>" class="tag-preview-remove" data-wa-tag-remove="<?= htmlspecialchars($tag) ?>" title="Remover tag <?= htmlspecialchars($tag) ?>" aria-label="Remover tag <?= htmlspecialchars($tag) ?>">×</button>
                     </span>
                   <?php endforeach; ?>
                 </span>
@@ -2017,7 +2017,9 @@ foreach ($whatsappTemplates as $template) {
             const chip = document.createElement("span");
             chip.textContent = tag;
             const removeButton = document.createElement("button");
-            removeButton.type = "button";
+            removeButton.type = "submit";
+            removeButton.name = "remove_tag";
+            removeButton.value = tag;
             removeButton.className = "tag-preview-remove";
             removeButton.dataset.waTagRemove = tag;
             removeButton.title = `Remover tag ${tag}`;
@@ -2036,6 +2038,7 @@ foreach ($whatsappTemplates as $template) {
             return;
           }
 
+          event.preventDefault();
           const tagToRemove = String(removeButton.dataset.waTagRemove || "");
           waTagsInput.value = parseTags(waTagsInput.value)
             .filter((tag) => tag.toLocaleLowerCase("pt-BR") !== tagToRemove.toLocaleLowerCase("pt-BR"))
