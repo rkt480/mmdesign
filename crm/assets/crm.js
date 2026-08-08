@@ -762,6 +762,16 @@ function renderTagPreview(input) {
   tags.forEach((tag) => {
     const chip = document.createElement("span");
     chip.textContent = tag;
+
+    const removeButton = document.createElement("button");
+    removeButton.type = "button";
+    removeButton.className = "tag-preview-remove";
+    removeButton.dataset.tagRemove = tag;
+    removeButton.title = `Remover tag ${tag}`;
+    removeButton.setAttribute("aria-label", `Remover tag ${tag}`);
+    removeButton.textContent = "×";
+    chip.appendChild(removeButton);
+
     preview.appendChild(chip);
   });
 }
@@ -883,6 +893,31 @@ document.querySelectorAll("[data-tags-input]").forEach((input) => {
   input.addEventListener("input", () => {
     renderTagPreview(input);
   });
+});
+
+document.addEventListener("click", (event) => {
+  const removeButton = event.target.closest("[data-tag-remove]");
+
+  if (!removeButton) {
+    return;
+  }
+
+  const preview = removeButton.closest("[data-tags-preview]");
+  const container = removeButton.closest(".tag-field") || preview?.parentElement;
+  const input = container?.querySelector("[data-tags-input]");
+  const tagToRemove = String(removeButton.dataset.tagRemove || "");
+
+  if (!input || !tagToRemove) {
+    return;
+  }
+
+  event.preventDefault();
+  input.value = parseTagInput(input.value)
+    .filter((tag) => tag.toLocaleLowerCase("pt-BR") !== tagToRemove.toLocaleLowerCase("pt-BR"))
+    .join(", ");
+  renderTagPreview(input);
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+  input.focus();
 });
 
 document.querySelectorAll("[data-tag-option]").forEach((button) => {

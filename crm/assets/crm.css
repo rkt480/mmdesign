@@ -778,6 +778,31 @@ dd {
   display: none;
 }
 
+.tag-preview-remove {
+  display: inline-grid;
+  width: 18px;
+  height: 18px;
+  min-height: 18px;
+  place-items: center;
+  margin: -2px -5px -2px 0;
+  padding: 0;
+  color: #047857;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(5, 150, 105, 0.2);
+  border-radius: 50%;
+  font-size: 0.9rem;
+  font-weight: 900;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.tag-preview-remove:hover,
+.tag-preview-remove:focus-visible {
+  color: #991b1b;
+  background: #fff;
+  border-color: rgba(153, 27, 27, 0.24);
+}
+
 .tag-suggestions {
   display: grid;
   gap: 8px;
@@ -4867,6 +4892,23 @@ textarea:focus {
   font: inherit;
   font-weight: 800;
   cursor: pointer;
+}
+
+.wa-side-form .tag-preview-remove {
+  display: inline-grid;
+  width: 18px !important;
+  min-width: 18px;
+  height: 18px;
+  min-height: 18px !important;
+  margin: -2px -5px -2px 0;
+  padding: 0 !important;
+  color: #047857;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(5, 150, 105, 0.2);
+  border-radius: 50%;
+  font-size: 0.9rem;
+  font-weight: 900;
+  line-height: 1;
 }
 
 .wa-side-note,
