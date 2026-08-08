@@ -619,7 +619,7 @@ foreach ($whatsappTemplates as $template) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="csrf-token" content="<?= htmlspecialchars(crm_csrf_token()) ?>" />
     <title>WhatsApp | MM Design</title>
-    <link rel="stylesheet" href="./assets/crm.css?v=<?= rawurlencode((string) (filemtime(__DIR__ . '/assets/crm.css') ?: time())) ?>" />
+    <link rel="stylesheet" href="./assets/crm.css?v=20260808-tag-remove-v2" />
   </head>
   <body class="whatsapp-page whatsapp-crm-page" data-wa-initial-view="<?= is_array($activeLead) ? 'thread' : 'inbox' ?>">
     <main class="wa-web-shell" aria-label="Atendimento WhatsApp do CRM">
@@ -948,22 +948,18 @@ foreach ($whatsappTemplates as $template) {
 
           <section class="wa-lead-block">
             <h3>Tags e observações do vendedor</h3>
-            <?php if (count($activeLeadTags) > 0): ?>
-              <div class="wa-lead-tags">
-                <?php foreach ($activeLeadTags as $tag): ?>
-                  <span><?= htmlspecialchars($tag) ?></span>
-                <?php endforeach; ?>
-              </div>
-            <?php endif; ?>
             <form class="wa-side-form" method="post" action="update.php">
               <input type="hidden" name="_csrf_token" value="<?= htmlspecialchars(crm_csrf_token()) ?>" />
               <input type="hidden" name="id" value="<?= htmlspecialchars((string) ($activeLead['id'] ?? '')) ?>" />
               <input type="hidden" name="status" value="<?= htmlspecialchars((string) ($activeLead['status'] ?? 'novo')) ?>" />
               <input type="hidden" name="redirect_to" value="<?= htmlspecialchars($activeLeadReturnUrl) ?>" />
-              <label>
-                Tags
-                <input type="text" name="tags" value="<?= htmlspecialchars(implode(', ', $activeLeadTags)) ?>" placeholder="quente, proposta, retorno" />
-              </label>
+              <div class="tag-field">
+                <span class="tag-preview" data-tags-preview <?= count($activeLeadTags) === 0 ? 'hidden' : '' ?>></span>
+                <label>
+                  Tags
+                  <input type="text" name="tags" value="<?= htmlspecialchars(implode(', ', $activeLeadTags)) ?>" placeholder="quente, proposta, retorno" data-tags-input />
+                </label>
+              </div>
               <button type="submit">Salvar tags</button>
             </form>
             <form class="wa-side-form" method="post" action="update.php">
@@ -1986,6 +1982,63 @@ foreach ($whatsappTemplates as $template) {
           syncCurrencyInput(input, parsed.reais, parsed.cents);
         });
       });
+
+      const waTagsInput = document.querySelector("[data-wa-tags-input], [data-tags-input]");
+      const waTagsPreview = document.querySelector("[data-wa-tags-preview], [data-tags-preview]");
+
+      if (waTagsInput && waTagsPreview) {
+        const parseTags = (value) => {
+          const seen = new Set();
+          return String(value || "").split(/[,;\n]+/).map((part) => part.trim()).filter((tag) => {
+            const key = tag.toLocaleLowerCase("pt-BR");
+
+            if (!tag || seen.has(key)) {
+              return false;
+            }
+
+            seen.add(key);
+            return true;
+          }).map((tag) => tag.slice(0, 40));
+        };
+
+        const renderWaTags = () => {
+          const tags = parseTags(waTagsInput.value);
+          waTagsPreview.replaceChildren();
+          waTagsPreview.hidden = tags.length === 0;
+
+          tags.forEach((tag) => {
+            const chip = document.createElement("span");
+            chip.textContent = tag;
+            const removeButton = document.createElement("button");
+            removeButton.type = "button";
+            removeButton.className = "tag-preview-remove";
+            removeButton.dataset.waTagRemove = tag;
+            removeButton.title = `Remover tag ${tag}`;
+            removeButton.setAttribute("aria-label", `Remover tag ${tag}`);
+            removeButton.textContent = "×";
+            chip.appendChild(removeButton);
+            waTagsPreview.appendChild(chip);
+          });
+        };
+
+        waTagsInput.addEventListener("input", renderWaTags);
+        waTagsPreview.addEventListener("click", (event) => {
+          const removeButton = event.target.closest("[data-wa-tag-remove]");
+
+          if (!removeButton) {
+            return;
+          }
+
+          const tagToRemove = String(removeButton.dataset.waTagRemove || "");
+          waTagsInput.value = parseTags(waTagsInput.value)
+            .filter((tag) => tag.toLocaleLowerCase("pt-BR") !== tagToRemove.toLocaleLowerCase("pt-BR"))
+            .join(", ");
+          renderWaTags();
+          waTagsInput.focus();
+        });
+
+        renderWaTags();
+      }
     </script>
   </body>
 </html>
