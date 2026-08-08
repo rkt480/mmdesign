@@ -29,8 +29,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'status' => $status,
     ];
 
-    if (array_key_exists('notes', $_POST)) {
-        $updates['notes'] = $_POST['notes'];
+    if (array_key_exists('commercial_notes', $_POST)) {
+        $updates['commercial_notes'] = $_POST['commercial_notes'];
+    } elseif (array_key_exists('notes', $_POST)) {
+        // Compatibilidade com formulários antigos em cache: notas digitadas
+        // pelo vendedor não devem mais ser gravadas no histórico técnico.
+        $updates['commercial_notes'] = $_POST['notes'];
     }
 
     if (array_key_exists('tags', $_POST)) {

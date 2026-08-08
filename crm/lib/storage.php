@@ -423,6 +423,7 @@ function crm_ensure_lead_columns(PDO $pdo): void
         'lead_score' => 'INT NULL AFTER form_answers',
         'lead_temperature' => 'VARCHAR(20) NULL AFTER lead_score',
         'score_reasons' => 'TEXT NULL AFTER lead_temperature',
+        'commercial_notes' => 'TEXT NULL AFTER notes',
         'assigned_user_id' => 'INT NULL AFTER tags',
         'assigned_at' => 'DATETIME NULL AFTER assigned_user_id',
         'last_activity_at' => 'DATETIME NULL AFTER assigned_at',
@@ -1347,6 +1348,7 @@ function crm_create_lead(array $payload): array
             ? trim((string) ($payload['status'] ?? ''))
             : 'novo',
         'notes' => '',
+        'commercial_notes' => '',
         'tags' => crm_encode_tags((string) ($payload['tags'] ?? '')),
         'assigned_user_id' => $assignedUserId,
         'assigned_at' => $assignedUserId !== null ? $now : null,
@@ -1371,9 +1373,9 @@ function crm_create_lead(array $payload): array
 
     $stmt = crm_db()->prepare(
         'INSERT INTO leads
-        (id, name, whatsapp, profile_picture_url, cpf, company, segment, advertises, message, page, utm_source, utm_medium, utm_campaign, utm_content, utm_term, referrer, landing_path, form_id, form_answers, lead_score, lead_temperature, score_reasons, status, notes, tags, assigned_user_id, assigned_at, last_activity_at, last_activity_type, sla_last_checked_at, estimated_value, proposal_value, expected_close_date, lost_reason, first_contact_at, closed_at, lost_at, whatsapp_status, whatsapp_sent_at, whatsapp_error, followup_flow_id, followup_started_at, created_at, updated_at)
+        (id, name, whatsapp, profile_picture_url, cpf, company, segment, advertises, message, page, utm_source, utm_medium, utm_campaign, utm_content, utm_term, referrer, landing_path, form_id, form_answers, lead_score, lead_temperature, score_reasons, status, notes, commercial_notes, tags, assigned_user_id, assigned_at, last_activity_at, last_activity_type, sla_last_checked_at, estimated_value, proposal_value, expected_close_date, lost_reason, first_contact_at, closed_at, lost_at, whatsapp_status, whatsapp_sent_at, whatsapp_error, followup_flow_id, followup_started_at, created_at, updated_at)
         VALUES
-        (:id, :name, :whatsapp, :profile_picture_url, :cpf, :company, :segment, :advertises, :message, :page, :utm_source, :utm_medium, :utm_campaign, :utm_content, :utm_term, :referrer, :landing_path, :form_id, :form_answers, :lead_score, :lead_temperature, :score_reasons, :status, :notes, :tags, :assigned_user_id, :assigned_at, :last_activity_at, :last_activity_type, :sla_last_checked_at, :estimated_value, :proposal_value, :expected_close_date, :lost_reason, :first_contact_at, :closed_at, :lost_at, :whatsapp_status, :whatsapp_sent_at, :whatsapp_error, :followup_flow_id, :followup_started_at, :created_at, :updated_at)'
+        (:id, :name, :whatsapp, :profile_picture_url, :cpf, :company, :segment, :advertises, :message, :page, :utm_source, :utm_medium, :utm_campaign, :utm_content, :utm_term, :referrer, :landing_path, :form_id, :form_answers, :lead_score, :lead_temperature, :score_reasons, :status, :notes, :commercial_notes, :tags, :assigned_user_id, :assigned_at, :last_activity_at, :last_activity_type, :sla_last_checked_at, :estimated_value, :proposal_value, :expected_close_date, :lost_reason, :first_contact_at, :closed_at, :lost_at, :whatsapp_status, :whatsapp_sent_at, :whatsapp_error, :followup_flow_id, :followup_started_at, :created_at, :updated_at)'
     );
     $stmt->execute($lead);
 
@@ -1572,6 +1574,11 @@ function crm_update_lead(string $id, array $updates): bool
     if (array_key_exists('notes', $updates)) {
         $fields[] = 'notes = :notes';
         $params['notes'] = trim((string) ($updates['notes'] ?? ''));
+    }
+
+    if (array_key_exists('commercial_notes', $updates)) {
+        $fields[] = 'commercial_notes = :commercial_notes';
+        $params['commercial_notes'] = trim((string) ($updates['commercial_notes'] ?? ''));
     }
 
     if (array_key_exists('name', $updates)) {

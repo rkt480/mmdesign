@@ -34,7 +34,7 @@ foreach ($leads as $lead) {
         count($answers) > 0 ? implode(' | ', $answers) : implode(' | ', array_filter([$lead['advertises'] ?? '', $lead['message'] ?? ''])),
         $lead['status'] ?? '',
         implode(', ', crm_decode_lead_tags($lead)),
-        $lead['notes'] ?? '',
+        $lead['commercial_notes'] ?? '',
         $lead['created_at'] ?? '',
     ]);
 }

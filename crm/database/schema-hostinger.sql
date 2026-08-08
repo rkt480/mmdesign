@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS leads (
   status VARCHAR(80) NOT NULL DEFAULT 'novo',
   kanban_position INT NOT NULL DEFAULT 0,
   notes TEXT NULL,
+  commercial_notes TEXT NULL,
   tags TEXT NULL,
   assigned_user_id INT NULL,
   assigned_at DATETIME NULL,
