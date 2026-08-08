@@ -1,7 +1,7 @@
-const CACHE_NAME = "mm-design-crm-v11";
+const CACHE_NAME = "mm-design-crm-v12";
 const APP_SHELL = [
   "./assets/crm.css?v=20260807-mobile-header-v6",
-  "./assets/crm.js?v=20260807-live-metrics-v1",
+  "./assets/crm.js?v=20260808-push-dedupe-v1",
   "./assets/icon.svg",
   "./assets/icon-180.png",
   "./assets/icon-192.png",
@@ -65,7 +65,7 @@ self.addEventListener("push", (event) => {
     icon: data.icon || "./assets/icon-192.png",
     badge: data.badge || "./assets/icon-192.png",
     tag: data.tag || "crm-notification",
-    renotify: true,
+    renotify: data.renotify === true,
     data: { url: data.url || "./index.php" },
   };
 

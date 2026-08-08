@@ -227,7 +227,12 @@ foreach ($incomingMessages as $incoming) {
                 );
 
                 if (($leadResult['created'] ?? false) === false) {
-                    crm_notify_lead_reply_push($lead, $message);
+                    crm_notify_lead_reply_push(
+                        $lead,
+                        $message,
+                        $incomingMessageId !== '' ? $incomingMessageId : $incomingMediaId,
+                        (string) ($incoming['timestamp'] ?? '')
+                    );
                 }
             }
         } elseif (($leadResult['created'] ?? false) === false && $message !== '') {
@@ -236,7 +241,12 @@ foreach ($incomingMessages as $incoming) {
                 (string) $lead['id'],
                 'Mensagem recebida pela Pilot Status em ' . date('d/m/Y H:i:s') . ":\n" . $message
             );
-            crm_notify_lead_reply_push($lead, $message);
+            crm_notify_lead_reply_push(
+                $lead,
+                $message,
+                $incomingMessageId,
+                (string) ($incoming['timestamp'] ?? '')
+            );
         }
 
         if (($followupAutomation['stopped'] ?? false) === true) {

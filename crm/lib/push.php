@@ -171,7 +171,8 @@ function crm_push_save_subscription(int $userId, array $subscription, string $us
 
     $normalized = crm_push_normalize_subscription($subscription);
     $now = date('Y-m-d H:i:s');
-    $stmt = crm_push_db()->prepare(
+    $db = crm_push_db();
+    $stmt = $db->prepare(
         'INSERT INTO crm_push_subscriptions
          (user_id, endpoint_hash, endpoint, p256dh, auth, user_agent, created_at, updated_at, last_used_at)
          VALUES
@@ -194,6 +195,23 @@ function crm_push_save_subscription(int $userId, array $subscription, string $us
         'created_at' => $now,
         'updated_at' => $now,
     ]);
+
+    // O mesmo navegador pode deixar inscrições antigas após reinstalar ou
+    // atualizar o PWA. Mantemos apenas a inscrição atual daquele navegador
+    // para evitar alertas repetidos no mesmo dispositivo.
+    if (trim($userAgent) !== '') {
+        $cleanup = $db->prepare(
+            'DELETE FROM crm_push_subscriptions
+             WHERE user_id = :user_id
+               AND user_agent = :user_agent
+               AND endpoint_hash <> :endpoint_hash'
+        );
+        $cleanup->execute([
+            'user_id' => $userId,
+            'user_agent' => substr(trim($userAgent), 0, 500),
+            'endpoint_hash' => $normalized['endpoint_hash'],
+        ]);
+    }
 }
 
 function crm_push_delete_subscription(int $userId, string $endpoint): void
@@ -449,6 +467,28 @@ function crm_push_mark_subscription_used(string $endpointHash): void
     ]);
 }
 
+function crm_push_claim_notification_event(string $eventKey): bool
+{
+    $db = crm_push_db();
+    $now = date('Y-m-d H:i:s');
+    $expiresAt = date('Y-m-d H:i:s', time() + 86400);
+
+    $cleanup = $db->prepare('DELETE FROM crm_push_notification_events WHERE expires_at < :now');
+    $cleanup->execute(['now' => $now]);
+
+    $stmt = $db->prepare(
+        'INSERT IGNORE INTO crm_push_notification_events (event_hash, created_at, expires_at)
+         VALUES (:event_hash, :created_at, :expires_at)'
+    );
+    $stmt->execute([
+        'event_hash' => hash('sha256', $eventKey),
+        'created_at' => $now,
+        'expires_at' => $expiresAt,
+    ]);
+
+    return $stmt->rowCount() > 0;
+}
+
 function crm_push_send_to_user(int $userId, array $notification): array
 {
     $subscriptions = crm_push_user_subscriptions($userId);
@@ -510,7 +550,7 @@ function crm_push_notify_lead_created(array $lead): array
     ]);
 }
 
-function crm_push_notify_lead_reply(array $lead, string $message = ''): array
+function crm_push_notify_lead_reply(array $lead, string $message = '', string $messageId = '', string $messageTimestamp = ''): array
 {
     $userId = (int) ($lead['assigned_user_id'] ?? 0);
 
@@ -523,6 +563,32 @@ function crm_push_notify_lead_reply(array $lead, string $message = ''): array
 
     if ($preview === '') {
         $preview = 'Enviou uma nova mensagem ou mídia.';
+    }
+
+    $normalizedMessage = strtolower(trim(preg_replace('/\s+/u', ' ', $message) ?? ''));
+    $timestampValue = trim($messageTimestamp);
+    $messageTime = $timestampValue !== '' && ctype_digit($timestampValue)
+        ? (int) $timestampValue
+        : ($timestampValue !== '' ? strtotime($timestampValue) : false);
+
+    if (is_int($messageTime) && $messageTime > 20000000000) {
+        $messageTime = (int) floor($messageTime / 1000);
+    }
+
+    $messageTimeBucket = is_int($messageTime) && $messageTime > 0
+        ? intdiv($messageTime, 60)
+        : intdiv(time(), 60);
+
+    if ($normalizedMessage !== '') {
+        $eventKey = 'lead-reply|' . (string) ($lead['id'] ?? '') . '|' . $normalizedMessage . '|'
+            . $messageTimeBucket;
+    } else {
+        $eventKey = 'lead-reply-media|' . (string) ($lead['id'] ?? '') . '|'
+            . ($messageId !== '' ? $messageId : intdiv(time(), 60));
+    }
+
+    if (!crm_push_claim_notification_event($eventKey)) {
+        return ['ok' => true, 'skipped' => true, 'reason' => 'Resposta já notificada.'];
     }
 
     if (function_exists('mb_strlen') && mb_strlen($preview, 'UTF-8') > 120) {

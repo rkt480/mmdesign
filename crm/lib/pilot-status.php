@@ -1270,6 +1270,7 @@ function pilot_status_extract_single_incoming_message(array $payload): array
 
     return [
         'id' => pilot_status_first_payload_value($payload, [['id'], ['messageId'], ['message_id'], ['message', 'id'], ['data', 'id'], ['data', 'messageId'], ['data', 'message', 'id']]),
+        'timestamp' => pilot_status_first_payload_value($payload, [['timestamp'], ['message', 'timestamp'], ['data', 'timestamp'], ['data', 'message', 'timestamp']]),
         'raw_number' => $phone['raw'],
         'number' => $phone['number'],
         'text' => pilot_status_extract_text($payload),
