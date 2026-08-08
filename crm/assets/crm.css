@@ -4911,6 +4911,14 @@ textarea:focus {
   line-height: 1;
 }
 
+.wa-side-form .tag-preview {
+  min-height: 0;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+}
+
 .wa-side-note,
 .wa-lead-panel-empty p {
   margin: 0;
