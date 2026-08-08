@@ -305,6 +305,6 @@ function human_delay(int $minutes): string
       </div>
     </div>
     <script>window.followupTemplateCatalog = <?= json_encode($templateCatalog, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;</script>
-    <script src="./assets/followups.js?v=20260807-template-picker"></script>
+    <script src="./assets/followups.js?v=20260808-seller-mapping-v1"></script>
   </body>
 </html>
