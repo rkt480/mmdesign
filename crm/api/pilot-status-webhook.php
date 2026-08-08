@@ -225,6 +225,10 @@ foreach ($incomingMessages as $incoming) {
                     (string) $lead['id'],
                     'Mídia recebida pela Pilot Status em ' . date('d/m/Y H:i:s') . ":\n[crm_media]" . $mediaJson
                 );
+
+                if (($leadResult['created'] ?? false) === false) {
+                    crm_notify_lead_reply_push($lead, $message);
+                }
             }
         } elseif (($leadResult['created'] ?? false) === false && $message !== '') {
             $followupAutomation = crm_stop_followup_after_incoming_reply((string) $lead['id']);
@@ -232,6 +236,7 @@ foreach ($incomingMessages as $incoming) {
                 (string) $lead['id'],
                 'Mensagem recebida pela Pilot Status em ' . date('d/m/Y H:i:s') . ":\n" . $message
             );
+            crm_notify_lead_reply_push($lead, $message);
         }
 
         if (($followupAutomation['stopped'] ?? false) === true) {

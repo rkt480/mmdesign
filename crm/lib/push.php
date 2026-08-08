@@ -509,3 +509,37 @@ function crm_push_notify_lead_created(array $lead): array
         'lead_id' => (string) ($lead['id'] ?? ''),
     ]);
 }
+
+function crm_push_notify_lead_reply(array $lead, string $message = ''): array
+{
+    $userId = (int) ($lead['assigned_user_id'] ?? 0);
+
+    if ($userId <= 0) {
+        return ['ok' => false, 'skipped' => true, 'reason' => 'Lead sem vendedor responsável.'];
+    }
+
+    $name = trim((string) ($lead['name'] ?? '')) ?: 'Contato WhatsApp';
+    $preview = trim(preg_replace('/\s+/u', ' ', $message) ?? '');
+
+    if ($preview === '') {
+        $preview = 'Enviou uma nova mensagem ou mídia.';
+    }
+
+    if (function_exists('mb_strlen') && mb_strlen($preview, 'UTF-8') > 120) {
+        $preview = rtrim((string) mb_substr($preview, 0, 117, 'UTF-8')) . '...';
+    } elseif (strlen($preview) > 120) {
+        $preview = rtrim(substr($preview, 0, 117)) . '...';
+    }
+
+    $leadId = (string) ($lead['id'] ?? '');
+
+    return crm_push_send_to_user($userId, [
+        'title' => 'Nova resposta do lead',
+        'body' => $name . ': ' . $preview,
+        'url' => './whatsapp.php?lead=' . rawurlencode($leadId),
+        'tag' => 'lead-reply-' . ($leadId !== '' ? $leadId : uniqid('', true)),
+        'icon' => './assets/icon-192.png',
+        'badge' => './assets/icon-192.png',
+        'lead_id' => $leadId,
+    ]);
+}

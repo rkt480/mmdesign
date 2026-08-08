@@ -117,6 +117,7 @@ foreach ($incomingMessages as $incoming) {
                 (string) $lead['id'],
                 'Mensagem recebida pela Meta Cloud API em ' . date('d/m/Y H:i') . ":\n" . $message
             );
+            crm_notify_lead_reply_push($lead, $message);
         }
 
         if (($followupAutomation['stopped'] ?? false) === true) {
