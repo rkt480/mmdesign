@@ -644,7 +644,7 @@ foreach ($whatsappTemplates as $template) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="csrf-token" content="<?= htmlspecialchars(crm_csrf_token()) ?>" />
     <title>WhatsApp | MM Design</title>
-    <link rel="stylesheet" href="./assets/crm.css?v=20260808-tag-remove-v2" />
+    <link rel="stylesheet" href="./assets/crm.css?v=20260810-mobile-back-v1" />
   </head>
   <body class="whatsapp-page whatsapp-crm-page" data-wa-initial-view="<?= is_array($activeLead) ? 'thread' : 'inbox' ?>" data-wa-active-lead-id="<?= htmlspecialchars((string) ($activeLead['id'] ?? '')) ?>" data-wa-incoming-signature="<?= htmlspecialchars(is_array($activeLead) ? crm_whatsapp_incoming_signature($activeLead) : '') ?>">
     <main class="wa-web-shell" aria-label="Atendimento WhatsApp do CRM">
@@ -767,8 +767,8 @@ foreach ($whatsappTemplates as $template) {
           </div>
         <?php else: ?>
           <header class="wa-thread-header">
-            <button class="wa-mobile-thread-back" type="button" data-wa-mobile-back aria-label="Voltar para conversas" title="Voltar para conversas">
-              <svg viewBox="0 0 24 24" aria-hidden="true">
+            <button class="wa-mobile-thread-back" type="button" data-wa-mobile-back hidden aria-label="Voltar para conversas" title="Voltar para conversas">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" aria-hidden="true">
                 <path d="m15 5-7 7 7 7" />
               </svg>
             </button>
