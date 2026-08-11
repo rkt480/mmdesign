@@ -5891,7 +5891,7 @@ textarea:focus {
 
   .wa-mobile-tabs {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 6px;
     padding: 4px;
     background: rgba(255, 255, 255, 0.68);
@@ -5900,7 +5900,10 @@ textarea:focus {
     box-shadow: var(--shadow-soft);
   }
 
-  .wa-mobile-tabs button {
+  .wa-mobile-tabs button,
+  .wa-mobile-tabs a {
+    display: grid;
+    place-items: center;
     min-height: 40px;
     padding: 8px 6px;
     color: #64748b;
@@ -5909,10 +5912,18 @@ textarea:focus {
     border-radius: 12px;
     box-shadow: none;
     font-size: 0.74rem;
+    font-weight: 700;
+    text-decoration: none;
     white-space: nowrap;
   }
 
   .wa-mobile-tabs button.is-active {
+    color: #075985;
+    background: #e0f2fe;
+  }
+
+  .wa-mobile-tabs a:hover,
+  .wa-mobile-tabs a:focus-visible {
     color: #075985;
     background: #e0f2fe;
   }
@@ -6088,6 +6099,12 @@ textarea:focus {
 }
 
 @media (max-width: 380px) {
+  .wa-mobile-tabs button,
+  .wa-mobile-tabs a {
+    padding-inline: 3px;
+    font-size: 0.68rem;
+  }
+
   .whatsapp-crm-page .wa-composer {
     gap: 4px;
     padding-inline: 8px;

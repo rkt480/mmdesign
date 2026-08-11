@@ -644,7 +644,7 @@ foreach ($whatsappTemplates as $template) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="csrf-token" content="<?= htmlspecialchars(crm_csrf_token()) ?>" />
     <title>WhatsApp | MM Design</title>
-    <link rel="stylesheet" href="./assets/crm.css?v=20260810-smooth-navigation-v1" />
+    <link rel="stylesheet" href="./assets/crm.css?v=20260811-contact-navigation-v1" />
   </head>
   <body class="whatsapp-page whatsapp-crm-page" data-wa-initial-view="<?= is_array($activeLead) ? 'thread' : 'inbox' ?>" data-wa-mobile-view="<?= is_array($activeLead) ? 'thread' : 'inbox' ?>" data-wa-active-lead-id="<?= htmlspecialchars((string) ($activeLead['id'] ?? '')) ?>" data-wa-incoming-signature="<?= htmlspecialchars(is_array($activeLead) ? crm_whatsapp_incoming_signature($activeLead) : '') ?>">
     <main class="wa-web-shell" aria-label="Atendimento WhatsApp do CRM">
@@ -696,6 +696,7 @@ foreach ($whatsappTemplates as $template) {
         <button type="button" class="<?= !is_array($activeLead) ? 'is-active' : '' ?>" data-wa-mobile-view="inbox">Conversas</button>
         <button type="button" class="<?= is_array($activeLead) ? 'is-active' : '' ?>" data-wa-mobile-view="thread">Atendimento</button>
         <button type="button" data-wa-mobile-view="lead">Dados do lead</button>
+        <a href="index.php" aria-label="Abrir tela de contatos">Contatos</a>
       </nav>
 
       <aside class="wa-inbox" aria-label="Lista de conversas">
@@ -2152,6 +2153,6 @@ foreach ($whatsappTemplates as $template) {
         renderWaTags();
       }
     </script>
-    <script src="./assets/crm-navigation.js?v=20260810-smooth-navigation-v1"></script>
+    <script src="./assets/crm-navigation.js?v=20260811-contact-navigation-v1"></script>
   </body>
 </html>
