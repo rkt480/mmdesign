@@ -6155,7 +6155,9 @@ textarea:focus {
   .whatsapp-crm-page .wa-lead-panel {
     align-content: start;
     max-height: none;
-    overflow: visible;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
     padding: 10px;
   }
 }
