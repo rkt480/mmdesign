@@ -8,6 +8,7 @@ require_once __DIR__ . '/lib/settings.php';
 require_once __DIR__ . '/lib/forms.php';
 require_once __DIR__ . '/lib/whatsapp.php';
 require_once __DIR__ . '/lib/whatsapp-templates.php';
+require_once __DIR__ . '/lib/whatsapp-events.php';
 
 crm_require_login();
 
@@ -645,7 +646,7 @@ foreach ($whatsappTemplates as $template) {
     <title>WhatsApp | MM Design</title>
     <link rel="stylesheet" href="./assets/crm.css?v=20260808-tag-remove-v2" />
   </head>
-  <body class="whatsapp-page whatsapp-crm-page" data-wa-initial-view="<?= is_array($activeLead) ? 'thread' : 'inbox' ?>" data-wa-active-lead-id="<?= htmlspecialchars((string) ($activeLead['id'] ?? '')) ?>">
+  <body class="whatsapp-page whatsapp-crm-page" data-wa-initial-view="<?= is_array($activeLead) ? 'thread' : 'inbox' ?>" data-wa-active-lead-id="<?= htmlspecialchars((string) ($activeLead['id'] ?? '')) ?>" data-wa-incoming-signature="<?= htmlspecialchars(is_array($activeLead) ? crm_whatsapp_incoming_signature($activeLead) : '') ?>">
     <main class="wa-web-shell" aria-label="Atendimento WhatsApp do CRM">
       <aside class="sidebar" aria-label="Navegação do CRM">
         <a class="brand" href="index.php" aria-label="Início">
@@ -1239,6 +1240,49 @@ foreach ($whatsappTemplates as $template) {
         return Boolean(isRecording || messageInput?.value.trim() || mediaInput?.files?.length);
       };
 
+      let conversationReloadScheduled = false;
+      let pendingConversationRefresh = false;
+      let pendingRefreshTimer = null;
+
+      const scheduleConversationReload = () => {
+        if (conversationReloadScheduled) {
+          return;
+        }
+
+        conversationReloadScheduled = true;
+        window.location.reload();
+      };
+
+      const checkPendingConversationRefresh = () => {
+        pendingRefreshTimer = null;
+
+        if (!pendingConversationRefresh) {
+          return;
+        }
+
+        if (hasUnsavedConversationContent()) {
+          pendingRefreshTimer = window.setTimeout(checkPendingConversationRefresh, 500);
+          return;
+        }
+
+        pendingConversationRefresh = false;
+        scheduleConversationReload();
+      };
+
+      const requestConversationRefresh = () => {
+        if (hasUnsavedConversationContent()) {
+          pendingConversationRefresh = true;
+
+          if (pendingRefreshTimer === null) {
+            pendingRefreshTimer = window.setTimeout(checkPendingConversationRefresh, 500);
+          }
+
+          return;
+        }
+
+        scheduleConversationReload();
+      };
+
       // O webhook envia um Web Push quando chega uma nova resposta. Quando
       // esta página está aberta no lead correspondente, atualizamos somente
       // essa conversa, sem manter um intervalo que repinte o CRM inteiro.
@@ -1256,11 +1300,50 @@ foreach ($whatsappTemplates as $template) {
             return;
           }
 
-          if (!hasUnsavedConversationContent()) {
-            window.location.reload();
-          }
+          requestConversationRefresh();
         });
       }
+
+      const startIncomingMessageListener = async () => {
+        const leadId = document.body.dataset.waActiveLeadId || "";
+        let signature = document.body.dataset.waIncomingSignature || "";
+
+        if (!leadId || !signature) {
+          return;
+        }
+
+        while (!conversationReloadScheduled) {
+          try {
+            const endpoint = new URL("api/whatsapp-realtime.php", window.location.href);
+            endpoint.searchParams.set("lead", leadId);
+            endpoint.searchParams.set("since", signature);
+
+            const response = await fetch(endpoint, {
+              headers: { Accept: "application/json" },
+              cache: "no-store",
+            });
+            const data = await response.json().catch(() => ({}));
+
+            if (!response.ok || data.ok === false) {
+              throw new Error(data.error || "Atualização em tempo real indisponível.");
+            }
+
+            signature = data.signature || signature;
+
+            if (data.changed) {
+              requestConversationRefresh();
+              return;
+            }
+          } catch (error) {
+            // A conexão será refeita após uma falha momentânea, sem alterar a
+            // posição ou o conteúdo que o vendedor está usando.
+            window.setTimeout(startIncomingMessageListener, 2000);
+            return;
+          }
+        }
+      };
+
+      startIncomingMessageListener();
 
       document.querySelectorAll(".wa-composer").forEach((form) => {
         const attachButton = form.querySelector("[data-wa-attach]");
