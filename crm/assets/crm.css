@@ -336,10 +336,12 @@ a {
 .auth-card > .auth-link {
   display: block;
   width: 100%;
-  margin-top: 24px;
+  margin-top: 28px;
   padding-top: 2px;
   color: var(--blue);
+  font-size: 1rem;
   font-weight: 800;
+  line-height: 1.4;
   text-align: center;
 }
 

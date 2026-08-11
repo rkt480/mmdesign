@@ -46,7 +46,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <title>Recuperar senha | CRM MM Design</title>
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="apple-touch-icon" sizes="180x180" href="./assets/icon-180.png" />
-    <link rel="stylesheet" href="./assets/crm.css" />
+    <link rel="stylesheet" href="./assets/crm.css?v=20260811-auth-spacing-v1" />
   </head>
   <body class="auth-page">
     <main class="auth-card">

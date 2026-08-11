@@ -1472,7 +1472,7 @@ foreach ($whatsappTemplates as $template) {
       // atualização da conversa usa a escuta de evento abaixo, que funciona
       // mesmo quando as notificações do navegador não estão habilitadas.
       if ("serviceWorker" in navigator) {
-        navigator.serviceWorker.register("./sw.js?v=20260811-mobile-keyboard-v7", {
+      navigator.serviceWorker.register("./sw.js?v=20260811-auth-spacing-v1", {
           scope: "./",
           updateViaCache: "none",
         }).catch(() => {});
