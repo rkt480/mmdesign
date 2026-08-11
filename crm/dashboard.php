@@ -129,7 +129,7 @@ arsort($lostReasons);
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Dashboard | CRM</title>
-    <link rel="stylesheet" href="./assets/crm.css?v=20260810-smooth-navigation-v1" />
+    <link rel="stylesheet" href="./assets/crm.css?v=20260811-mobile-keyboard-v1" />
   </head>
   <body class="settings-page dashboard-page">
     <div class="app-shell">
@@ -319,6 +319,6 @@ arsort($lostReasons);
         </main>
       </div>
     </div>
-    <script src="./assets/crm-navigation.js?v=20260810-smooth-navigation-v1"></script>
+    <script src="./assets/crm-navigation.js?v=20260811-fast-navigation-v1"></script>
   </body>
 </html>

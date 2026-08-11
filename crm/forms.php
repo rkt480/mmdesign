@@ -42,7 +42,7 @@ $isNew = $currentForm === null;
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="csrf-token" content="<?= htmlspecialchars(crm_csrf_token()) ?>" />
     <title>Formulários | CRM</title>
-    <link rel="stylesheet" href="./assets/crm.css?v=20260810-smooth-navigation-v1" />
+    <link rel="stylesheet" href="./assets/crm.css?v=20260811-mobile-keyboard-v1" />
   </head>
   <body>
     <div class="app-shell">
@@ -145,6 +145,6 @@ $isNew = $currentForm === null;
 
     <script id="initialFormConfig" type="application/json"><?= json_encode($currentConfig, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP) ?></script>
     <script src="./assets/forms.js?v=20260711-simple-score"></script>
-    <script src="./assets/crm-navigation.js?v=20260810-smooth-navigation-v1"></script>
+    <script src="./assets/crm-navigation.js?v=20260811-fast-navigation-v1"></script>
   </body>
 </html>

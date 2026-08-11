@@ -10,17 +10,28 @@
   overlay.setAttribute("aria-hidden", "true");
   overlay.innerHTML = '<span class="crm-navigation-spinner" role="status" aria-label="Carregando"></span>';
   document.body.appendChild(overlay);
+  let navigationTimer = null;
 
   const hideNavigationState = () => {
+    if (navigationTimer !== null) {
+      window.clearTimeout(navigationTimer);
+      navigationTimer = null;
+    }
+
     document.body.classList.remove("is-navigating");
     document.body.removeAttribute("aria-busy");
     overlay.setAttribute("aria-hidden", "true");
   };
 
   const showNavigationState = () => {
-    document.body.classList.add("is-navigating");
-    document.body.setAttribute("aria-busy", "true");
-    overlay.setAttribute("aria-hidden", "false");
+    // Fast page changes should feel immediate. Only show the loading state
+    // when the browser is still waiting after a short grace period.
+    navigationTimer = window.setTimeout(() => {
+      document.body.classList.add("is-navigating");
+      document.body.setAttribute("aria-busy", "true");
+      overlay.setAttribute("aria-hidden", "false");
+      navigationTimer = null;
+    }, 140);
   };
 
   const isNavigableInternalLink = (link, event) => {

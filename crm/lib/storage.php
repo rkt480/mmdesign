@@ -7,6 +7,7 @@ require_once __DIR__ . '/settings.php';
 function crm_db(): PDO
 {
     static $pdo = null;
+    static $schemaReady = false;
 
     if ($pdo instanceof PDO) {
         return $pdo;
@@ -28,9 +29,59 @@ function crm_db(): PDO
         PDO::ATTR_EMULATE_PREPARES => false,
     ]);
 
-    crm_ensure_crm_schema($pdo);
+    // Schema checks used to run on every page request. Keep the safety net for
+    // new installations and migrations, but avoid repeating the expensive
+    // INFORMATION_SCHEMA/DDL work once this version is known to be ready.
+    if (!$schemaReady && !crm_schema_version_is_current($pdo)) {
+        crm_ensure_crm_schema($pdo);
+        crm_mark_schema_version($pdo);
+    }
+
+    $schemaReady = true;
 
     return $pdo;
+}
+
+function crm_schema_version(): string
+{
+    return '20260811.1';
+}
+
+function crm_schema_version_is_current(PDO $pdo): bool
+{
+    try {
+        $stmt = $pdo->prepare(
+            'SELECT setting_value
+             FROM crm_settings
+             WHERE setting_key = :setting_key
+             LIMIT 1'
+        );
+        $stmt->execute(['setting_key' => '__crm_schema_version']);
+
+        return (string) $stmt->fetchColumn() === crm_schema_version();
+    } catch (Throwable $error) {
+        // A missing settings table is expected on a fresh installation. The
+        // regular schema bootstrap below will create it.
+        return false;
+    }
+}
+
+function crm_mark_schema_version(PDO $pdo): void
+{
+    $now = date('Y-m-d H:i:s');
+    $stmt = $pdo->prepare(
+        'INSERT INTO crm_settings (setting_key, setting_value, created_at, updated_at)
+         VALUES (:setting_key, :setting_value, :created_at, :updated_at)
+         ON DUPLICATE KEY UPDATE
+            setting_value = VALUES(setting_value),
+            updated_at = VALUES(updated_at)'
+    );
+    $stmt->execute([
+        'setting_key' => '__crm_schema_version',
+        'setting_value' => crm_schema_version(),
+        'created_at' => $now,
+        'updated_at' => $now,
+    ]);
 }
 
 function crm_table_exists(PDO $pdo, string $table): bool

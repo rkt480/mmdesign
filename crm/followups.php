@@ -53,7 +53,7 @@ function human_delay(int $minutes): string
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="csrf-token" content="<?= htmlspecialchars(crm_csrf_token()) ?>" />
     <title>Fluxos de Follow-up | CRM</title>
-    <link rel="stylesheet" href="./assets/crm.css?v=20260810-smooth-navigation-v1" />
+    <link rel="stylesheet" href="./assets/crm.css?v=20260811-mobile-keyboard-v1" />
   </head>
   <body class="followups-page">
     <div class="app-shell">
@@ -306,6 +306,6 @@ function human_delay(int $minutes): string
     </div>
     <script>window.followupTemplateCatalog = <?= json_encode($templateCatalog, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;</script>
     <script src="./assets/followups.js?v=20260808-seller-mapping-v1"></script>
-    <script src="./assets/crm-navigation.js?v=20260810-smooth-navigation-v1"></script>
+    <script src="./assets/crm-navigation.js?v=20260811-fast-navigation-v1"></script>
   </body>
 </html>

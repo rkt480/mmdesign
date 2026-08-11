@@ -40,8 +40,7 @@ body {
   z-index: 9999;
   display: grid;
   place-items: center;
-  background: rgba(237, 242, 248, 0.62);
-  backdrop-filter: blur(3px);
+  background: rgba(237, 242, 248, 0.34);
   opacity: 0;
   pointer-events: none;
   visibility: hidden;
@@ -62,7 +61,7 @@ body.is-navigating .crm-navigation-overlay {
   border: 3px solid rgba(14, 116, 144, 0.18);
   border-top-color: #0e7490;
   border-radius: 999px;
-  animation: crm-navigation-spin 0.72s linear infinite;
+  animation: crm-navigation-spin 0.62s linear infinite;
 }
 
 @keyframes crm-navigation-spin {
@@ -5871,18 +5870,22 @@ textarea:focus {
 
 @media (max-width: 760px) {
   .whatsapp-crm-page {
-    min-height: 100dvh;
-    overflow: auto;
+    height: var(--wa-visual-viewport-height, 100dvh);
+    min-height: 0;
+    overflow: hidden;
+    overscroll-behavior: none;
   }
 
   .whatsapp-crm-page .wa-web-shell {
     grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
     width: 100%;
-    min-height: 100dvh;
-    height: auto;
+    min-height: 0;
+    height: 100%;
+    max-height: 100%;
     gap: 10px;
-    padding: 10px;
-    overflow: visible;
+    padding: 10px 10px max(10px, env(safe-area-inset-bottom));
+    overflow: hidden;
   }
 
   .whatsapp-crm-page .wa-rail {
@@ -5950,8 +5953,9 @@ textarea:focus {
 
   .whatsapp-crm-page .wa-inbox {
     grid-template-rows: auto auto auto auto minmax(0, 1fr);
-    min-height: calc(100dvh - 152px);
-    max-height: calc(100dvh - 152px);
+    min-height: 0;
+    max-height: none;
+    height: 100%;
   }
 
   .whatsapp-crm-page .wa-chat-list {
@@ -5959,9 +5963,10 @@ textarea:focus {
   }
 
   .whatsapp-crm-page .wa-thread {
-    grid-template-rows: 68px minmax(280px, 1fr) auto;
-    min-height: calc(100dvh - 152px);
-    max-height: calc(100dvh - 152px);
+    grid-template-rows: 68px minmax(0, 1fr) auto;
+    min-height: 0;
+    max-height: none;
+    height: 100%;
   }
 
   .whatsapp-crm-page .wa-thread-header {
@@ -6003,6 +6008,7 @@ textarea:focus {
   }
 
   .whatsapp-crm-page .wa-thread-bottom {
+    min-height: 0;
     max-height: none;
     overflow: visible;
     padding: 8px 10px 0;

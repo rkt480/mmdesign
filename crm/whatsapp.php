@@ -644,7 +644,7 @@ foreach ($whatsappTemplates as $template) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="csrf-token" content="<?= htmlspecialchars(crm_csrf_token()) ?>" />
     <title>WhatsApp | MM Design</title>
-    <link rel="stylesheet" href="./assets/crm.css?v=20260811-contact-navigation-v1" />
+    <link rel="stylesheet" href="./assets/crm.css?v=20260811-mobile-keyboard-v1" />
   </head>
   <body class="whatsapp-page whatsapp-crm-page" data-wa-initial-view="<?= is_array($activeLead) ? 'thread' : 'inbox' ?>" data-wa-mobile-view="<?= is_array($activeLead) ? 'thread' : 'inbox' ?>" data-wa-active-lead-id="<?= htmlspecialchars((string) ($activeLead['id'] ?? '')) ?>" data-wa-incoming-signature="<?= htmlspecialchars(is_array($activeLead) ? crm_whatsapp_incoming_signature($activeLead) : '') ?>">
     <main class="wa-web-shell" aria-label="Atendimento WhatsApp do CRM">
@@ -1219,6 +1219,41 @@ foreach ($whatsappTemplates as $template) {
       });
       document.querySelector("[data-wa-mobile-back]")?.addEventListener("click", () => setWaMobileView("inbox"));
 
+      // iOS Safari can keep the layout viewport at its full height while the
+      // keyboard only shrinks the visual viewport. Keep the app shell tied to
+      // the visible area so the chat composer never drifts under the keyboard.
+      const syncWaVisualViewport = () => {
+        const viewport = window.visualViewport;
+
+        if (!viewport || window.innerWidth > 760) {
+          return;
+        }
+
+        const height = Math.round(viewport.height);
+
+        if (height > 0) {
+          document.documentElement.style.setProperty("--wa-visual-viewport-height", `${height}px`);
+        }
+
+        const keyboardOpen = window.innerHeight - viewport.height > 120;
+        document.body.classList.toggle("wa-keyboard-open", keyboardOpen);
+
+        if (keyboardOpen && document.activeElement?.matches("[data-wa-message]")) {
+          window.requestAnimationFrame(() => {
+            const surface = document.querySelector(".wa-message-surface");
+            surface?.scrollTo({ top: surface.scrollHeight, behavior: "auto" });
+          });
+        }
+      };
+
+      if (window.visualViewport) {
+        window.visualViewport.addEventListener("resize", syncWaVisualViewport);
+        window.visualViewport.addEventListener("scroll", syncWaVisualViewport);
+      }
+
+      window.addEventListener("resize", syncWaVisualViewport);
+      syncWaVisualViewport();
+
       const bindConversationSearch = () => {
         const searchInput = document.querySelector("[data-wa-search]");
 
@@ -1377,7 +1412,7 @@ foreach ($whatsappTemplates as $template) {
       // atualização da conversa usa a escuta de evento abaixo, que funciona
       // mesmo quando as notificações do navegador não estão habilitadas.
       if ("serviceWorker" in navigator) {
-        navigator.serviceWorker.register("./sw.js?v=20260810-smooth-navigation-v1", {
+        navigator.serviceWorker.register("./sw.js?v=20260811-mobile-keyboard-v1", {
           scope: "./",
           updateViaCache: "none",
         }).catch(() => {});
@@ -1833,6 +1868,15 @@ foreach ($whatsappTemplates as $template) {
         });
         mediaInput?.addEventListener("change", () => renderMediaPreview(mediaInput.files?.[0] || null));
         messageInput?.addEventListener("input", syncComposerAction);
+        messageInput?.addEventListener("focus", () => {
+          // Prevent the document itself from being left scrolled beneath the
+          // iOS status bar after the keyboard opens.
+          window.scrollTo(0, 0);
+          window.setTimeout(() => {
+            syncWaVisualViewport();
+            window.scrollTo(0, 0);
+          }, 120);
+        });
         syncComposerAction();
 
         recordingDiscardButton?.addEventListener("click", async () => {
@@ -2153,6 +2197,6 @@ foreach ($whatsappTemplates as $template) {
         renderWaTags();
       }
     </script>
-    <script src="./assets/crm-navigation.js?v=20260811-contact-navigation-v1"></script>
+    <script src="./assets/crm-navigation.js?v=20260811-fast-navigation-v1"></script>
   </body>
 </html>
