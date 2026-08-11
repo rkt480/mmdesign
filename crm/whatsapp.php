@@ -336,6 +336,40 @@ function whatsapp_page_money_input(array $lead, string $field): string
     return $value !== null && $value !== '' ? 'R$ ' . number_format((float) $value, 2, ',', '.') : '';
 }
 
+function whatsapp_page_preview_for_lead(array $lead): string
+{
+    $notes = trim((string) ($lead['notes'] ?? ''));
+
+    if ($notes !== '') {
+        $blocks = whatsapp_page_note_blocks($notes);
+
+        for ($index = count($blocks) - 1; $index >= 0; $index--) {
+            $block = trim((string) ($blocks[$index] ?? ''));
+
+            if ($block === '' || whatsapp_page_is_technical_delivery_note($block)) {
+                continue;
+            }
+
+            if (str_contains($block, '[crm_media]')) {
+                return str_contains($block, 'Mídia enviada') ? 'Mídia enviada' : 'Mídia recebida';
+            }
+
+            $preview = preg_replace('/^[^\r\n]*(?:\R|$)/u', '', $block, 1) ?? $block;
+            $preview = whatsapp_page_clean_sent_message_text(trim($preview));
+
+            if ($preview !== '') {
+                return whatsapp_page_short_text($preview);
+            }
+        }
+    }
+
+    $initialMessage = trim((string) ($lead['message'] ?? ''));
+
+    return $initialMessage !== ''
+        ? whatsapp_page_short_text($initialMessage)
+        : 'Sem mensagens registradas ainda.';
+}
+
 function whatsapp_page_messages_for_lead(array $lead): array
 {
     $provider = whatsapp_page_provider_for_lead($lead);
@@ -511,28 +545,27 @@ foreach ($leads as $lead) {
     $conversationKey = crm_whatsapp_number_variants($whatsapp)[0] ?? $whatsapp;
 
     $leadProvider = whatsapp_page_provider_for_lead($lead);
-    $messages = whatsapp_page_messages_for_lead($lead);
     $leadDate = whatsapp_page_latest_lead_date($lead);
+    $preview = whatsapp_page_preview_for_lead($lead);
 
     if (!isset($conversationGroups[$conversationKey])) {
         $conversationGroups[$conversationKey] = [
             'lead' => $lead,
             'lead_ids' => [],
             'provider' => $leadProvider,
-            'messages' => [],
             'last_at' => $leadDate,
-            'preview' => 'Sem mensagens registradas ainda.',
+            'preview' => $preview,
         ];
     }
 
     $conversationGroups[$conversationKey]['lead_ids'][] = (string) ($lead['id'] ?? '');
-    $conversationGroups[$conversationKey]['messages'] = array_merge($conversationGroups[$conversationKey]['messages'], $messages);
 
     if (
         whatsapp_page_timestamp($leadDate) > whatsapp_page_timestamp((string) $conversationGroups[$conversationKey]['last_at'])
     ) {
         $conversationGroups[$conversationKey]['lead'] = $lead;
         $conversationGroups[$conversationKey]['last_at'] = $leadDate;
+        $conversationGroups[$conversationKey]['preview'] = $preview;
     }
 
     if (
@@ -547,35 +580,13 @@ foreach ($leads as $lead) {
 }
 
 foreach ($conversationGroups as $whatsapp => $conversation) {
-    $uniqueMessages = [];
-
-    foreach ($conversation['messages'] as $message) {
-        $messageTimestamp = whatsapp_page_timestamp((string) ($message['at'] ?? ''));
-        $key = implode('|', [
-            (string) ($message['direction'] ?? ''),
-            (string) ($message['provider'] ?? ''),
-            $messageTimestamp > 0 ? date('Y-m-d H:i', $messageTimestamp) : '',
-            trim((string) ($message['text'] ?? '')),
-            trim((string) (($message['media'] ?? [])['crm_message_id'] ?? ($message['media'] ?? [])['id'] ?? ($message['media'] ?? [])['url'] ?? '')),
-        ]);
-
-        $uniqueMessages[$key] = $message;
-    }
-
-    $messages = array_values($uniqueMessages);
-    usort($messages, 'whatsapp_page_compare_messages');
-    $lastMessage = end($messages);
-    $lastAt = is_array($lastMessage) ? (string) $lastMessage['at'] : (string) $conversation['last_at'];
-    $preview = is_array($lastMessage) ? (string) $lastMessage['text'] : 'Sem mensagens registradas ainda.';
-    $lastDirection = is_array($lastMessage) ? (string) ($lastMessage['direction'] ?? '') : '';
-    $lastMessageKey = is_array($lastMessage)
-        ? implode('|', [$lastDirection, $lastAt, $preview])
-        : '';
-    $conversation['messages'] = $messages;
-    $conversation['last_at'] = $lastAt;
-    $conversation['preview'] = $preview;
-    $conversation['last_direction'] = $lastDirection;
-    $conversation['last_message_key'] = $lastMessageKey;
+    // The inbox only needs a lightweight preview. The complete message
+    // history is reconstructed below for the selected conversation only.
+    $conversation['last_direction'] = '';
+    $conversation['last_message_key'] = implode('|', [
+        $conversation['last_at'],
+        $conversation['preview'],
+    ]);
 
     $providerCounts['all']++;
 
@@ -612,7 +623,34 @@ if ($requestedLeadId !== '') {
 }
 
 $activeLead = is_array($requestedLead) ? $requestedLead : (is_array($activeConversation) ? $activeConversation['lead'] : null);
-$activeMessages = is_array($activeConversation) ? $activeConversation['messages'] : [];
+$activeMessages = [];
+
+if (is_array($activeConversation)) {
+    $activeLeadIds = $activeConversation['lead_ids'] ?? [];
+
+    foreach ($leads as $lead) {
+        if (in_array((string) ($lead['id'] ?? ''), $activeLeadIds, true)) {
+            $activeMessages = array_merge($activeMessages, whatsapp_page_messages_for_lead($lead));
+        }
+    }
+
+    $uniqueMessages = [];
+
+    foreach ($activeMessages as $message) {
+        $messageTimestamp = whatsapp_page_timestamp((string) ($message['at'] ?? ''));
+        $key = implode('|', [
+            (string) ($message['direction'] ?? ''),
+            (string) ($message['provider'] ?? ''),
+            $messageTimestamp > 0 ? date('Y-m-d H:i', $messageTimestamp) : '',
+            trim((string) ($message['text'] ?? '')),
+            trim((string) (($message['media'] ?? [])['crm_message_id'] ?? ($message['media'] ?? [])['id'] ?? ($message['media'] ?? [])['url'] ?? '')),
+        ]);
+        $uniqueMessages[$key] = $message;
+    }
+
+    $activeMessages = array_values($uniqueMessages);
+    usort($activeMessages, 'whatsapp_page_compare_messages');
+}
 $activeProvider = is_array($activeConversation) ? (string) $activeConversation['provider'] : $provider;
 $whatsappTemplates = crm_read_whatsapp_templates(true);
 $hasApprovedWhatsAppTemplate = false;
@@ -2197,6 +2235,6 @@ foreach ($whatsappTemplates as $template) {
         renderWaTags();
       }
     </script>
-    <script src="./assets/crm-navigation.js?v=20260811-fast-navigation-v1"></script>
+    <script src="./assets/crm-navigation.js?v=20260811-fast-navigation-v2"></script>
   </body>
 </html>

@@ -34,6 +34,39 @@
     }, 140);
   };
 
+  const prefetchedUrls = new Set();
+  const prefetchLink = (link) => {
+    if (!link || link.dataset.noNavigationPrefetch !== undefined) {
+      return;
+    }
+
+    const href = link.getAttribute("href") || "";
+
+    if (!href || href.startsWith("#") || href.startsWith("mailto:") || href.startsWith("tel:")) {
+      return;
+    }
+
+    const destination = new URL(link.href, window.location.href);
+
+    if (destination.origin !== window.location.origin
+      || destination.pathname.includes("/api/")
+      || destination.pathname.endsWith("/logout.php")
+      || destination.pathname.endsWith("/export.php")) {
+      return;
+    }
+
+    if (prefetchedUrls.has(destination.href)) {
+      return;
+    }
+
+    prefetchedUrls.add(destination.href);
+    const hint = document.createElement("link");
+    hint.rel = "prefetch";
+    hint.as = "document";
+    hint.href = destination.href;
+    document.head.appendChild(hint);
+  };
+
   const isNavigableInternalLink = (link, event) => {
     if (!link || event.defaultPrevented || event.button !== 0) {
       return false;
@@ -73,6 +106,15 @@
       showNavigationState();
     }
   }, true);
+
+  const warmNavigationTarget = (event) => {
+    const link = event.target.closest?.("a[href]");
+    prefetchLink(link);
+  };
+
+  document.addEventListener("pointerover", warmNavigationTarget, { passive: true });
+  document.addEventListener("touchstart", warmNavigationTarget, { passive: true });
+  document.addEventListener("focusin", warmNavigationTarget);
 
   window.addEventListener("pageshow", hideNavigationState);
   window.addEventListener("pagehide", () => {

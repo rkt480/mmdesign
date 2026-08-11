@@ -110,7 +110,16 @@ function crm_read_settings_from_db(PDO $pdo): array
 
 function crm_read_settings(): array
 {
-    return crm_read_settings_from_db(crm_settings_db());
+    if (!array_key_exists('crm_settings_cache', $GLOBALS)) {
+        $GLOBALS['crm_settings_cache'] = crm_read_settings_from_db(crm_settings_db());
+    }
+
+    return is_array($GLOBALS['crm_settings_cache']) ? $GLOBALS['crm_settings_cache'] : [];
+}
+
+function crm_reset_settings_cache(): void
+{
+    unset($GLOBALS['crm_settings_cache']);
 }
 
 function crm_write_settings_to_db(PDO $pdo, array $settings): void
@@ -155,6 +164,7 @@ function crm_write_settings_to_db(PDO $pdo, array $settings): void
 function crm_write_settings(array $settings): void
 {
     crm_write_settings_to_db(crm_settings_db(), $settings);
+    crm_reset_settings_cache();
 }
 
 function crm_normalize_whatsapp_number(string $number): string

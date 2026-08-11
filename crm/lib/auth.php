@@ -238,9 +238,17 @@ function crm_logout(): void
 
 function crm_current_user(): ?array
 {
+    static $resolved = false;
+    static $cachedUser = null;
+
+    if ($resolved) {
+        return $cachedUser;
+    }
+
     crm_start_session();
 
     if (($_SESSION['crm_logged_in'] ?? false) !== true) {
+        $resolved = true;
         return null;
     }
 
@@ -252,16 +260,19 @@ function crm_current_user(): ?array
             $user = crm_find_user_by_id($userId);
 
             if (is_array($user) && (int) ($user['active'] ?? 0) === 1) {
-                return $user;
+                $cachedUser = $user;
+                $resolved = true;
+                return $cachedUser;
             }
 
+            $resolved = true;
             return null;
         } catch (Throwable $error) {
             // Keep the config admin fallback below available during maintenance.
         }
     }
 
-    return [
+    $cachedUser = [
         'id' => $userId > 0 ? $userId : null,
         'name' => (string) ($_SESSION['crm_user_name'] ?? 'Administrador'),
         'username' => (string) ($_SESSION['crm_user'] ?? 'admin'),
@@ -269,6 +280,10 @@ function crm_current_user(): ?array
         'active' => 1,
         'participates_in_rotation' => 0,
     ];
+
+    $resolved = true;
+
+    return $cachedUser;
 }
 
 function crm_normalize_user_access_time(string $time, string $default): string

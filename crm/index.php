@@ -805,6 +805,6 @@ function lead_money_input(array $lead, string $field): string
       </div>
     </div>
     <script src="./assets/crm.js?v=20260808-push-dedupe-v1"></script>
-    <script src="./assets/crm-navigation.js?v=20260811-fast-navigation-v1"></script>
+    <script src="./assets/crm-navigation.js?v=20260811-fast-navigation-v2"></script>
   </body>
 </html>
