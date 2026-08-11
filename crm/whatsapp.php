@@ -767,6 +767,11 @@ foreach ($whatsappTemplates as $template) {
           </div>
         <?php else: ?>
           <header class="wa-thread-header">
+            <button class="wa-mobile-thread-back" type="button" data-wa-mobile-back aria-label="Voltar para conversas" title="Voltar para conversas">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="m15 5-7 7 7 7" />
+              </svg>
+            </button>
             <?= whatsapp_page_avatar_markup($activeLead, 'large') ?>
             <div>
               <h2><?= htmlspecialchars((string) ($activeLead['name'] ?? 'Contato WhatsApp')) ?></h2>
@@ -1211,6 +1216,7 @@ foreach ($whatsappTemplates as $template) {
       waMobileTabs.forEach((tab) => {
         tab.addEventListener("click", () => setWaMobileView(tab.dataset.waMobileView || "inbox"));
       });
+      document.querySelector("[data-wa-mobile-back]")?.addEventListener("click", () => setWaMobileView("inbox"));
 
       const bindConversationSearch = () => {
         const searchInput = document.querySelector("[data-wa-search]");
