@@ -221,7 +221,7 @@ function whatsapp_page_is_technical_delivery_note(string $text): bool
  */
 function whatsapp_page_note_blocks(string $notes): array
 {
-    $recordStart = '(?:Mensagem recebida pelo provedor anterior|Mensagem recebida pela Meta Cloud API|Mensagem recebida pela Pilot Status|Mídia recebida pela Pilot Status|Mídia enviada via|Mensagem enviada via|Falha ao enviar via|Pilot Status evento:)';
+    $recordStart = '(?:Observação do CRM em|Mensagem recebida pelo provedor anterior|Mensagem recebida pela Meta Cloud API|Mensagem recebida pela Pilot Status|Mídia recebida pela Pilot Status|Mídia enviada via|Mensagem enviada via|Falha ao enviar via|Pilot Status evento:)';
     $blocks = [];
 
     foreach (preg_split('/(?:\R){2,}/u', trim($notes)) ?: [] as $group) {
@@ -235,6 +235,28 @@ function whatsapp_page_note_blocks(string $notes): array
     }
 
     return $blocks;
+}
+
+function whatsapp_page_compare_messages(array $a, array $b): int
+{
+    $sameLead = (string) ($a['_lead_id'] ?? '') !== ''
+        && (string) ($a['_lead_id'] ?? '') === (string) ($b['_lead_id'] ?? '');
+
+    // Older CRM observations did not carry their own timestamp. Their place
+    // in the notes field is the reliable order, otherwise a new incoming
+    // message makes every old observation look like the newest item.
+    if ($sameLead && (($a['_legacy_ordered'] ?? false) || ($b['_legacy_ordered'] ?? false))) {
+        return ((int) ($a['_sequence'] ?? 0)) <=> ((int) ($b['_sequence'] ?? 0));
+    }
+
+    $timestampComparison = whatsapp_page_timestamp((string) ($a['at'] ?? ''))
+        <=> whatsapp_page_timestamp((string) ($b['at'] ?? ''));
+
+    if ($timestampComparison !== 0) {
+        return $timestampComparison;
+    }
+
+    return ((int) ($a['_sequence'] ?? 0)) <=> ((int) ($b['_sequence'] ?? 0));
 }
 
 function whatsapp_template_status_label_for_conversation(array $template): string
@@ -433,6 +455,17 @@ function whatsapp_page_messages_for_lead(array $lead): array
                 continue;
             }
 
+            if (preg_match('/^Observação do CRM em ([0-9]{2}\/\d{2}\/\d{4} [0-9]{2}:[0-9]{2}(?::[0-9]{2})?):\R(.+)$/su', $block, $match) === 1) {
+                $messages[] = [
+                    'direction' => 'note',
+                    'provider' => $provider,
+                    'at' => whatsapp_page_parse_br_datetime((string) $match[1]),
+                    'text' => trim((string) $match[2]),
+                    'label' => 'Observação do CRM',
+                ];
+                continue;
+            }
+
             if (whatsapp_page_is_technical_delivery_note($block)) {
                 continue;
             }
@@ -443,27 +476,18 @@ function whatsapp_page_messages_for_lead(array $lead): array
                 'at' => (string) ($lead['updated_at'] ?? $lead['created_at'] ?? date('Y-m-d H:i:s')),
                 'text' => $block,
                 'label' => 'Observação do CRM',
+                '_legacy_ordered' => true,
             ];
         }
     }
 
     foreach ($messages as $sequence => &$message) {
         $message['_sequence'] = $sequence;
+        $message['_lead_id'] = (string) ($lead['id'] ?? '');
     }
     unset($message);
 
-    usort($messages, static function (array $a, array $b): int {
-        $timestampComparison = strtotime((string) $a['at']) <=> strtotime((string) $b['at']);
-
-        if ($timestampComparison !== 0) {
-            return $timestampComparison;
-        }
-
-        // Legacy notes did not store seconds. Preserve their original note
-        // order instead of always moving a received attachment above an
-        // attachment that was sent earlier in the same minute.
-        return ((int) ($a['_sequence'] ?? 0)) <=> ((int) ($b['_sequence'] ?? 0));
-    });
+    usort($messages, 'whatsapp_page_compare_messages');
 
     return $messages;
 }
@@ -538,7 +562,7 @@ foreach ($conversationGroups as $whatsapp => $conversation) {
     }
 
     $messages = array_values($uniqueMessages);
-    usort($messages, static fn(array $a, array $b): int => whatsapp_page_timestamp((string) $a['at']) <=> whatsapp_page_timestamp((string) $b['at']));
+    usort($messages, 'whatsapp_page_compare_messages');
     $lastMessage = end($messages);
     $lastAt = is_array($lastMessage) ? (string) $lastMessage['at'] : (string) $conversation['last_at'];
     $preview = is_array($lastMessage) ? (string) $lastMessage['text'] : 'Sem mensagens registradas ainda.';

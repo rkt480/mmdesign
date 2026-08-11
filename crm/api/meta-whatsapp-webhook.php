@@ -128,7 +128,7 @@ foreach ($incomingMessages as $incoming) {
         if (($followupAutomation['stopped'] ?? false) === true) {
             crm_append_lead_note(
                 (string) $lead['id'],
-                'Follow-up cancelado automaticamente após resposta do lead; lead movido para Em contato.'
+                'Observação do CRM em ' . date('d/m/Y H:i:s') . ":\nFollow-up cancelado automaticamente após resposta do lead; lead movido para Em contato."
             );
         }
     } catch (Throwable $error) {
