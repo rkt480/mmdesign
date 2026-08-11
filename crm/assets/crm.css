@@ -338,9 +338,9 @@ a {
   width: 100%;
   margin-top: 28px;
   padding-top: 2px;
-  color: var(--blue);
+  color: var(--text);
   font-size: 1rem;
-  font-weight: 800;
+  font-weight: 400;
   line-height: 1.4;
   text-align: center;
 }
