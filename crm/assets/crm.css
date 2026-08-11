@@ -6068,6 +6068,30 @@ textarea:focus {
     padding: 8px 10px 0;
   }
 
+  /* While the iOS keyboard is open, keep the focused conversation as the
+     only visible panel. This prevents Safari from scrolling the complete CRM
+     shell to reveal the textarea and leaving the header/empty space offset. */
+  body.whatsapp-crm-page.wa-keyboard-open .sidebar,
+  body.whatsapp-crm-page.wa-keyboard-open .wa-mobile-tabs,
+  body.whatsapp-crm-page.wa-keyboard-open .wa-inbox,
+  body.whatsapp-crm-page.wa-keyboard-open .wa-lead-panel {
+    display: none !important;
+  }
+
+  body.whatsapp-crm-page.wa-keyboard-open .wa-web-shell {
+    grid-template-rows: minmax(0, 1fr);
+    gap: 0;
+    padding: 0;
+  }
+
+  body.whatsapp-crm-page.wa-keyboard-open .wa-thread {
+    display: grid !important;
+    grid-row: 1;
+    height: var(--wa-visual-viewport-height, 100dvh);
+    max-height: var(--wa-visual-viewport-height, 100dvh);
+    border-radius: 0;
+  }
+
   .whatsapp-crm-page .wa-thread-bottom .wa-composer {
     margin: 0 -10px;
   }

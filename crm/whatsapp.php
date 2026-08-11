@@ -682,7 +682,7 @@ foreach ($whatsappTemplates as $template) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="csrf-token" content="<?= htmlspecialchars(crm_csrf_token()) ?>" />
     <title>WhatsApp | MM Design</title>
-    <link rel="stylesheet" href="./assets/crm.css?v=20260811-mobile-keyboard-v3" />
+    <link rel="stylesheet" href="./assets/crm.css?v=20260811-mobile-keyboard-v4" />
   </head>
   <body class="whatsapp-page whatsapp-crm-page" data-wa-initial-view="<?= is_array($activeLead) ? 'thread' : 'inbox' ?>" data-wa-mobile-view="<?= is_array($activeLead) ? 'thread' : 'inbox' ?>" data-wa-active-lead-id="<?= htmlspecialchars((string) ($activeLead['id'] ?? '')) ?>" data-wa-incoming-signature="<?= htmlspecialchars(is_array($activeLead) ? crm_whatsapp_incoming_signature($activeLead) : '') ?>">
     <main class="wa-web-shell" aria-label="Atendimento WhatsApp do CRM">
@@ -1273,7 +1273,8 @@ foreach ($whatsappTemplates as $template) {
           document.documentElement.style.setProperty("--wa-visual-viewport-height", `${height}px`);
         }
 
-        const keyboardOpen = window.innerHeight - viewport.height > 120;
+        const messageFocused = document.activeElement?.matches("[data-wa-message]");
+        const keyboardOpen = messageFocused || window.innerHeight - viewport.height > 120;
         document.body.classList.toggle("wa-keyboard-open", keyboardOpen);
 
         if (keyboardOpen && document.activeElement?.matches("[data-wa-message]")) {
@@ -1450,7 +1451,7 @@ foreach ($whatsappTemplates as $template) {
       // atualização da conversa usa a escuta de evento abaixo, que funciona
       // mesmo quando as notificações do navegador não estão habilitadas.
       if ("serviceWorker" in navigator) {
-        navigator.serviceWorker.register("./sw.js?v=20260811-mobile-keyboard-v3", {
+        navigator.serviceWorker.register("./sw.js?v=20260811-mobile-keyboard-v4", {
           scope: "./",
           updateViaCache: "none",
         }).catch(() => {});
@@ -1907,9 +1908,13 @@ foreach ($whatsappTemplates as $template) {
         mediaInput?.addEventListener("change", () => renderMediaPreview(mediaInput.files?.[0] || null));
         messageInput?.addEventListener("input", syncComposerAction);
         messageInput?.addEventListener("focus", () => {
+          syncWaVisualViewport();
           window.setTimeout(() => {
             syncWaVisualViewport();
           }, 120);
+        });
+        messageInput?.addEventListener("blur", () => {
+          window.setTimeout(syncWaVisualViewport, 220);
         });
         syncComposerAction();
 
