@@ -5878,7 +5878,7 @@ textarea:focus {
 
   .whatsapp-crm-page .wa-web-shell {
     grid-template-columns: 1fr;
-    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(0, 1fr);
     width: 100%;
     min-height: 0;
     height: 100%;

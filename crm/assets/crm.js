@@ -1338,7 +1338,7 @@ if (installButton) {
 }
 
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("./sw.js?v=20260811-mobile-keyboard-v1", {
+  navigator.serviceWorker.register("./sw.js?v=20260811-mobile-keyboard-v2", {
     scope: "./",
     updateViaCache: "none",
   })
