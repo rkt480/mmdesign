@@ -600,6 +600,7 @@ function crm_push_notify_lead_reply(array $lead, string $message = '', string $m
     $leadId = (string) ($lead['id'] ?? '');
 
     return crm_push_send_to_user($userId, [
+        'event' => 'lead-reply',
         'title' => 'Nova resposta do lead',
         'body' => $name . ': ' . $preview,
         'url' => './whatsapp.php?lead=' . rawurlencode($leadId),

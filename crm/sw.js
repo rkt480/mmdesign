@@ -69,7 +69,18 @@ self.addEventListener("push", (event) => {
     data: { url: data.url || "./index.php" },
   };
 
-  event.waitUntil(self.registration.showNotification(title, options));
+  const notifyOpenClients = data.event === "lead-reply" && data.lead_id
+    ? self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {
+      clientList.forEach((client) => {
+        client.postMessage({ type: "crm-lead-reply", leadId: String(data.lead_id) });
+      });
+    })
+    : Promise.resolve();
+
+  event.waitUntil(Promise.all([
+    self.registration.showNotification(title, options),
+    notifyOpenClients,
+  ]));
 });
 
 self.addEventListener("notificationclick", (event) => {

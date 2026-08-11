@@ -645,7 +645,7 @@ foreach ($whatsappTemplates as $template) {
     <title>WhatsApp | MM Design</title>
     <link rel="stylesheet" href="./assets/crm.css?v=20260808-tag-remove-v2" />
   </head>
-  <body class="whatsapp-page whatsapp-crm-page" data-wa-initial-view="<?= is_array($activeLead) ? 'thread' : 'inbox' ?>">
+  <body class="whatsapp-page whatsapp-crm-page" data-wa-initial-view="<?= is_array($activeLead) ? 'thread' : 'inbox' ?>" data-wa-active-lead-id="<?= htmlspecialchars((string) ($activeLead['id'] ?? '')) ?>">
     <main class="wa-web-shell" aria-label="Atendimento WhatsApp do CRM">
       <aside class="sidebar" aria-label="Navegação do CRM">
         <a class="brand" href="index.php" aria-label="Início">
@@ -1228,6 +1228,39 @@ foreach ($whatsappTemplates as $template) {
       };
 
       bindConversationSearch();
+
+      const hasUnsavedConversationContent = () => {
+        const composer = document.querySelector("[data-wa-composer]");
+        const messageInput = composer?.querySelector("[data-wa-message]");
+        const mediaInput = composer?.querySelector("[data-wa-media]");
+        const recordingPreview = composer?.querySelector("[data-wa-recording-preview]");
+        const isRecording = recordingPreview && !recordingPreview.hidden;
+
+        return Boolean(isRecording || messageInput?.value.trim() || mediaInput?.files?.length);
+      };
+
+      // O webhook envia um Web Push quando chega uma nova resposta. Quando
+      // esta página está aberta no lead correspondente, atualizamos somente
+      // essa conversa, sem manter um intervalo que repinte o CRM inteiro.
+      if ("serviceWorker" in navigator) {
+        navigator.serviceWorker.register("./sw.js?v=20260810-live-reply-v1", {
+          scope: "./",
+          updateViaCache: "none",
+        }).catch(() => {});
+
+        navigator.serviceWorker.addEventListener("message", (event) => {
+          const data = event.data || {};
+          const activeLeadId = document.body.dataset.waActiveLeadId || "";
+
+          if (data.type !== "crm-lead-reply" || String(data.leadId || "") !== activeLeadId) {
+            return;
+          }
+
+          if (!hasUnsavedConversationContent()) {
+            window.location.reload();
+          }
+        });
+      }
 
       document.querySelectorAll(".wa-composer").forEach((form) => {
         const attachButton = form.querySelector("[data-wa-attach]");
