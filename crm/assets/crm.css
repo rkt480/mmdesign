@@ -333,6 +333,18 @@ a {
   line-height: 1.4;
 }
 
+.auth-link {
+  display: block;
+  margin-top: 16px;
+  color: var(--blue);
+  font-weight: 800;
+  text-align: center;
+}
+
+.auth-link:hover {
+  text-decoration: underline;
+}
+
 .app-header nav {
   display: flex;
   flex-wrap: wrap;

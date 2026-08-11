@@ -45,7 +45,7 @@ function crm_db(): PDO
 
 function crm_schema_version(): string
 {
-    return '20260811.1';
+    return '20260811.3';
 }
 
 function crm_schema_version_is_current(PDO $pdo): bool
@@ -228,7 +228,22 @@ function crm_ensure_crm_schema(PDO $pdo): void
             created_at DATETIME NOT NULL,
             updated_at DATETIME NOT NULL,
             INDEX idx_crm_users_role_active (role, active),
+            INDEX idx_crm_users_email (email),
             INDEX idx_crm_users_rotation (participates_in_rotation, active, last_assigned_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
+    );
+
+    $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS crm_password_reset_tokens (
+            id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            user_id INT NOT NULL,
+            token_hash CHAR(64) NOT NULL UNIQUE,
+            expires_at DATETIME NOT NULL,
+            used_at DATETIME NULL,
+            request_ip VARCHAR(45) NULL,
+            created_at DATETIME NOT NULL,
+            INDEX idx_password_reset_user (user_id, used_at, expires_at),
+            INDEX idx_password_reset_expiry (expires_at)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
     );
 
@@ -433,6 +448,10 @@ function crm_ensure_user_columns(PDO $pdo): void
 
     if (!crm_index_exists($pdo, 'crm_users', 'idx_crm_users_rotation')) {
         $pdo->exec('ALTER TABLE crm_users ADD INDEX idx_crm_users_rotation (participates_in_rotation, active, last_assigned_at)');
+    }
+
+    if (!crm_index_exists($pdo, 'crm_users', 'idx_crm_users_email')) {
+        $pdo->exec('ALTER TABLE crm_users ADD INDEX idx_crm_users_email (email)');
     }
 }
 
@@ -830,6 +849,170 @@ function crm_find_user_by_username(string $username): ?array
     $user = $stmt->fetch();
 
     return is_array($user) ? $user : null;
+}
+
+function crm_find_user_by_email(string $email): ?array
+{
+    $email = trim($email);
+
+    if ($email === '' || filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
+        return null;
+    }
+
+    $stmt = crm_db()->prepare(
+        'SELECT * FROM crm_users
+         WHERE email = :email AND active = 1
+         LIMIT 1'
+    );
+    $stmt->execute(['email' => $email]);
+    $user = $stmt->fetch();
+
+    return is_array($user) ? $user : null;
+}
+
+function crm_create_password_reset_token(int $userId, ?string $requestIp = null): ?string
+{
+    if ($userId <= 0) {
+        return null;
+    }
+
+    $token = bin2hex(random_bytes(32));
+    $tokenHash = hash('sha256', $token);
+    $now = date('Y-m-d H:i:s');
+    $expiresAt = date('Y-m-d H:i:s', time() + 3600);
+    $pdo = crm_db();
+
+    $pdo->beginTransaction();
+
+    try {
+        $cleanup = $pdo->prepare(
+            'DELETE FROM crm_password_reset_tokens
+             WHERE user_id = :user_id OR expires_at <= :now'
+        );
+        $cleanup->execute([
+            'user_id' => $userId,
+            'now' => $now,
+        ]);
+
+        $insert = $pdo->prepare(
+            'INSERT INTO crm_password_reset_tokens
+             (user_id, token_hash, expires_at, request_ip, created_at)
+             VALUES (:user_id, :token_hash, :expires_at, :request_ip, :created_at)'
+        );
+        $insert->execute([
+            'user_id' => $userId,
+            'token_hash' => $tokenHash,
+            'expires_at' => $expiresAt,
+            'request_ip' => $requestIp !== null ? substr($requestIp, 0, 45) : null,
+            'created_at' => $now,
+        ]);
+        $pdo->commit();
+
+        return $token;
+    } catch (Throwable $error) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+
+        throw $error;
+    }
+}
+
+function crm_password_reset_token_is_valid(string $token): bool
+{
+    $token = trim($token);
+
+    if ($token === '' || preg_match('/^[a-f0-9]{64}$/', $token) !== 1) {
+        return false;
+    }
+
+    $stmt = crm_db()->prepare(
+        'SELECT COUNT(*)
+         FROM crm_password_reset_tokens AS prt
+         INNER JOIN crm_users AS account ON account.id = prt.user_id
+         WHERE prt.token_hash = :token_hash
+           AND prt.used_at IS NULL
+           AND prt.expires_at > :now
+           AND account.active = 1'
+    );
+    $stmt->execute([
+        'token_hash' => hash('sha256', $token),
+        'now' => date('Y-m-d H:i:s'),
+    ]);
+
+    return (int) $stmt->fetchColumn() > 0;
+}
+
+function crm_consume_password_reset_token(string $token, string $password): array
+{
+    $token = trim($token);
+
+    if ($token === '' || preg_match('/^[a-f0-9]{64}$/', $token) !== 1) {
+        return ['ok' => false, 'error' => 'Este link é inválido ou expirou.'];
+    }
+
+    if (strlen($password) < 6) {
+        return ['ok' => false, 'error' => 'Use uma senha com pelo menos 6 caracteres.'];
+    }
+
+    $pdo = crm_db();
+    $pdo->beginTransaction();
+
+    try {
+        $stmt = $pdo->prepare(
+            'SELECT prt.id, prt.user_id
+             FROM crm_password_reset_tokens AS prt
+             INNER JOIN crm_users AS account ON account.id = prt.user_id
+             WHERE prt.token_hash = :token_hash
+               AND prt.used_at IS NULL
+               AND prt.expires_at > :now
+               AND account.active = 1
+             LIMIT 1
+             FOR UPDATE'
+        );
+        $stmt->execute([
+            'token_hash' => hash('sha256', $token),
+            'now' => date('Y-m-d H:i:s'),
+        ]);
+        $reset = $stmt->fetch();
+
+        if (!is_array($reset)) {
+            $pdo->rollBack();
+            return ['ok' => false, 'error' => 'Este link é inválido ou expirou.'];
+        }
+
+        $now = date('Y-m-d H:i:s');
+        $updateUser = $pdo->prepare(
+            'UPDATE crm_users
+             SET password_hash = :password_hash, updated_at = :updated_at
+             WHERE id = :id'
+        );
+        $updateUser->execute([
+            'password_hash' => password_hash($password, PASSWORD_DEFAULT),
+            'updated_at' => $now,
+            'id' => (int) $reset['user_id'],
+        ]);
+
+        $consume = $pdo->prepare(
+            'UPDATE crm_password_reset_tokens
+             SET used_at = :used_at
+             WHERE id = :id'
+        );
+        $consume->execute([
+            'used_at' => $now,
+            'id' => (int) $reset['id'],
+        ]);
+
+        $pdo->commit();
+
+        return ['ok' => true];
+    } catch (Throwable $error) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+
+        throw $error;
+    }
 }
 
 function crm_find_user_by_id(int $id): ?array

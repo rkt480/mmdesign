@@ -7,6 +7,7 @@ date_default_timezone_set('America/Sao_Paulo');
 return [
     'admin_user' => 'admin',
     'admin_password_hash' => 'cole-aqui-o-hash-gerado-com-password_hash',
+    'app_url' => '',
     'company_name' => 'Publi AI Soluções',
     'auto_migrate' => false,
     'db' => [

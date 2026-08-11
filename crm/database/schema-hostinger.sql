@@ -94,7 +94,20 @@ CREATE TABLE IF NOT EXISTS crm_users (
   created_at DATETIME NOT NULL,
   updated_at DATETIME NOT NULL,
   INDEX idx_crm_users_role_active (role, active),
+  INDEX idx_crm_users_email (email),
   INDEX idx_crm_users_rotation (participates_in_rotation, active, last_assigned_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS crm_password_reset_tokens (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  user_id INT NOT NULL,
+  token_hash CHAR(64) NOT NULL UNIQUE,
+  expires_at DATETIME NOT NULL,
+  used_at DATETIME NULL,
+  request_ip VARCHAR(45) NULL,
+  created_at DATETIME NOT NULL,
+  INDEX idx_password_reset_user (user_id, used_at, expires_at),
+  INDEX idx_password_reset_expiry (expires_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS lead_assignment_logs (
