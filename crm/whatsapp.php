@@ -1329,6 +1329,22 @@ foreach ($whatsappTemplates as $template) {
             window.location.reload();
           }
 
+          const currentThreadBottom = document.querySelector(".wa-thread-bottom");
+          const refreshedThreadBottom = refreshedDocument.querySelector(".wa-thread-bottom");
+
+          if (
+            currentThreadBottom
+            && refreshedThreadBottom
+            && currentThreadBottom.innerHTML !== refreshedThreadBottom.innerHTML
+          ) {
+            // A resposta do lead altera a janela de 24 horas e troca o
+            // template pelo campo de mensagem livre. Recarregue a estrutura
+            // completa para que os controles do novo formulário também sejam
+            // inicializados corretamente.
+            window.location.reload();
+            return;
+          }
+
           const currentLeadPanel = document.querySelector(".wa-lead-panel");
           const refreshedLeadPanel = refreshedDocument.querySelector(".wa-lead-panel");
           const editingLeadData = document.activeElement?.closest(".wa-lead-panel");
