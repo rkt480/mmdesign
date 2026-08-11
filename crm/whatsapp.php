@@ -1240,17 +1240,77 @@ foreach ($whatsappTemplates as $template) {
         return Boolean(isRecording || messageInput?.value.trim() || mediaInput?.files?.length);
       };
 
-      let conversationReloadScheduled = false;
+      let conversationRefreshInFlight = false;
       let pendingConversationRefresh = false;
+      let pendingIncomingSignature = "";
       let pendingRefreshTimer = null;
 
-      const scheduleConversationReload = () => {
-        if (conversationReloadScheduled) {
+      const refreshActiveConversation = async (incomingSignature = "") => {
+        if (conversationRefreshInFlight) {
           return;
         }
 
-        conversationReloadScheduled = true;
-        window.location.reload();
+        conversationRefreshInFlight = true;
+
+        try {
+          const endpoint = new URL(window.location.href);
+          endpoint.searchParams.set("_wa_event", String(Date.now()));
+
+          const response = await fetch(endpoint, {
+            headers: { "X-Requested-With": "XMLHttpRequest", Accept: "text/html" },
+            cache: "no-store",
+          });
+
+          if (!response.ok) {
+            throw new Error("Não foi possível atualizar a conversa.");
+          }
+
+          const html = await response.text();
+          const refreshedDocument = new DOMParser().parseFromString(html, "text/html");
+          const currentSurface = document.querySelector(".wa-message-surface");
+          const refreshedSurface = refreshedDocument.querySelector(".wa-message-surface");
+
+          if (!currentSurface || !refreshedSurface) {
+            window.location.reload();
+            return;
+          }
+
+          const currentThreadBottom = document.querySelector(".wa-thread-bottom");
+          const refreshedThreadBottom = refreshedDocument.querySelector(".wa-thread-bottom");
+
+          if (
+            currentThreadBottom
+            && refreshedThreadBottom
+            && currentThreadBottom.innerHTML !== refreshedThreadBottom.innerHTML
+          ) {
+            // A janela de 24 horas mudou. Neste caso a estrutura do formulário
+            // também pode mudar, então uma recarga única é necessária.
+            window.sessionStorage.setItem("wa-scroll-to-bottom", "1");
+            window.location.reload();
+            return;
+          }
+
+          const wasAtBottom = currentSurface.scrollHeight - currentSurface.scrollTop - currentSurface.clientHeight < 80;
+          const previousScrollTop = currentSurface.scrollTop;
+          currentSurface.replaceWith(refreshedSurface);
+          document.body.dataset.waIncomingSignature = refreshedDocument.body.dataset.waIncomingSignature
+            || incomingSignature
+            || document.body.dataset.waIncomingSignature
+            || "";
+
+          window.requestAnimationFrame(() => {
+            refreshedSurface.scrollTop = wasAtBottom
+              ? refreshedSurface.scrollHeight
+              : Math.min(previousScrollTop, refreshedSurface.scrollHeight);
+          });
+        } catch (error) {
+          window.setTimeout(() => refreshActiveConversation(incomingSignature), 2000);
+          return;
+        } finally {
+          conversationRefreshInFlight = false;
+        }
+
+        window.setTimeout(startIncomingMessageListener, 0);
       };
 
       const checkPendingConversationRefresh = () => {
@@ -1266,12 +1326,15 @@ foreach ($whatsappTemplates as $template) {
         }
 
         pendingConversationRefresh = false;
-        scheduleConversationReload();
+        const signature = pendingIncomingSignature;
+        pendingIncomingSignature = "";
+        refreshActiveConversation(signature);
       };
 
-      const requestConversationRefresh = () => {
+      const requestConversationRefresh = (incomingSignature = "") => {
         if (hasUnsavedConversationContent()) {
           pendingConversationRefresh = true;
+          pendingIncomingSignature = incomingSignature || pendingIncomingSignature;
 
           if (pendingRefreshTimer === null) {
             pendingRefreshTimer = window.setTimeout(checkPendingConversationRefresh, 500);
@@ -1280,31 +1343,20 @@ foreach ($whatsappTemplates as $template) {
           return;
         }
 
-        scheduleConversationReload();
+        refreshActiveConversation(incomingSignature);
       };
 
-      // O webhook envia um Web Push quando chega uma nova resposta. Quando
-      // esta página está aberta no lead correspondente, atualizamos somente
-      // essa conversa, sem manter um intervalo que repinte o CRM inteiro.
+      // O service worker continua responsável pelas notificações do CRM. A
+      // atualização da conversa usa a escuta de evento abaixo, que funciona
+      // mesmo quando as notificações do navegador não estão habilitadas.
       if ("serviceWorker" in navigator) {
         navigator.serviceWorker.register("./sw.js?v=20260810-live-reply-v1", {
           scope: "./",
           updateViaCache: "none",
         }).catch(() => {});
-
-        navigator.serviceWorker.addEventListener("message", (event) => {
-          const data = event.data || {};
-          const activeLeadId = document.body.dataset.waActiveLeadId || "";
-
-          if (data.type !== "crm-lead-reply" || String(data.leadId || "") !== activeLeadId) {
-            return;
-          }
-
-          requestConversationRefresh();
-        });
       }
 
-      const startIncomingMessageListener = async () => {
+      async function startIncomingMessageListener() {
         const leadId = document.body.dataset.waActiveLeadId || "";
         let signature = document.body.dataset.waIncomingSignature || "";
 
@@ -1312,7 +1364,7 @@ foreach ($whatsappTemplates as $template) {
           return;
         }
 
-        while (!conversationReloadScheduled) {
+        while (!conversationRefreshInFlight) {
           try {
             const endpoint = new URL("api/whatsapp-realtime.php", window.location.href);
             endpoint.searchParams.set("lead", leadId);
@@ -1331,7 +1383,7 @@ foreach ($whatsappTemplates as $template) {
             signature = data.signature || signature;
 
             if (data.changed) {
-              requestConversationRefresh();
+              requestConversationRefresh(signature);
               return;
             }
           } catch (error) {
@@ -1341,7 +1393,7 @@ foreach ($whatsappTemplates as $template) {
             return;
           }
         }
-      };
+      }
 
       startIncomingMessageListener();
 
