@@ -1275,19 +1275,31 @@ foreach ($whatsappTemplates as $template) {
             return;
           }
 
-          const currentThreadBottom = document.querySelector(".wa-thread-bottom");
-          const refreshedThreadBottom = refreshedDocument.querySelector(".wa-thread-bottom");
+          const currentWindowBanner = document.querySelector(".wa-window-banner");
+          const refreshedWindowBanner = refreshedDocument.querySelector(".wa-window-banner");
+          const currentTemplatePicker = document.querySelector("[data-wa-template-picker]");
+          const refreshedTemplatePicker = refreshedDocument.querySelector("[data-wa-template-picker]");
+          const currentComposer = document.querySelector("[data-wa-composer]");
+          const refreshedComposer = refreshedDocument.querySelector("[data-wa-composer]");
+          const threadBottomStructureChanged = Boolean(
+            currentWindowBanner
+            && refreshedWindowBanner
+            && currentWindowBanner.className !== refreshedWindowBanner.className
+          ) || Boolean(currentTemplatePicker) !== Boolean(refreshedTemplatePicker)
+            || Boolean(currentComposer?.hidden) !== Boolean(refreshedComposer?.hidden);
 
-          if (
-            currentThreadBottom
-            && refreshedThreadBottom
-            && currentThreadBottom.innerHTML !== refreshedThreadBottom.innerHTML
-          ) {
+          if (threadBottomStructureChanged) {
             // A janela de 24 horas mudou. Neste caso a estrutura do formulário
             // também pode mudar, então uma recarga única é necessária.
             window.sessionStorage.setItem("wa-scroll-to-bottom", "1");
             window.location.reload();
             return;
+          }
+
+          // O horário restante da janela muda a cada mensagem, mas isso não
+          // deve recarregar o formulário nem alterar a posição do histórico.
+          if (currentWindowBanner && refreshedWindowBanner && currentWindowBanner.innerHTML !== refreshedWindowBanner.innerHTML) {
+            currentWindowBanner.replaceWith(refreshedWindowBanner);
           }
 
           const wasAtBottom = currentSurface.scrollHeight - currentSurface.scrollTop - currentSurface.clientHeight < 80;
@@ -1298,10 +1310,18 @@ foreach ($whatsappTemplates as $template) {
             || document.body.dataset.waIncomingSignature
             || "";
 
-          window.requestAnimationFrame(() => {
+          const restoreConversationScroll = () => {
             refreshedSurface.scrollTop = wasAtBottom
               ? refreshedSurface.scrollHeight
               : Math.min(previousScrollTop, refreshedSurface.scrollHeight);
+          };
+
+          // Mobile browsers can perform one more grid/layout pass after the
+          // node replacement. Restore twice so the new bubble does not push
+          // an attendant who was at the bottom back to the beginning.
+          window.requestAnimationFrame(() => {
+            restoreConversationScroll();
+            window.requestAnimationFrame(restoreConversationScroll);
           });
         } catch (error) {
           window.setTimeout(() => refreshActiveConversation(incomingSignature), 2000);
@@ -1350,7 +1370,7 @@ foreach ($whatsappTemplates as $template) {
       // atualização da conversa usa a escuta de evento abaixo, que funciona
       // mesmo quando as notificações do navegador não estão habilitadas.
       if ("serviceWorker" in navigator) {
-        navigator.serviceWorker.register("./sw.js?v=20260810-live-reply-v1", {
+        navigator.serviceWorker.register("./sw.js?v=20260810-live-reply-v2", {
           scope: "./",
           updateViaCache: "none",
         }).catch(() => {});
