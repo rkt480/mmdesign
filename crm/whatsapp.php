@@ -1237,8 +1237,10 @@ foreach ($whatsappTemplates as $template) {
         const composer = document.querySelector("[data-wa-composer]");
         const messageInput = composer?.querySelector("[data-wa-message]");
         const mediaInput = composer?.querySelector("[data-wa-media]");
+        const recordingPreview = composer?.querySelector("[data-wa-recording-preview]");
+        const isRecording = recordingPreview && !recordingPreview.hidden;
 
-        return Boolean(messageInput?.value.trim() || mediaInput?.files?.length);
+        return Boolean(isRecording || messageInput?.value.trim() || mediaInput?.files?.length);
       };
 
       const updateUnreadTitle = () => {
@@ -1336,6 +1338,7 @@ foreach ($whatsappTemplates as $template) {
             currentThreadBottom
             && refreshedThreadBottom
             && currentThreadBottom.innerHTML !== refreshedThreadBottom.innerHTML
+            && !conversationHasUnsavedContent()
           ) {
             // A resposta do lead altera a janela de 24 horas e troca o
             // template pelo campo de mensagem livre. Recarregue a estrutura
