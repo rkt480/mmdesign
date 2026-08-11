@@ -333,15 +333,17 @@ a {
   line-height: 1.4;
 }
 
-.auth-link {
+.auth-card > .auth-link {
   display: block;
-  margin-top: 16px;
+  width: 100%;
+  margin-top: 24px;
+  padding-top: 2px;
   color: var(--blue);
   font-weight: 800;
   text-align: center;
 }
 
-.auth-link:hover {
+.auth-card > .auth-link:hover {
   text-decoration: underline;
 }
 
