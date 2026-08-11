@@ -5872,7 +5872,14 @@ textarea:focus {
 }
 
 @media (max-width: 760px) {
+  html:has(body.whatsapp-crm-page) {
+    overflow: hidden;
+  }
+
   .whatsapp-crm-page {
+    position: fixed;
+    inset: 0;
+    width: 100%;
     height: var(--wa-visual-viewport-height, 100dvh);
     min-height: 0;
     overflow: hidden;
@@ -5880,15 +5887,51 @@ textarea:focus {
   }
 
   .whatsapp-crm-page .wa-web-shell {
+    position: fixed;
+    inset: 0;
     grid-template-columns: 1fr;
     grid-template-rows: auto auto minmax(0, 1fr);
     width: 100%;
     min-height: 0;
-    height: 100%;
-    max-height: 100%;
+    height: var(--wa-visual-viewport-height, 100dvh);
+    max-height: var(--wa-visual-viewport-height, 100dvh);
     gap: 10px;
     padding: 10px 10px max(10px, env(safe-area-inset-bottom));
     overflow: hidden;
+  }
+
+  .whatsapp-crm-page .sidebar {
+    position: relative;
+    top: auto;
+    justify-self: stretch;
+    width: 100%;
+    height: 64px;
+    min-height: 64px;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-rows: 1fr;
+    gap: 12px;
+    margin: 0;
+    padding: 10px 12px;
+    border-radius: 22px;
+  }
+
+  .whatsapp-crm-page .sidebar .brand {
+    justify-self: start;
+    width: 42px;
+  }
+
+  .whatsapp-crm-page .sidebar .sidebar-tabs {
+    display: none;
+  }
+
+  .whatsapp-crm-page .sidebar .sidebar-exit {
+    justify-self: end;
+    width: auto;
+    min-width: 76px;
+    height: 44px;
+    min-height: 44px;
+    margin: 0;
+    padding: 0 16px;
   }
 
   .whatsapp-crm-page .wa-rail {
@@ -5938,6 +5981,8 @@ textarea:focus {
   .whatsapp-crm-page .wa-thread,
   .whatsapp-crm-page .wa-lead-panel {
     grid-column: 1;
+    width: 100%;
+    max-width: 100%;
     min-height: 0;
     border-radius: 22px;
   }
@@ -6006,11 +6051,17 @@ textarea:focus {
   }
 
   .whatsapp-crm-page .wa-message-surface {
+    width: 100%;
+    min-width: 0;
     min-height: 0;
     padding: 16px 12px;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
   }
 
   .whatsapp-crm-page .wa-thread-bottom {
+    width: 100%;
+    min-width: 0;
     min-height: 0;
     max-height: none;
     overflow: visible;
@@ -6022,6 +6073,8 @@ textarea:focus {
   }
 
   .whatsapp-crm-page .wa-composer {
+    box-sizing: border-box;
+    min-width: 0;
     grid-template-columns: 40px minmax(0, 1fr) 40px 40px;
     gap: 6px;
     padding: 8px 10px;
