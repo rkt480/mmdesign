@@ -65,7 +65,7 @@ $implementationSteps = [
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Suporte Interno | CRM</title>
-    <link rel="stylesheet" href="./assets/crm.css?v=20260811-mobile-keyboard-v4" />
+    <link rel="stylesheet" href="./assets/crm.css?v=20260811-mobile-keyboard-v5" />
   </head>
   <body class="settings-page support-page">
     <div class="app-shell">
