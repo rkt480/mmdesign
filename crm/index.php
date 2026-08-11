@@ -187,7 +187,7 @@ function lead_money_input(array $lead, string $field): string
     <title>CRM MM Design</title>
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="apple-touch-icon" sizes="180x180" href="./assets/icon-180.png" />
-    <link rel="stylesheet" href="./assets/crm.css?v=20260807-mobile-header-v6" />
+    <link rel="stylesheet" href="./assets/crm.css?v=20260810-smooth-navigation-v1" />
   </head>
   <body class="leads-page">
     <div class="app-shell">
@@ -805,5 +805,6 @@ function lead_money_input(array $lead, string $field): string
       </div>
     </div>
     <script src="./assets/crm.js?v=20260808-push-dedupe-v1"></script>
+    <script src="./assets/crm-navigation.js?v=20260810-smooth-navigation-v1"></script>
   </body>
 </html>
