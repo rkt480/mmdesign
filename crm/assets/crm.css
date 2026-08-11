@@ -5874,16 +5874,21 @@ textarea:focus {
 @media (max-width: 760px) {
   html:has(body.whatsapp-crm-page) {
     overflow: hidden;
+    overflow-x: clip;
+    width: 100%;
+    max-width: 100vw;
   }
 
   .whatsapp-crm-page {
     position: fixed;
     inset: 0;
     width: 100%;
+    max-width: 100vw;
     height: 100vh;
     height: 100dvh;
     min-height: 0;
     overflow: hidden;
+    overflow-x: clip;
     overscroll-behavior: none;
   }
 
@@ -5892,7 +5897,10 @@ textarea:focus {
     inset: 0;
     grid-template-columns: 1fr;
     grid-template-rows: auto auto minmax(0, 1fr);
-    width: 100%;
+    left: 0;
+    right: 0;
+    width: auto;
+    max-width: 100vw;
     min-height: 0;
     height: 100vh;
     height: 100dvh;
@@ -5901,6 +5909,7 @@ textarea:focus {
     gap: 10px;
     padding: 10px 10px max(10px, env(safe-area-inset-bottom));
     overflow: hidden;
+    overflow-x: clip;
   }
 
   .whatsapp-crm-page .sidebar {
@@ -5986,6 +5995,7 @@ textarea:focus {
     grid-column: 1;
     width: 100%;
     max-width: 100%;
+    min-width: 0;
     min-height: 0;
     border-radius: 22px;
   }
@@ -6016,8 +6026,10 @@ textarea:focus {
   .whatsapp-crm-page .wa-thread {
     grid-template-rows: 68px minmax(0, 1fr) auto;
     min-height: 0;
+    min-width: 0;
     max-height: none;
     height: 100%;
+    overflow-x: clip;
   }
 
   .whatsapp-crm-page .wa-thread-header {
@@ -6056,19 +6068,23 @@ textarea:focus {
   .whatsapp-crm-page .wa-message-surface {
     width: 100%;
     min-width: 0;
+    max-width: 100%;
     min-height: 0;
     padding: 16px 12px;
     overscroll-behavior: contain;
+    overflow-x: clip;
     -webkit-overflow-scrolling: touch;
   }
 
   .whatsapp-crm-page .wa-thread-bottom {
     width: 100%;
     min-width: 0;
+    max-width: 100%;
     min-height: 0;
     max-height: none;
     overflow: visible;
-    padding: 8px 10px 0;
+    overflow-x: clip;
+    padding: 8px 0 0;
   }
 
   /* While the iOS keyboard is open, keep the focused conversation as the
@@ -6100,11 +6116,15 @@ textarea:focus {
   }
 
   .whatsapp-crm-page .wa-thread-bottom .wa-composer {
-    margin: 0 -10px;
+    width: 100%;
+    max-width: 100%;
+    margin: 0;
   }
 
   .whatsapp-crm-page .wa-composer {
     box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
     min-width: 0;
     grid-template-columns: 40px minmax(0, 1fr) 40px 40px;
     gap: 6px;
@@ -6112,6 +6132,7 @@ textarea:focus {
   }
 
   .whatsapp-crm-page .wa-composer textarea {
+    max-width: 100%;
     min-height: 44px;
     padding: 12px 13px;
     font-size: 0.9rem;

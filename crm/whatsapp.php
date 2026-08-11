@@ -682,7 +682,7 @@ foreach ($whatsappTemplates as $template) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="csrf-token" content="<?= htmlspecialchars(crm_csrf_token()) ?>" />
     <title>WhatsApp | MM Design</title>
-    <link rel="stylesheet" href="./assets/crm.css?v=20260811-mobile-keyboard-v5" />
+    <link rel="stylesheet" href="./assets/crm.css?v=20260811-mobile-keyboard-v6" />
   </head>
   <body class="whatsapp-page whatsapp-crm-page" data-wa-initial-view="<?= is_array($activeLead) ? 'thread' : 'inbox' ?>" data-wa-mobile-view="<?= is_array($activeLead) ? 'thread' : 'inbox' ?>" data-wa-active-lead-id="<?= htmlspecialchars((string) ($activeLead['id'] ?? '')) ?>" data-wa-incoming-signature="<?= htmlspecialchars(is_array($activeLead) ? crm_whatsapp_incoming_signature($activeLead) : '') ?>">
     <main class="wa-web-shell" aria-label="Atendimento WhatsApp do CRM">
@@ -1272,6 +1272,31 @@ foreach ($whatsappTemplates as $template) {
         const keyboardOpen = messageFocused || window.innerHeight - viewport.height > 120;
         document.body.classList.toggle("wa-keyboard-open", keyboardOpen);
 
+        if (keyboardOpen) {
+          window.requestAnimationFrame(() => {
+            // Mobile browsers may pan the visual viewport horizontally when
+            // the textarea receives focus. The CRM is a single-column layout,
+            // so horizontal movement is never valid here.
+            if (window.scrollX !== 0) {
+              window.scrollTo({ left: 0, top: window.scrollY, behavior: "auto" });
+            }
+
+            if (document.documentElement.scrollLeft !== 0) {
+              document.documentElement.scrollLeft = 0;
+            }
+
+            if (document.body.scrollLeft !== 0) {
+              document.body.scrollLeft = 0;
+            }
+
+            if (viewport.offsetLeft !== 0 && typeof viewport.scrollTo === "function") {
+              viewport.scrollTo({ left: 0, top: viewport.offsetTop });
+            }
+
+            document.querySelector(".wa-message-surface")?.scrollTo({ left: 0, behavior: "auto" });
+          });
+        }
+
         if (keyboardOpen && document.activeElement?.matches("[data-wa-message]")) {
           window.requestAnimationFrame(() => {
             const surface = document.querySelector(".wa-message-surface");
@@ -1446,7 +1471,7 @@ foreach ($whatsappTemplates as $template) {
       // atualização da conversa usa a escuta de evento abaixo, que funciona
       // mesmo quando as notificações do navegador não estão habilitadas.
       if ("serviceWorker" in navigator) {
-        navigator.serviceWorker.register("./sw.js?v=20260811-mobile-keyboard-v5", {
+        navigator.serviceWorker.register("./sw.js?v=20260811-mobile-keyboard-v6", {
           scope: "./",
           updateViaCache: "none",
         }).catch(() => {});
