@@ -66,7 +66,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       <form method="post">
         <input type="hidden" name="_csrf_token" value="<?= htmlspecialchars(crm_csrf_token()) ?>" />
         <label>
-          Usuário
+          Usuário ou e-mail
           <input type="text" name="user" autocomplete="username" required />
         </label>
         <label>

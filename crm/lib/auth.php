@@ -122,7 +122,7 @@ function crm_attempt_login(string $user, string $password): bool
 
     try {
         require_once __DIR__ . '/storage.php';
-        $dbUser = crm_find_user_by_username($user);
+        $dbUser = crm_find_user_by_login($user);
     } catch (Throwable $error) {
         $dbUser = null;
     }

@@ -851,6 +851,33 @@ function crm_find_user_by_username(string $username): ?array
     return is_array($user) ? $user : null;
 }
 
+function crm_find_user_by_login(string $login): ?array
+{
+    $login = trim($login);
+
+    if ($login === '') {
+        return null;
+    }
+
+    // Keep username precedence for backwards compatibility, then allow the
+    // e-mail saved in the commercial user form as the login identifier too.
+    $user = crm_find_user_by_username($login);
+
+    if (is_array($user)) {
+        return $user;
+    }
+
+    $stmt = crm_db()->prepare(
+        'SELECT * FROM crm_users
+         WHERE email = :email
+         LIMIT 1'
+    );
+    $stmt->execute(['email' => $login]);
+    $user = $stmt->fetch();
+
+    return is_array($user) ? $user : null;
+}
+
 function crm_find_user_by_email(string $email): ?array
 {
     $email = trim($email);
