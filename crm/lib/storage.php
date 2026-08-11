@@ -1329,6 +1329,11 @@ function crm_normalize_cpf(string $cpf): string
     return substr($digits, 0, 11);
 }
 
+function crm_lead_has_cpf(array $lead): bool
+{
+    return strlen(crm_normalize_cpf((string) ($lead['cpf'] ?? ''))) === 11;
+}
+
 function crm_format_cpf(string $cpf): string
 {
     $digits = crm_normalize_cpf($cpf);
@@ -1632,6 +1637,14 @@ function crm_update_lead(string $id, array $updates): bool
         $status = 'novo';
     }
 
+    $nextCpf = array_key_exists('cpf', $updates)
+        ? crm_normalize_cpf((string) ($updates['cpf'] ?? ''))
+        : crm_normalize_cpf((string) ($lead['cpf'] ?? ''));
+
+    if ((string) ($lead['status'] ?? '') !== 'fechado' && $status === 'fechado' && strlen($nextCpf) !== 11) {
+        return false;
+    }
+
     $now = date('Y-m-d H:i:s');
     $fields = [
         'status = :status',
@@ -1762,11 +1775,16 @@ function crm_move_lead(string $id, string $status, array $orders): bool
     $pdo->beginTransaction();
 
     try {
-        $find = $pdo->prepare('SELECT id, status, first_contact_at, closed_at, lost_at FROM leads WHERE id = :id' . $accessSql . ' FOR UPDATE');
+        $find = $pdo->prepare('SELECT id, status, cpf, first_contact_at, closed_at, lost_at FROM leads WHERE id = :id' . $accessSql . ' FOR UPDATE');
         $find->execute(['id' => $id] + $accessParams);
         $lead = $find->fetch();
 
         if (!is_array($lead)) {
+            $pdo->rollBack();
+            return false;
+        }
+
+        if ((string) ($lead['status'] ?? '') !== 'fechado' && $status === 'fechado' && !crm_lead_has_cpf($lead)) {
             $pdo->rollBack();
             return false;
         }

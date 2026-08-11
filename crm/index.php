@@ -27,6 +27,10 @@ $calendarErrorMessages = [
     'invalid_email' => 'Informe um e-mail de convidado válido.',
     'create_failed' => 'Não foi possível criar o evento no Google Agenda.',
 ];
+$leadError = (string) ($_GET['error'] ?? '');
+$leadErrorMessages = [
+    'cpf_required' => 'Informe o CPF completo do lead antes de movê-lo para Fechado.',
+];
 $statusLabels = [];
 
 foreach ($kanbanColumns as $column) {
@@ -286,6 +290,10 @@ function lead_money_input(array $lead, string $field): string
         <div class="alert"><?= htmlspecialchars($calendarErrorMessages[$calendarError] ?? 'Erro ao criar agendamento.') ?></div>
       <?php endif; ?>
 
+      <?php if ($leadError !== ''): ?>
+        <div class="alert"><?= htmlspecialchars($leadErrorMessages[$leadError] ?? 'Não foi possível atualizar o lead.') ?></div>
+      <?php endif; ?>
+
       <div class="utility-dialog" data-dialog="contact" hidden>
         <div class="utility-dialog-card">
           <header class="utility-dialog-header">
@@ -500,6 +508,7 @@ function lead_money_input(array $lead, string $field): string
                     class="lead-card kanban-card"
                     draggable="true"
                     data-lead-id="<?= htmlspecialchars((string) ($lead['id'] ?? '')) ?>"
+                    data-lead-has-cpf="<?= crm_lead_has_cpf($lead) ? 'true' : 'false' ?>"
                   >
                     <div class="lead-main">
                       <div>
@@ -804,7 +813,7 @@ function lead_money_input(array $lead, string $field): string
     </main>
       </div>
     </div>
-    <script src="./assets/crm.js?v=20260808-push-dedupe-v1"></script>
+    <script src="./assets/crm.js?v=20260811-cpf-close-v1"></script>
     <script src="./assets/crm-navigation.js?v=20260811-fast-navigation-v2"></script>
   </body>
 </html>

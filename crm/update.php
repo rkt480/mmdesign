@@ -72,7 +72,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $updates['assigned_user_id'] = $_POST['assigned_user_id'];
     }
 
-    if (crm_update_lead($id, $updates) && is_array($leadBeforeUpdate) && (string) ($leadBeforeUpdate['status'] ?? '') !== $status) {
+    $updated = crm_update_lead($id, $updates);
+
+    if (
+        !$updated
+        && $status === 'fechado'
+        && (!is_array($leadBeforeUpdate) || (string) ($leadBeforeUpdate['status'] ?? '') !== 'fechado')
+    ) {
+        $redirectTo = crm_post_redirect_target();
+        $separator = str_contains($redirectTo, '?') ? '&' : '?';
+        header('Location: ' . $redirectTo . $separator . 'error=cpf_required');
+        exit;
+    }
+
+    if ($updated && is_array($leadBeforeUpdate) && (string) ($leadBeforeUpdate['status'] ?? '') !== $status) {
         try {
             $leadBeforeUpdate['status'] = $status;
             $metaResult = meta_capi_send_status_event($leadBeforeUpdate, $status);

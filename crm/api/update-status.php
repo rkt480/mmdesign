@@ -39,6 +39,21 @@ if ($id === '' || !crm_kanban_status_exists($status)) {
 
 $leadBeforeUpdate = crm_find_lead($id);
 
+if (
+    is_array($leadBeforeUpdate)
+    && (string) ($leadBeforeUpdate['status'] ?? '') !== 'fechado'
+    && $status === 'fechado'
+    && !crm_lead_has_cpf($leadBeforeUpdate)
+) {
+    http_response_code(422);
+    echo json_encode([
+        'ok' => false,
+        'code' => 'cpf_required',
+        'error' => 'Informe o CPF completo do lead antes de movê-lo para Fechado.',
+    ]);
+    exit;
+}
+
 if (!crm_move_lead($id, $status, $orders)) {
     http_response_code(404);
     echo json_encode(['ok' => false, 'error' => 'Lead não encontrado.']);

@@ -75,8 +75,10 @@ async function persistLeadStatus(leadId, status, orders) {
   });
 
   if (!response.ok) {
-    const message = await response.text();
-    throw new Error(message || "Não foi possível mover o lead.");
+    const data = await response.json().catch(() => ({}));
+    const error = new Error(data.error || "Não foi possível mover o lead.");
+    error.code = data.code || "";
+    throw error;
   }
 
   const data = await response.json();
@@ -84,6 +86,32 @@ async function persistLeadStatus(leadId, status, orders) {
   if (data.meta && data.meta.ok === false && data.meta.skipped !== true) {
     console.warn("Meta CAPI não confirmou o evento.", data.meta);
   }
+}
+
+function leadHasCpf(card) {
+  return card?.dataset.leadHasCpf === "true";
+}
+
+function guideLeadCpf(card) {
+  window.alert("Informe o CPF completo do lead antes de movê-lo para Fechado.");
+
+  const detailsButton = card?.querySelector(".lead-actions [data-toggle-details]");
+
+  if (detailsButton) {
+    detailsButton.click();
+    window.setTimeout(() => {
+      card.querySelector(".lead-details-panel input[name='cpf']")?.focus();
+    }, 0);
+  }
+}
+
+function canMoveLeadToStatus(card, status) {
+  if (status !== "fechado" || leadHasCpf(card)) {
+    return true;
+  }
+
+  guideLeadCpf(card);
+  return false;
 }
 
 function getCardAfterPointer(zone, clientY) {
@@ -394,7 +422,13 @@ async function finishTouchKanbanDrag(event, cancelled = false) {
   const lastDropzone = touchDragState.dropzone || getTouchDropzone(touchDragState.lastX, touchDragState.lastY);
 
   if (!cancelled && lastDropzone) {
-    placeTouchCardInDropzone(card, lastDropzone, touchDragState.lastY);
+    const targetStatus = lastDropzone.dataset.status || previousStatus;
+
+    if (canMoveLeadToStatus(card, targetStatus)) {
+      placeTouchCardInDropzone(card, lastDropzone, touchDragState.lastY);
+    } else {
+      cancelled = true;
+    }
   }
 
   const finalParent = card.parentElement;
@@ -530,6 +564,10 @@ dropzones.forEach((zone) => {
     const leadId = movedCard.dataset.leadId;
     const cardAfterPointer = getCardAfterPointer(zone, event.clientY);
 
+    if (!canMoveLeadToStatus(movedCard, targetStatus)) {
+      return;
+    }
+
     zone.insertBefore(movedCard, cardAfterPointer);
     updateColumnCounts();
 
@@ -565,7 +603,11 @@ dropzones.forEach((zone) => {
         previousNextSibling?.parentElement === previousParent ? previousNextSibling : null
       );
       updateColumnCounts();
-      alert("Não foi possível mover o lead. Tente novamente.");
+      if (error.code === "cpf_required") {
+        guideLeadCpf(movedCard);
+      } else {
+        alert("Não foi possível mover o lead. Tente novamente.");
+      }
       console.error(error);
     }
   });
@@ -590,6 +632,11 @@ mobileStatusControls.forEach((control) => {
     const targetStatus = control.value;
 
     if (previousStatus === targetStatus) {
+      return;
+    }
+
+    if (!canMoveLeadToStatus(card, targetStatus)) {
+      control.value = previousStatus;
       return;
     }
 
@@ -621,7 +668,11 @@ mobileStatusControls.forEach((control) => {
       );
       control.value = previousStatus;
       updateColumnCounts();
-      alert("Não foi possível mover o lead. Tente novamente.");
+      if (error.code === "cpf_required") {
+        guideLeadCpf(card);
+      } else {
+        alert("Não foi possível mover o lead. Tente novamente.");
+      }
       console.error(error);
     } finally {
       control.disabled = false;
