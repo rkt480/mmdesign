@@ -3316,6 +3316,13 @@ textarea:focus {
   border-top: 1px solid rgba(148, 163, 184, 0.22);
 }
 
+/* The 24-hour window controls whether the free-message composer exists.
+   Keep the native hidden state effective even when the WhatsApp layout below
+   assigns display:grid to the composer. */
+.wa-composer[hidden] {
+  display: none !important;
+}
+
 .wa-composer textarea {
   min-height: 48px;
   max-height: 130px;
