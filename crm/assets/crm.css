@@ -4550,9 +4550,10 @@ textarea:focus {
 }
 
 .whatsapp-crm-page .wa-chat-meta {
-  display: grid;
-  justify-items: end;
-  gap: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .whatsapp-crm-page .wa-chat-meta time {

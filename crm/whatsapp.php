@@ -13,6 +13,7 @@ require_once __DIR__ . '/lib/whatsapp-events.php';
 crm_require_login();
 
 $currentUser = crm_current_user();
+$currentUserId = (int) ($currentUser['id'] ?? 0);
 $canManageSales = crm_current_user_can_manage_sales();
 $canManageSettings = crm_current_user_is_admin();
 $leads = crm_read_leads();
@@ -528,28 +529,26 @@ function whatsapp_page_messages_for_lead(array $lead): array
 }
 
 /**
- * Summarizes the WhatsApp messages that still need an answer. CRM notes are
- * intentionally ignored: only incoming messages increase the counter and an
- * outgoing message resets it.
+ * Summarizes the WhatsApp history for the inbox. CRM notes are intentionally
+ * ignored: the unread counter is based only on incoming messages.
  *
  * @param list<array<string, mixed>> $messages
- * @return array{last_at: string, last_direction: string, preview: string, pending_replies: int, last_message_key: string}
+ * @return array{last_at: string, last_direction: string, preview: string, incoming_count: int, last_message_key: string}
  */
 function whatsapp_page_conversation_summary(array $messages, string $fallbackPreview, string $fallbackAt): array
 {
     usort($messages, 'whatsapp_page_compare_messages');
 
     $lastMessage = null;
-    $pendingReplies = 0;
+    $incomingCount = 0;
 
     foreach ($messages as $message) {
         $direction = (string) ($message['direction'] ?? '');
 
         if ($direction === 'incoming') {
-            $pendingReplies++;
+            $incomingCount++;
             $lastMessage = $message;
         } elseif ($direction === 'outgoing') {
-            $pendingReplies = 0;
             $lastMessage = $message;
         }
     }
@@ -573,7 +572,7 @@ function whatsapp_page_conversation_summary(array $messages, string $fallbackPre
         'last_at' => $lastAt,
         'last_direction' => $lastDirection,
         'preview' => $preview,
-        'pending_replies' => $pendingReplies,
+        'incoming_count' => $incomingCount,
         'last_message_key' => $lastMessageKey,
     ];
 }
@@ -625,6 +624,7 @@ foreach ($leads as $lead) {
             'last_at' => $leadDate,
             'preview' => $preview,
             'messages' => $leadMessages,
+            'conversation_key' => $conversationKey,
         ];
     } else {
         $conversationGroups[$conversationKey]['messages'] = array_merge(
@@ -674,6 +674,28 @@ foreach ($conversationGroups as $whatsapp => $conversation) {
         array_values($uniqueConversationMessages),
         (string) $conversation['preview'],
         (string) $conversation['last_at']
+    );
+    $readIncomingCount = $currentUserId > 0
+        ? crm_read_whatsapp_conversation_count($currentUserId, (string) $conversation['conversation_key'])
+        : null;
+
+    if ($readIncomingCount === null) {
+        // Existing history is not new. Initialize it as read so the badge
+        // only counts messages that arrive after this feature is activated.
+        $readIncomingCount = (int) ($conversation['incoming_count'] ?? 0);
+
+        if ($currentUserId > 0) {
+            crm_mark_whatsapp_conversation_read(
+                $currentUserId,
+                (string) $conversation['conversation_key'],
+                $readIncomingCount
+            );
+        }
+    }
+
+    $conversation['unread_count'] = max(
+        0,
+        (int) ($conversation['incoming_count'] ?? 0) - $readIncomingCount
     );
     unset($conversation['messages']);
 
@@ -740,6 +762,15 @@ if (is_array($activeConversation)) {
     $activeMessages = array_values($uniqueMessages);
     usort($activeMessages, 'whatsapp_page_compare_messages');
 }
+
+if (is_array($activeConversation) && $currentUserId > 0) {
+    crm_mark_whatsapp_conversation_read(
+        $currentUserId,
+        (string) ($activeConversation['conversation_key'] ?? ''),
+        (int) ($activeConversation['incoming_count'] ?? 0)
+    );
+}
+
 $activeProvider = is_array($activeConversation) ? (string) $activeConversation['provider'] : $provider;
 $leadFeedVersion = whatsapp_page_lead_feed_version($leads);
 $whatsappTemplates = crm_read_whatsapp_templates(true);
@@ -772,7 +803,7 @@ foreach ($whatsappTemplates as $template) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="csrf-token" content="<?= htmlspecialchars(crm_csrf_token()) ?>" />
     <title>WhatsApp | MM Design</title>
-    <link rel="stylesheet" href="./assets/crm.css?v=20260812-unread-inbox-v1" />
+    <link rel="stylesheet" href="./assets/crm.css?v=20260812-unread-inbox-v2" />
   </head>
   <body class="whatsapp-page whatsapp-crm-page" data-wa-initial-view="<?= is_array($activeLead) ? 'thread' : 'inbox' ?>" data-wa-mobile-view="<?= is_array($activeLead) ? 'thread' : 'inbox' ?>" data-wa-active-lead-id="<?= htmlspecialchars((string) ($activeLead['id'] ?? '')) ?>" data-wa-incoming-signature="<?= htmlspecialchars(is_array($activeLead) ? crm_whatsapp_incoming_signature($activeLead) : '') ?>" data-wa-lead-feed-version="<?= htmlspecialchars($leadFeedVersion) ?>">
     <main class="wa-web-shell" aria-label="Atendimento WhatsApp do CRM">
@@ -866,8 +897,8 @@ foreach ($whatsappTemplates as $template) {
             <?php $leadId = (string) ($lead['id'] ?? ''); ?>
             <?php $isActive = is_array($activeLead) && in_array((string) ($activeLead['id'] ?? ''), $conversation['lead_ids'] ?? [], true); ?>
             <?php $leadName = (string) ($lead['name'] ?? 'Contato WhatsApp'); ?>
-            <?php $pendingReplies = (int) ($conversation['pending_replies'] ?? 0); ?>
-            <?php $hasUnread = $pendingReplies > 0 && !$isActive; ?>
+            <?php $unreadCount = (int) ($conversation['unread_count'] ?? 0); ?>
+            <?php $hasUnread = $unreadCount > 0 && !$isActive; ?>
             <a
               class="wa-chat-item <?= $isActive ? 'active' : '' ?><?= $hasUnread ? ' has-unread' : '' ?>"
               href="whatsapp.php?provider=<?= htmlspecialchars($providerFilter) ?>&lead=<?= htmlspecialchars($leadId) ?>"
@@ -885,7 +916,7 @@ foreach ($whatsappTemplates as $template) {
               <span class="wa-chat-meta">
                 <time><?= htmlspecialchars(whatsapp_page_time_label((string) $conversation['last_at'])) ?></time>
                 <?php if ($hasUnread): ?>
-                  <span class="wa-unread-badge" aria-label="<?= $pendingReplies === 1 ? '1 mensagem aguardando resposta' : $pendingReplies . ' mensagens aguardando resposta' ?>"><?= $pendingReplies > 99 ? '99+' : $pendingReplies ?></span>
+                  <span class="wa-unread-badge" aria-label="<?= $unreadCount === 1 ? '1 mensagem não lida' : $unreadCount . ' mensagens não lidas' ?>"><?= $unreadCount > 99 ? '99+' : $unreadCount ?></span>
                 <?php endif; ?>
               </span>
             </a>

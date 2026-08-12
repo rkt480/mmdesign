@@ -45,7 +45,7 @@ function crm_db(): PDO
 
 function crm_schema_version(): string
 {
-    return '20260811.3';
+    return '20260812.1';
 }
 
 function crm_schema_version_is_current(PDO $pdo): bool
@@ -284,6 +284,17 @@ function crm_ensure_crm_schema(PDO $pdo): void
             created_at DATETIME NOT NULL,
             expires_at DATETIME NOT NULL,
             INDEX idx_crm_push_notification_events_expires (expires_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
+    );
+
+    $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS whatsapp_conversation_reads (
+            user_id INT NOT NULL,
+            conversation_key VARCHAR(80) NOT NULL,
+            read_incoming_count INT UNSIGNED NOT NULL DEFAULT 0,
+            updated_at DATETIME NOT NULL,
+            PRIMARY KEY (user_id, conversation_key),
+            INDEX idx_whatsapp_conversation_reads_user (user_id, updated_at)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
     );
 
@@ -1512,6 +1523,53 @@ function crm_read_leads(): array
     $stmt->execute($accessParams);
 
     return $stmt->fetchAll();
+}
+
+function crm_read_whatsapp_conversation_count(int $userId, string $conversationKey): ?int
+{
+    if ($userId <= 0 || trim($conversationKey) === '') {
+        return null;
+    }
+
+    $stmt = crm_db()->prepare(
+        'SELECT read_incoming_count
+         FROM whatsapp_conversation_reads
+         WHERE user_id = :user_id AND conversation_key = :conversation_key
+         LIMIT 1'
+    );
+    $stmt->execute([
+        'user_id' => $userId,
+        'conversation_key' => trim($conversationKey),
+    ]);
+    $count = $stmt->fetchColumn();
+
+    return $count === false ? null : max(0, (int) $count);
+}
+
+function crm_mark_whatsapp_conversation_read(int $userId, string $conversationKey, int $incomingCount): bool
+{
+    $conversationKey = trim($conversationKey);
+
+    if ($userId <= 0 || $conversationKey === '') {
+        return false;
+    }
+
+    $stmt = crm_db()->prepare(
+        'INSERT INTO whatsapp_conversation_reads
+            (user_id, conversation_key, read_incoming_count, updated_at)
+         VALUES (:user_id, :conversation_key, :read_incoming_count, :updated_at)
+         ON DUPLICATE KEY UPDATE
+            read_incoming_count = VALUES(read_incoming_count),
+            updated_at = VALUES(updated_at)'
+    );
+    $stmt->execute([
+        'user_id' => $userId,
+        'conversation_key' => $conversationKey,
+        'read_incoming_count' => max(0, $incomingCount),
+        'updated_at' => date('Y-m-d H:i:s'),
+    ]);
+
+    return true;
 }
 
 function crm_normalize_lead_whatsapp(string $phone): string

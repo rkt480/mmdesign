@@ -148,6 +148,15 @@ CREATE TABLE IF NOT EXISTS publi_ai_crm.crm_push_notification_events (
   INDEX idx_crm_push_notification_events_expires (expires_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS publi_ai_crm.whatsapp_conversation_reads (
+  user_id INT NOT NULL,
+  conversation_key VARCHAR(80) NOT NULL,
+  read_incoming_count INT UNSIGNED NOT NULL DEFAULT 0,
+  updated_at DATETIME NOT NULL,
+  PRIMARY KEY (user_id, conversation_key),
+  INDEX idx_whatsapp_conversation_reads_user (user_id, updated_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS publi_ai_crm.lead_forms (
   id VARCHAR(32) PRIMARY KEY,
   slug VARCHAR(100) NOT NULL UNIQUE,
