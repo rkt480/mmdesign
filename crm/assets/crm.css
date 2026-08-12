@@ -4574,6 +4574,26 @@ textarea:focus {
   font-weight: 700;
 }
 
+.whatsapp-crm-page .wa-chat-item.has-unread .wa-chat-meta time {
+  color: #047857;
+}
+
+.whatsapp-crm-page .wa-unread-badge {
+  display: inline-flex;
+  min-width: 22px;
+  height: 22px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 6px;
+  color: #fff;
+  background: #16a34a;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-style: normal;
+  font-weight: 850;
+  line-height: 1;
+}
+
 .whatsapp-crm-page .wa-chat-meta em,
 .whatsapp-crm-page .wa-provider-badge {
   min-height: 24px;

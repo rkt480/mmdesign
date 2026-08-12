@@ -527,6 +527,74 @@ function whatsapp_page_messages_for_lead(array $lead): array
     return $messages;
 }
 
+/**
+ * Summarizes the WhatsApp messages that still need an answer. CRM notes are
+ * intentionally ignored: only incoming messages increase the counter and an
+ * outgoing message resets it.
+ *
+ * @param list<array<string, mixed>> $messages
+ * @return array{last_at: string, last_direction: string, preview: string, pending_replies: int, last_message_key: string}
+ */
+function whatsapp_page_conversation_summary(array $messages, string $fallbackPreview, string $fallbackAt): array
+{
+    usort($messages, 'whatsapp_page_compare_messages');
+
+    $lastMessage = null;
+    $pendingReplies = 0;
+
+    foreach ($messages as $message) {
+        $direction = (string) ($message['direction'] ?? '');
+
+        if ($direction === 'incoming') {
+            $pendingReplies++;
+            $lastMessage = $message;
+        } elseif ($direction === 'outgoing') {
+            $pendingReplies = 0;
+            $lastMessage = $message;
+        }
+    }
+
+    if (!is_array($lastMessage)) {
+        $lastAt = $fallbackAt;
+        $preview = $fallbackPreview;
+        $lastDirection = '';
+        $lastMessageKey = implode('|', [$lastAt, $preview]);
+    } else {
+        $lastAt = (string) ($lastMessage['at'] ?? $fallbackAt);
+        $preview = whatsapp_page_short_text(trim((string) ($lastMessage['text'] ?? '')));
+        $preview = $preview !== '' ? $preview : $fallbackPreview;
+        $lastDirection = (string) ($lastMessage['direction'] ?? '');
+        $media = is_array($lastMessage['media'] ?? null) ? $lastMessage['media'] : [];
+        $mediaKey = trim((string) ($media['crm_message_id'] ?? ($media['id'] ?? ($media['url'] ?? ''))));
+        $lastMessageKey = implode('|', [$lastAt, $lastDirection, $preview, $mediaKey]);
+    }
+
+    return [
+        'last_at' => $lastAt,
+        'last_direction' => $lastDirection,
+        'preview' => $preview,
+        'pending_replies' => $pendingReplies,
+        'last_message_key' => $lastMessageKey,
+    ];
+}
+
+function whatsapp_page_lead_feed_version(array $leads): string
+{
+    $versionRows = [];
+
+    foreach ($leads as $lead) {
+        $versionRows[] = [
+            (string) ($lead['id'] ?? ''),
+            (string) ($lead['status'] ?? ''),
+            (string) ($lead['assigned_user_id'] ?? ''),
+            (string) ($lead['updated_at'] ?? ''),
+            (string) ($lead['last_activity_at'] ?? ''),
+        ];
+    }
+
+    return hash('sha256', json_encode($versionRows, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '');
+}
+
 $conversations = [];
 $conversationGroups = [];
 $providerCounts = [
@@ -547,6 +615,7 @@ foreach ($leads as $lead) {
     $leadProvider = whatsapp_page_provider_for_lead($lead);
     $leadDate = whatsapp_page_latest_lead_date($lead);
     $preview = whatsapp_page_preview_for_lead($lead);
+    $leadMessages = whatsapp_page_messages_for_lead($lead);
 
     if (!isset($conversationGroups[$conversationKey])) {
         $conversationGroups[$conversationKey] = [
@@ -555,7 +624,13 @@ foreach ($leads as $lead) {
             'provider' => $leadProvider,
             'last_at' => $leadDate,
             'preview' => $preview,
+            'messages' => $leadMessages,
         ];
+    } else {
+        $conversationGroups[$conversationKey]['messages'] = array_merge(
+            $conversationGroups[$conversationKey]['messages'] ?? [],
+            $leadMessages
+        );
     }
 
     $conversationGroups[$conversationKey]['lead_ids'][] = (string) ($lead['id'] ?? '');
@@ -580,13 +655,27 @@ foreach ($leads as $lead) {
 }
 
 foreach ($conversationGroups as $whatsapp => $conversation) {
-    // The inbox only needs a lightweight preview. The complete message
-    // history is reconstructed below for the selected conversation only.
-    $conversation['last_direction'] = '';
-    $conversation['last_message_key'] = implode('|', [
-        $conversation['last_at'],
-        $conversation['preview'],
-    ]);
+    $uniqueConversationMessages = [];
+
+    foreach ($conversation['messages'] ?? [] as $message) {
+        $messageTimestamp = whatsapp_page_timestamp((string) ($message['at'] ?? ''));
+        $media = is_array($message['media'] ?? null) ? $message['media'] : [];
+        $messageKey = implode('|', [
+            (string) ($message['direction'] ?? ''),
+            (string) ($message['provider'] ?? ''),
+            $messageTimestamp > 0 ? date('Y-m-d H:i', $messageTimestamp) : '',
+            trim((string) ($message['text'] ?? '')),
+            trim((string) ($media['crm_message_id'] ?? ($media['id'] ?? ($media['url'] ?? '')))),
+        ]);
+        $uniqueConversationMessages[$messageKey] = $message;
+    }
+
+    $conversation += whatsapp_page_conversation_summary(
+        array_values($uniqueConversationMessages),
+        (string) $conversation['preview'],
+        (string) $conversation['last_at']
+    );
+    unset($conversation['messages']);
 
     $providerCounts['all']++;
 
@@ -652,6 +741,7 @@ if (is_array($activeConversation)) {
     usort($activeMessages, 'whatsapp_page_compare_messages');
 }
 $activeProvider = is_array($activeConversation) ? (string) $activeConversation['provider'] : $provider;
+$leadFeedVersion = whatsapp_page_lead_feed_version($leads);
 $whatsappTemplates = crm_read_whatsapp_templates(true);
 $hasApprovedWhatsAppTemplate = false;
 
@@ -682,9 +772,9 @@ foreach ($whatsappTemplates as $template) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="csrf-token" content="<?= htmlspecialchars(crm_csrf_token()) ?>" />
     <title>WhatsApp | MM Design</title>
-    <link rel="stylesheet" href="./assets/crm.css?v=20260812-composer-window-v1" />
+    <link rel="stylesheet" href="./assets/crm.css?v=20260812-unread-inbox-v1" />
   </head>
-  <body class="whatsapp-page whatsapp-crm-page" data-wa-initial-view="<?= is_array($activeLead) ? 'thread' : 'inbox' ?>" data-wa-mobile-view="<?= is_array($activeLead) ? 'thread' : 'inbox' ?>" data-wa-active-lead-id="<?= htmlspecialchars((string) ($activeLead['id'] ?? '')) ?>" data-wa-incoming-signature="<?= htmlspecialchars(is_array($activeLead) ? crm_whatsapp_incoming_signature($activeLead) : '') ?>">
+  <body class="whatsapp-page whatsapp-crm-page" data-wa-initial-view="<?= is_array($activeLead) ? 'thread' : 'inbox' ?>" data-wa-mobile-view="<?= is_array($activeLead) ? 'thread' : 'inbox' ?>" data-wa-active-lead-id="<?= htmlspecialchars((string) ($activeLead['id'] ?? '')) ?>" data-wa-incoming-signature="<?= htmlspecialchars(is_array($activeLead) ? crm_whatsapp_incoming_signature($activeLead) : '') ?>" data-wa-lead-feed-version="<?= htmlspecialchars($leadFeedVersion) ?>">
     <main class="wa-web-shell" aria-label="Atendimento WhatsApp do CRM">
       <aside class="sidebar" aria-label="Navegação do CRM">
         <a class="brand" href="index.php" aria-label="Início">
@@ -776,8 +866,10 @@ foreach ($whatsappTemplates as $template) {
             <?php $leadId = (string) ($lead['id'] ?? ''); ?>
             <?php $isActive = is_array($activeLead) && in_array((string) ($activeLead['id'] ?? ''), $conversation['lead_ids'] ?? [], true); ?>
             <?php $leadName = (string) ($lead['name'] ?? 'Contato WhatsApp'); ?>
+            <?php $pendingReplies = (int) ($conversation['pending_replies'] ?? 0); ?>
+            <?php $hasUnread = $pendingReplies > 0 && !$isActive; ?>
             <a
-              class="wa-chat-item <?= $isActive ? 'active' : '' ?>"
+              class="wa-chat-item <?= $isActive ? 'active' : '' ?><?= $hasUnread ? ' has-unread' : '' ?>"
               href="whatsapp.php?provider=<?= htmlspecialchars($providerFilter) ?>&lead=<?= htmlspecialchars($leadId) ?>"
               data-wa-chat
               data-wa-lead-id="<?= htmlspecialchars($leadId) ?>"
@@ -792,6 +884,9 @@ foreach ($whatsappTemplates as $template) {
               </span>
               <span class="wa-chat-meta">
                 <time><?= htmlspecialchars(whatsapp_page_time_label((string) $conversation['last_at'])) ?></time>
+                <?php if ($hasUnread): ?>
+                  <span class="wa-unread-badge" aria-label="<?= $pendingReplies === 1 ? '1 mensagem aguardando resposta' : $pendingReplies . ' mensagens aguardando resposta' ?>"><?= $pendingReplies > 99 ? '99+' : $pendingReplies ?></span>
+                <?php endif; ?>
               </span>
             </a>
           <?php endforeach; ?>
@@ -1314,23 +1409,104 @@ foreach ($whatsappTemplates as $template) {
       window.addEventListener("resize", syncWaVisualViewport);
       syncWaVisualViewport();
 
-      const bindConversationSearch = () => {
+      const applyConversationSearch = () => {
         const searchInput = document.querySelector("[data-wa-search]");
 
         if (!searchInput) {
           return;
         }
 
-        searchInput.addEventListener("input", () => {
-          const query = searchInput.value.trim().toLocaleLowerCase("pt-BR");
+        const query = searchInput.value.trim().toLocaleLowerCase("pt-BR");
 
-          document.querySelectorAll("[data-wa-chat]").forEach((chat) => {
-            chat.hidden = query !== "" && !chat.dataset.search.includes(query);
-          });
+        document.querySelectorAll("[data-wa-chat]").forEach((chat) => {
+          chat.hidden = query !== "" && !chat.dataset.search.includes(query);
         });
       };
 
+      const bindConversationSearch = () => {
+        const searchInput = document.querySelector("[data-wa-search]");
+
+        if (!searchInput || searchInput.dataset.waSearchBound === "true") {
+          applyConversationSearch();
+          return;
+        }
+
+        searchInput.dataset.waSearchBound = "true";
+        searchInput.addEventListener("input", applyConversationSearch);
+        applyConversationSearch();
+      };
+
       bindConversationSearch();
+
+      let inboxFeedVersion = document.body.dataset.waLeadFeedVersion || "";
+      let inboxRefreshInFlight = false;
+
+      const refreshConversationList = async () => {
+        const endpoint = new URL(window.location.href);
+        endpoint.searchParams.set("_wa_inbox", String(Date.now()));
+
+        const response = await fetch(endpoint, {
+          headers: { "X-Requested-With": "XMLHttpRequest", Accept: "text/html" },
+          cache: "no-store",
+        });
+
+        if (!response.ok) {
+          throw new Error("Não foi possível atualizar a lista de conversas.");
+        }
+
+        const html = await response.text();
+        const refreshedDocument = new DOMParser().parseFromString(html, "text/html");
+        const currentList = document.querySelector(".wa-chat-list");
+        const refreshedList = refreshedDocument.querySelector(".wa-chat-list");
+
+        if (!currentList || !refreshedList) {
+          return;
+        }
+
+        currentList.replaceWith(refreshedList);
+        document.body.dataset.waLeadFeedVersion = refreshedDocument.body.dataset.waLeadFeedVersion
+          || inboxFeedVersion;
+        applyConversationSearch();
+      };
+
+      const syncConversationInbox = async () => {
+        if (inboxRefreshInFlight || document.hidden) {
+          return;
+        }
+
+        inboxRefreshInFlight = true;
+
+        try {
+          const endpoint = new URL("api/lead-feed.php", window.location.href);
+          endpoint.searchParams.set("_", String(Date.now()));
+          const response = await fetch(endpoint, {
+            headers: { Accept: "application/json" },
+            cache: "no-store",
+          });
+          const data = await response.json().catch(() => ({}));
+
+          if (!response.ok || data.ok === false || !data.version) {
+            throw new Error(data.error || "Atualização da lista indisponível.");
+          }
+
+          if (data.version !== inboxFeedVersion) {
+            inboxFeedVersion = data.version;
+            await refreshConversationList();
+          }
+        } catch (error) {
+          // A próxima verificação tenta novamente sem interromper o atendimento.
+        } finally {
+          inboxRefreshInFlight = false;
+        }
+      };
+
+      syncConversationInbox();
+      window.setInterval(syncConversationInbox, 5000);
+      document.addEventListener("visibilitychange", () => {
+        if (!document.hidden) {
+          syncConversationInbox();
+        }
+      });
 
       const hasUnsavedConversationContent = () => {
         const composer = document.querySelector("[data-wa-composer]");
