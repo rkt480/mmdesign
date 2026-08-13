@@ -310,7 +310,7 @@ arsort($lostReasons);
                   <dd><?= count($lostLeads) ?></dd>
                 </div>
                 <div>
-                  <dt>SLA usado</dt>
+                  <dt>Limite de inatividade</dt>
                   <dd><?= (int) $settings['sla_inactivity_minutes'] ?> min</dd>
                 </div>
               </dl>
