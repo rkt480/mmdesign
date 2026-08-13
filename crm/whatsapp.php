@@ -908,6 +908,7 @@ foreach ($whatsappTemplates as $template) {
             <a
               class="wa-chat-item <?= $isActive ? 'active' : '' ?><?= $hasUnread ? ' has-unread' : '' ?>"
               href="whatsapp.php?provider=<?= htmlspecialchars($providerFilter) ?>&lead=<?= htmlspecialchars($leadId) ?>"
+              data-no-navigation-prefetch
               data-wa-chat
               data-wa-lead-id="<?= htmlspecialchars($leadId) ?>"
               data-wa-last-key="<?= htmlspecialchars(hash('sha256', (string) ($conversation['last_message_key'] ?? ''))) ?>"
