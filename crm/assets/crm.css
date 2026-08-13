@@ -186,6 +186,31 @@ a {
   white-space: nowrap;
 }
 
+/* Keep each shortcut in the same visual slot on every CRM page. */
+.sidebar-tabs a[href="whatsapp.php"] {
+  order: 1;
+}
+
+.sidebar-tabs a[href="whatsapp-templates.php"] {
+  order: 2;
+}
+
+.sidebar-tabs a[href="dashboard.php"] {
+  order: 3;
+}
+
+.sidebar-tabs a[href="commercial.php"] {
+  order: 4;
+}
+
+.sidebar-tabs a[href="settings.php"] {
+  order: 5;
+}
+
+.sidebar-tabs a[href="support.php"] {
+  order: 6;
+}
+
 .sidebar-tabs a svg {
   width: 25px;
   height: 25px;
