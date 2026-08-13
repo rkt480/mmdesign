@@ -335,16 +335,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                       API key
                       <input type="password" name="pilot_status_api_key" value="" placeholder="<?= $pilotStatusSettings['api_key'] !== '' ? 'API key salva. Preencha só para trocar.' : 'Cole a chave ps_ do número' ?>" autocomplete="off" />
                     </label>
-                  <label>
-                    Segredo do webhook
-                    <input type="password" name="pilot_status_webhook_secret" value="" placeholder="<?= $pilotStatusWebhookSecretConfigured ? 'Segredo salvo. Preencha só para trocar.' : 'Obrigatório para validar chamadas recebidas' ?>" autocomplete="new-password" />
-                  </label>
+                    <label>
+                      Segredo do webhook (opcional)
+                      <input type="password" name="pilot_status_webhook_secret" value="" placeholder="<?= $pilotStatusWebhookSecretConfigured ? 'Segredo salvo. Preencha só para trocar.' : 'Deixe vazio se o Pilot Status não oferecer segredo' ?>" autocomplete="new-password" />
+                    </label>
                     <?php if ($pilotStatusWebhookUrl !== ''): ?>
                       <label>
                         URL do webhook Pilot Status
                         <input type="url" value="<?= htmlspecialchars($pilotStatusWebhookUrl) ?>" readonly />
                       </label>
-                      <small class="settings-help">No painel da Pilot Status, cadastre esta URL e habilite os eventos <code>message.sent</code>, <code>message.delivered</code>, <code>message.read</code> e <code>message.failed</code> para acompanhar o resultado real dos envios.</small>
+                      <small class="settings-help">No painel da Pilot Status, cadastre esta URL e habilite os eventos <code>message.sent</code>, <code>message.delivered</code>, <code>message.read</code> e <code>message.failed</code>. O segredo é opcional porque o painel pode não oferecer autenticação do webhook.</small>
                     <?php endif; ?>
                   </div>
 

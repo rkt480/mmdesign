@@ -1412,7 +1412,11 @@ function pilot_status_validate_webhook(string $body, array $payload): bool
     $secret = trim((string) $settings['webhook_secret']);
 
     if ($secret === '') {
-        return false;
+        // The Pilot Status webhook screen currently configures only the URL
+        // and subscribed events; it does not provide a webhook secret or
+        // signing-header setting. Keep the integration compatible in that
+        // mode, while still validating a configured secret below.
+        return true;
     }
 
     $plainCandidates = [
