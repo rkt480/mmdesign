@@ -1389,7 +1389,7 @@ if (installButton) {
 }
 
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("./sw.js?v=20260811-auth-spacing-v2", {
+  navigator.serviceWorker.register("./sw.js?v=20260812-navigation-v3", {
     scope: "./",
     updateViaCache: "none",
   })

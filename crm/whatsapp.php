@@ -814,7 +814,7 @@ foreach ($whatsappTemplates as $template) {
   <body class="whatsapp-page whatsapp-crm-page" data-wa-initial-view="<?= is_array($activeLead) ? 'thread' : 'inbox' ?>" data-wa-mobile-view="<?= is_array($activeLead) ? 'thread' : 'inbox' ?>" data-wa-active-lead-id="<?= htmlspecialchars((string) ($activeLead['id'] ?? '')) ?>" data-wa-incoming-signature="<?= htmlspecialchars(is_array($activeLead) ? crm_whatsapp_incoming_signature($activeLead) : '') ?>" data-wa-lead-feed-version="<?= htmlspecialchars($leadFeedVersion) ?>">
     <main class="wa-web-shell" aria-label="Atendimento WhatsApp do CRM">
       <aside class="sidebar" aria-label="Navegação do CRM">
-        <a class="brand" href="index.php" aria-label="Início">
+        <a class="brand" href="index.php" aria-label="Início" data-no-navigation-prefetch>
           <span class="brand-mark"><img src="./assets/mmdesign-mark.png" alt="MM DESIGN" /></span>
         </a>
         <nav class="sidebar-tabs" aria-label="Atalhos do CRM">
@@ -861,7 +861,7 @@ foreach ($whatsappTemplates as $template) {
         <button type="button" class="<?= !is_array($activeLead) ? 'is-active' : '' ?>" data-wa-mobile-view="inbox">Conversas</button>
         <button type="button" class="<?= is_array($activeLead) ? 'is-active' : '' ?>" data-wa-mobile-view="thread">Atendimento</button>
         <button type="button" data-wa-mobile-view="lead">Dados do lead</button>
-        <a href="index.php" aria-label="Abrir tela de contatos">Contatos</a>
+        <a href="index.php" aria-label="Abrir tela de contatos" data-no-navigation-prefetch>Contatos</a>
       </nav>
 
       <aside class="wa-inbox" aria-label="Lista de conversas">
@@ -1256,7 +1256,7 @@ foreach ($whatsappTemplates as $template) {
           </section>
 
           <section class="wa-lead-actions">
-            <a class="secondary-action" href="index.php?q=<?= urlencode((string) ($activeLead['whatsapp'] ?? '')) ?>">Abrir no kanban</a>
+            <a class="secondary-action" href="index.php?q=<?= urlencode((string) ($activeLead['whatsapp'] ?? '')) ?>" data-no-navigation-prefetch>Abrir no kanban</a>
             <?php if ($canManageSettings): ?>
               <a class="secondary-action" href="settings.php">Configurar WhatsApp</a>
             <?php endif; ?>
@@ -1732,7 +1732,7 @@ foreach ($whatsappTemplates as $template) {
       // atualização da conversa usa a escuta de evento abaixo, que funciona
       // mesmo quando as notificações do navegador não estão habilitadas.
       if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("./sw.js?v=20260811-auth-spacing-v2", {
+      navigator.serviceWorker.register("./sw.js?v=20260812-navigation-v3", {
           scope: "./",
           updateViaCache: "none",
         }).catch(() => {});
@@ -2517,6 +2517,6 @@ foreach ($whatsappTemplates as $template) {
         renderWaTags();
       }
     </script>
-    <script src="./assets/crm-navigation.js?v=20260811-fast-navigation-v2"></script>
+    <script src="./assets/crm-navigation.js?v=20260812-fast-navigation-v3"></script>
   </body>
 </html>

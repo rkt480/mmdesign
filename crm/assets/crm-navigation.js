@@ -108,12 +108,20 @@
   }, true);
 
   const warmNavigationTarget = (event) => {
+    // A touchstart happens immediately before the real click navigation. On
+    // mobile, prefetching here starts a second request for the same PHP
+    // session and can make the destination wait for the prefetch to finish.
+    // Keep prefetching for mouse hover and keyboard focus, where it has time
+    // to warm a page before the user activates the link.
+    if (event.type === "pointerover" && event.pointerType !== "mouse") {
+      return;
+    }
+
     const link = event.target.closest?.("a[href]");
     prefetchLink(link);
   };
 
   document.addEventListener("pointerover", warmNavigationTarget, { passive: true });
-  document.addEventListener("touchstart", warmNavigationTarget, { passive: true });
   document.addEventListener("focusin", warmNavigationTarget);
 
   window.addEventListener("pageshow", hideNavigationState);

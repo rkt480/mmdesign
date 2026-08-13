@@ -319,6 +319,6 @@ arsort($lostReasons);
         </main>
       </div>
     </div>
-    <script src="./assets/crm-navigation.js?v=20260811-fast-navigation-v2"></script>
+    <script src="./assets/crm-navigation.js?v=20260812-fast-navigation-v3"></script>
   </body>
 </html>

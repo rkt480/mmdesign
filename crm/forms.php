@@ -145,6 +145,6 @@ $isNew = $currentForm === null;
 
     <script id="initialFormConfig" type="application/json"><?= json_encode($currentConfig, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP) ?></script>
     <script src="./assets/forms.js?v=20260711-simple-score"></script>
-    <script src="./assets/crm-navigation.js?v=20260811-fast-navigation-v2"></script>
+    <script src="./assets/crm-navigation.js?v=20260812-fast-navigation-v3"></script>
   </body>
 </html>
