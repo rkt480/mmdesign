@@ -809,7 +809,7 @@ foreach ($whatsappTemplates as $template) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
     <meta name="csrf-token" content="<?= htmlspecialchars(crm_csrf_token()) ?>" />
     <title>WhatsApp | MM Design</title>
-    <link rel="stylesheet" href="./assets/crm.css?v=20260813-sidebar-order-v1" />
+    <link rel="stylesheet" href="./assets/crm.css?v=20260813-sidebar-kanban-v1" />
   </head>
   <body class="whatsapp-page whatsapp-crm-page" data-wa-initial-view="<?= is_array($activeLead) ? 'thread' : 'inbox' ?>" data-wa-mobile-view="<?= is_array($activeLead) ? 'thread' : 'inbox' ?>" data-wa-active-lead-id="<?= htmlspecialchars((string) ($activeLead['id'] ?? '')) ?>" data-wa-incoming-signature="<?= htmlspecialchars(is_array($activeLead) ? crm_whatsapp_incoming_signature($activeLead) : '') ?>" data-wa-lead-feed-version="<?= htmlspecialchars($leadFeedVersion) ?>">
     <main class="wa-web-shell" aria-label="Atendimento WhatsApp do CRM">
@@ -818,6 +818,14 @@ foreach ($whatsappTemplates as $template) {
           <span class="brand-mark"><img src="./assets/mmdesign-mark.png" alt="MM DESIGN" /></span>
         </a>
         <nav class="sidebar-tabs" aria-label="Atalhos do CRM">
+          <a class="sidebar-kanban" href="index.php" title="Voltar para o Kanban" aria-label="Voltar para o Kanban" data-no-navigation-prefetch>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="3.5" y="4" width="5" height="16" rx="1.5" />
+              <rect x="9.5" y="4" width="5" height="11" rx="1.5" />
+              <rect x="15.5" y="4" width="5" height="7" rx="1.5" />
+              <path d="M5.5 8h1M5.5 11h1M11.5 8h1M11.5 11h1M17.5 8h1" />
+            </svg>
+          </a>
           <a class="sidebar-whatsapp active" href="whatsapp.php" title="Conversas do WhatsApp" aria-label="Conversas do WhatsApp">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M7.4 14.8H6.2a4 4 0 0 1-4-4V7.2a4 4 0 0 1 4-4h7.1a4 4 0 0 1 4 4v.6" />

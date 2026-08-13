@@ -187,28 +187,32 @@ a {
 }
 
 /* Keep each shortcut in the same visual slot on every CRM page. */
-.sidebar-tabs a[href="whatsapp.php"] {
+.sidebar-tabs a[href="index.php"] {
   order: 1;
 }
 
-.sidebar-tabs a[href="whatsapp-templates.php"] {
+.sidebar-tabs a[href="whatsapp.php"] {
   order: 2;
 }
 
-.sidebar-tabs a[href="dashboard.php"] {
+.sidebar-tabs a[href="whatsapp-templates.php"] {
   order: 3;
 }
 
-.sidebar-tabs a[href="commercial.php"] {
+.sidebar-tabs a[href="dashboard.php"] {
   order: 4;
 }
 
-.sidebar-tabs a[href="settings.php"] {
+.sidebar-tabs a[href="commercial.php"] {
   order: 5;
 }
 
-.sidebar-tabs a[href="support.php"] {
+.sidebar-tabs a[href="settings.php"] {
   order: 6;
+}
+
+.sidebar-tabs a[href="support.php"] {
+  order: 7;
 }
 
 .sidebar-tabs a svg {
@@ -219,6 +223,12 @@ a {
   stroke-linecap: round;
   stroke-linejoin: round;
   stroke-width: 1.65;
+}
+
+.sidebar-tabs a.sidebar-kanban svg {
+  width: 27px;
+  height: 27px;
+  stroke-width: 1.7;
 }
 
 .sidebar-tabs a.active {
