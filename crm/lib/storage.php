@@ -1525,6 +1525,24 @@ function crm_read_leads(): array
     return $stmt->fetchAll();
 }
 
+function crm_read_lead_summaries(): array
+{
+    [$accessSql, $accessParams] = crm_lead_access_sql('leads');
+    $stmt = crm_db()->prepare(
+        'SELECT leads.id, leads.name, leads.whatsapp, leads.cpf, leads.message,
+                leads.notes, leads.tags, leads.status, leads.kanban_position,
+                leads.assigned_user_id, leads.created_at,
+                crm_users.name AS assigned_user_name, crm_users.username AS assigned_username
+        FROM leads
+        LEFT JOIN crm_users ON crm_users.id = leads.assigned_user_id
+        WHERE 1 = 1' . $accessSql . '
+        ORDER BY leads.status ASC, leads.kanban_position ASC, leads.created_at DESC'
+    );
+    $stmt->execute($accessParams);
+
+    return $stmt->fetchAll();
+}
+
 function crm_read_whatsapp_conversation_count(int $userId, string $conversationKey): ?int
 {
     if ($userId <= 0 || trim($conversationKey) === '') {

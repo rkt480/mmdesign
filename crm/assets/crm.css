@@ -1080,6 +1080,21 @@ dd {
   box-shadow: 0 30px 90px rgba(15, 23, 42, 0.22);
 }
 
+.lead-modal-card-loading {
+  min-height: 180px;
+  place-items: center;
+}
+
+.lead-details-loading {
+  margin: 0;
+  color: #64748b;
+  font-weight: 800;
+}
+
+.lead-details-loading.is-error {
+  color: #b91c1c;
+}
+
 .lead-modal-header {
   display: flex;
   align-items: flex-start;

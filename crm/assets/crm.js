@@ -1,7 +1,6 @@
 const cards = document.querySelectorAll(".kanban-card");
 const dropzones = document.querySelectorAll(".kanban-dropzone");
 const kanbanBoard = document.querySelector(".kanban-board");
-const detailButtons = document.querySelectorAll("[data-toggle-details]");
 const mobileStatusControls = document.querySelectorAll("[data-mobile-status]");
 const dialogButtons = document.querySelectorAll("[data-open-dialog]");
 const csrfToken = document.querySelector("meta[name='csrf-token']")?.content || "";
@@ -98,10 +97,8 @@ function guideLeadCpf(card) {
   const detailsButton = card?.querySelector(".lead-actions [data-toggle-details]");
 
   if (detailsButton) {
+    card.dataset.focusCpfAfterDetails = "true";
     detailsButton.click();
-    window.setTimeout(() => {
-      card.querySelector(".lead-details-panel input[name='cpf']")?.focus();
-    }, 0);
   }
 }
 
@@ -710,6 +707,121 @@ function closeLeadModal(panel) {
   }
 }
 
+const leadDetailsRequests = new Map();
+
+function setLeadDetailsLoading(panel) {
+  const container = panel.querySelector("[data-lead-details-container]");
+
+  if (!container || container.dataset.leadDetailsLoaded === "true") {
+    return;
+  }
+
+  container.className = "lead-modal-card lead-modal-card-loading";
+  container.replaceChildren();
+  const loading = document.createElement("p");
+  loading.className = "lead-details-loading";
+  loading.setAttribute("role", "status");
+  loading.textContent = "Carregando detalhes…";
+  container.appendChild(loading);
+}
+
+function setLeadDetailsError(panel, message) {
+  const container = panel.querySelector("[data-lead-details-container]");
+
+  if (!container) {
+    return;
+  }
+
+  delete container.dataset.leadDetailsLoaded;
+  container.className = "lead-modal-card lead-modal-card-loading";
+  container.replaceChildren();
+  const error = document.createElement("p");
+  error.className = "lead-details-loading is-error";
+  error.setAttribute("role", "alert");
+  error.textContent = message;
+  container.appendChild(error);
+}
+
+function focusLeadCpfField(panel) {
+  const card = findModalCard(panel);
+
+  if (!card || card.dataset.focusCpfAfterDetails !== "true") {
+    return;
+  }
+
+  const input = panel.querySelector("input[name='cpf']");
+
+  if (!input) {
+    return;
+  }
+
+  delete card.dataset.focusCpfAfterDetails;
+  window.requestAnimationFrame(() => input.focus());
+}
+
+async function loadLeadDetails(panel) {
+  const leadId = panel.dataset.modalLeadId || "";
+  const container = panel.querySelector("[data-lead-details-container]");
+
+  if (!leadId || !container || container.dataset.leadDetailsLoaded === "true") {
+    return;
+  }
+
+  const previousRequest = leadDetailsRequests.get(leadId);
+
+  if (previousRequest) {
+    try {
+      await previousRequest;
+    } catch (error) {
+      // The first opener already displayed the loading error. Avoid an
+      // unhandled rejection if the user taps another control while loading.
+    }
+    return;
+  }
+
+  const request = (async () => {
+    const endpoint = new URL("./api/lead-details.php", window.location.href);
+    endpoint.searchParams.set("id", leadId);
+
+    const response = await fetch(endpoint, {
+      headers: { Accept: "text/html" },
+      cache: "no-store",
+    });
+
+    if (!response.ok) {
+      throw new Error("Não foi possível carregar os detalhes deste contato.");
+    }
+
+    const html = (await response.text()).trim();
+    const template = document.createElement("template");
+    template.innerHTML = html;
+    const loadedContainer = template.content.firstElementChild;
+
+    if (!loadedContainer?.matches(".lead-modal-card")) {
+      throw new Error("A resposta dos detalhes está inválida.");
+    }
+
+    loadedContainer.dataset.leadDetailsContainer = "";
+    loadedContainer.dataset.leadDetailsLoaded = "true";
+    panel.replaceChild(loadedContainer, container);
+    bindLeadFormControls(panel);
+    renderTagPreviews(panel);
+    focusLeadCpfField(panel);
+  })();
+
+  leadDetailsRequests.set(leadId, request);
+
+  try {
+    await request;
+  } catch (error) {
+    setLeadDetailsError(panel, error.message || "Não foi possível carregar os detalhes.");
+  } finally {
+    if (leadDetailsRequests.get(leadId) === request) {
+      leadDetailsRequests.delete(leadId);
+    }
+  }
+}
+
 function openLeadModal(card, panel, button) {
   closeUtilityDialogs();
   document.querySelectorAll(".lead-details-panel:not([hidden])").forEach(closeLeadModal);
@@ -720,31 +832,37 @@ function openLeadModal(card, panel, button) {
   card.classList.add("has-open-modal");
   document.body.classList.add("modal-open");
   button.textContent = "Ocultar";
-  renderTagPreviews(panel);
+  setLeadDetailsLoading(panel);
+  focusLeadCpfField(panel);
+  void loadLeadDetails(panel);
 }
 
-detailButtons.forEach((button) => {
-  button.addEventListener("click", () => {
-    const panel = button.closest(".lead-details-panel");
+document.addEventListener("click", (event) => {
+  const button = event.target.closest?.("[data-toggle-details]");
 
-    if (button.classList.contains("modal-close") && panel) {
-      closeLeadModal(panel);
-      return;
-    }
+  if (!button) {
+    return;
+  }
 
-    const card = button.closest(".kanban-card");
-    const cardPanel = card?.querySelector(".lead-details-panel");
+  const panel = button.closest(".lead-details-panel");
 
-    if (!card || !cardPanel) {
-      return;
-    }
+  if (button.classList.contains("modal-close") && panel) {
+    closeLeadModal(panel);
+    return;
+  }
 
-    if (cardPanel.hidden) {
-      openLeadModal(card, cardPanel, button);
-    } else {
-      closeLeadModal(cardPanel);
-    }
-  });
+  const card = button.closest(".kanban-card");
+  const cardPanel = card?.querySelector(".lead-details-panel");
+
+  if (!card || !cardPanel) {
+    return;
+  }
+
+  if (cardPanel.hidden) {
+    openLeadModal(card, cardPanel, button);
+  } else {
+    closeLeadModal(cardPanel);
+  }
 });
 
 function closeUtilityDialogs() {
@@ -875,53 +993,56 @@ function syncCurrencyInput(input, reais, cents = "00") {
   setCursorToEnd(input);
 }
 
-document.querySelectorAll("[data-currency-input]").forEach((input) => {
-  const initial = parseCurrencyDigits(input.value);
-  syncCurrencyInput(input, initial.reais, initial.cents);
+function bindCurrencyInputs(scope = document) {
+  scope.querySelectorAll("[data-currency-input]:not([data-currency-bound])").forEach((input) => {
+    input.dataset.currencyBound = "true";
+    const initial = parseCurrencyDigits(input.value);
+    syncCurrencyInput(input, initial.reais, initial.cents);
 
-  input.addEventListener("beforeinput", (event) => {
-    const type = event.inputType || "";
-    let reais = input.dataset.currencyReais || "";
-    let cents = input.dataset.currencyCents || "00";
+    input.addEventListener("beforeinput", (event) => {
+      const type = event.inputType || "";
+      let reais = input.dataset.currencyReais || "";
+      let cents = input.dataset.currencyCents || "00";
 
-    if (type === "insertText" && /^\d$/.test(event.data || "")) {
+      if (type === "insertText" && /^\d$/.test(event.data || "")) {
+        event.preventDefault();
+        reais = (reais + event.data).replace(/^0+(?=\d)/, "");
+      } else if (type === "deleteContentBackward") {
+        event.preventDefault();
+        reais = reais.slice(0, -1);
+      } else if (type === "deleteContentForward") {
+        event.preventDefault();
+        reais = "";
+        cents = "00";
+      } else if (type === "insertFromPaste") {
+        return;
+      } else {
+        event.preventDefault();
+        return;
+      }
+
+      syncCurrencyInput(input, reais, cents);
+    });
+
+    input.addEventListener("paste", (event) => {
       event.preventDefault();
-      reais = (reais + event.data).replace(/^0+(?=\d)/, "");
-    } else if (type === "deleteContentBackward") {
-      event.preventDefault();
-      reais = reais.slice(0, -1);
-    } else if (type === "deleteContentForward") {
-      event.preventDefault();
-      reais = "";
-      cents = "00";
-    } else if (type === "insertFromPaste") {
-      return;
-    } else {
-      event.preventDefault();
-      return;
-    }
+      const text = event.clipboardData?.getData("text") || "";
+      const parsed = parseCurrencyDigits(text);
+      syncCurrencyInput(input, parsed.reais, parsed.cents);
+    });
 
-    syncCurrencyInput(input, reais, cents);
-  });
+    input.addEventListener("input", () => {
+      const parsed = parseCurrencyDigits(input.value);
+      syncCurrencyInput(input, parsed.reais, parsed.cents);
+    });
 
-  input.addEventListener("paste", (event) => {
-    event.preventDefault();
-    const text = event.clipboardData?.getData("text") || "";
-    const parsed = parseCurrencyDigits(text);
-    syncCurrencyInput(input, parsed.reais, parsed.cents);
+    input.addEventListener("blur", () => {
+      const reais = input.dataset.currencyReais || "";
+      const cents = input.dataset.currencyCents || "00";
+      syncCurrencyInput(input, reais, cents);
+    });
   });
-
-  input.addEventListener("input", () => {
-    const parsed = parseCurrencyDigits(input.value);
-    syncCurrencyInput(input, parsed.reais, parsed.cents);
-  });
-
-  input.addEventListener("blur", () => {
-    const reais = input.dataset.currencyReais || "";
-    const cents = input.dataset.currencyCents || "00";
-    syncCurrencyInput(input, reais, cents);
-  });
-});
+}
 
 function formatCpf(value) {
   const digits = String(value || "").replace(/\D/g, "").slice(0, 11);
@@ -932,19 +1053,33 @@ function formatCpf(value) {
   return formatted;
 }
 
-document.querySelectorAll("[data-cpf-input]").forEach((input) => {
-  input.value = formatCpf(input.value);
-  input.addEventListener("input", () => {
+function bindCpfInputs(scope = document) {
+  scope.querySelectorAll("[data-cpf-input]:not([data-cpf-bound])").forEach((input) => {
+    input.dataset.cpfBound = "true";
     input.value = formatCpf(input.value);
+    input.addEventListener("input", () => {
+      input.value = formatCpf(input.value);
+    });
   });
-});
+}
 
-document.querySelectorAll("[data-tags-input]").forEach((input) => {
-  renderTagPreview(input);
-  input.addEventListener("input", () => {
+function bindTagInputs(scope = document) {
+  scope.querySelectorAll("[data-tags-input]:not([data-tags-bound])").forEach((input) => {
+    input.dataset.tagsBound = "true";
     renderTagPreview(input);
+    input.addEventListener("input", () => {
+      renderTagPreview(input);
+    });
   });
-});
+}
+
+function bindLeadFormControls(scope = document) {
+  bindCurrencyInputs(scope);
+  bindCpfInputs(scope);
+  bindTagInputs(scope);
+}
+
+bindLeadFormControls();
 
 document.addEventListener("click", (event) => {
   const removeButton = event.target.closest("[data-tag-remove]");
@@ -1027,23 +1162,27 @@ document.addEventListener("keydown", (event) => {
   closeUtilityDialogs();
 });
 
-document.querySelectorAll(".lead-modal-tabs [data-lead-tab]").forEach((tabButton) => {
-  tabButton.addEventListener("click", () => {
-    const modal = tabButton.closest(".lead-modal-card");
-    const target = tabButton.dataset.leadTab;
+document.addEventListener("click", (event) => {
+  const tabButton = event.target.closest?.(".lead-modal-tabs [data-lead-tab]");
 
-    if (!modal || !target) {
-      return;
-    }
+  if (!tabButton) {
+    return;
+  }
 
-    modal.querySelectorAll("[data-lead-tab]").forEach((button) => {
-      button.classList.toggle("active", button === tabButton);
-    });
+  const modal = tabButton.closest(".lead-modal-card");
+  const target = tabButton.dataset.leadTab;
 
-    modal.querySelectorAll("[data-lead-panel]").forEach((panel) => {
-      panel.hidden = panel.dataset.leadPanel !== target;
-      panel.classList.toggle("active", panel.dataset.leadPanel === target);
-    });
+  if (!modal || !target) {
+    return;
+  }
+
+  modal.querySelectorAll("[data-lead-tab]").forEach((button) => {
+    button.classList.toggle("active", button === tabButton);
+  });
+
+  modal.querySelectorAll("[data-lead-panel]").forEach((panel) => {
+    panel.hidden = panel.dataset.leadPanel !== target;
+    panel.classList.toggle("active", panel.dataset.leadPanel === target);
   });
 });
 
@@ -1389,7 +1528,7 @@ if (installButton) {
 }
 
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("./sw.js?v=20260812-navigation-v3", {
+  navigator.serviceWorker.register("./sw.js?v=20260813-lazy-lead-details-v1", {
     scope: "./",
     updateViaCache: "none",
   })
