@@ -680,9 +680,10 @@ foreach ($conversationGroups as $whatsapp => $conversation) {
         : null;
 
     if ($readIncomingCount === null) {
-        // Existing history is not new. Initialize it as read so the badge
-        // only counts messages that arrive after this feature is activated.
-        $readIncomingCount = (int) ($conversation['incoming_count'] ?? 0);
+        // A conversation without a read marker is new for this seller. Its
+        // first incoming message must appear as unread instead of being
+        // mistaken for old history.
+        $readIncomingCount = 0;
 
         if ($currentUserId > 0) {
             crm_mark_whatsapp_conversation_read(
@@ -714,7 +715,7 @@ foreach ($conversationGroups as $whatsapp => $conversation) {
 
 usort($conversations, static fn(array $a, array $b): int => whatsapp_page_timestamp((string) $b['last_at']) <=> whatsapp_page_timestamp((string) $a['last_at']));
 
-$activeConversation = $conversations[0] ?? null;
+$activeConversation = null;
 $requestedLead = null;
 
 if ($requestedLeadId !== '') {
@@ -803,7 +804,7 @@ foreach ($whatsappTemplates as $template) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
     <meta name="csrf-token" content="<?= htmlspecialchars(crm_csrf_token()) ?>" />
     <title>WhatsApp | MM Design</title>
-    <link rel="stylesheet" href="./assets/crm.css?v=20260812-android-keyboard-v2" />
+    <link rel="stylesheet" href="./assets/crm.css?v=20260812-unread-inbox-v3" />
   </head>
   <body class="whatsapp-page whatsapp-crm-page" data-wa-initial-view="<?= is_array($activeLead) ? 'thread' : 'inbox' ?>" data-wa-mobile-view="<?= is_array($activeLead) ? 'thread' : 'inbox' ?>" data-wa-active-lead-id="<?= htmlspecialchars((string) ($activeLead['id'] ?? '')) ?>" data-wa-incoming-signature="<?= htmlspecialchars(is_array($activeLead) ? crm_whatsapp_incoming_signature($activeLead) : '') ?>" data-wa-lead-feed-version="<?= htmlspecialchars($leadFeedVersion) ?>">
     <main class="wa-web-shell" aria-label="Atendimento WhatsApp do CRM">

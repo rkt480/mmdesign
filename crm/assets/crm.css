@@ -5086,13 +5086,12 @@ textarea:focus {
 
 @media (max-width: 560px) {
   .whatsapp-crm-page .wa-chat-item {
-    grid-template-columns: 44px minmax(0, 1fr);
+    grid-template-columns: 44px minmax(0, 1fr) auto;
   }
 
   .whatsapp-crm-page .wa-chat-meta {
-    grid-column: 2;
-    grid-row: 2;
-    justify-items: start;
+    grid-column: 3;
+    grid-row: 1;
   }
 
   .whatsapp-crm-page .wa-message {
