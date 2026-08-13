@@ -1546,6 +1546,28 @@ function crm_read_whatsapp_conversation_count(int $userId, string $conversationK
     return $count === false ? null : max(0, (int) $count);
 }
 
+function crm_register_new_whatsapp_conversation(int $userId, string $conversationKey): bool
+{
+    $conversationKey = trim($conversationKey);
+
+    if ($userId <= 0 || $conversationKey === '') {
+        return false;
+    }
+
+    $stmt = crm_db()->prepare(
+        'INSERT IGNORE INTO whatsapp_conversation_reads
+            (user_id, conversation_key, read_incoming_count, updated_at)
+         VALUES (:user_id, :conversation_key, 0, :updated_at)'
+    );
+    $stmt->execute([
+        'user_id' => $userId,
+        'conversation_key' => $conversationKey,
+        'updated_at' => date('Y-m-d H:i:s'),
+    ]);
+
+    return true;
+}
+
 function crm_mark_whatsapp_conversation_read(int $userId, string $conversationKey, int $incomingCount): bool
 {
     $conversationKey = trim($conversationKey);
@@ -1716,6 +1738,13 @@ function crm_create_lead(array $payload): array
     if ($assignedUserId !== null) {
         crm_record_lead_assignment((string) $lead['id'], null, $assignedUserId, $assignmentAction, $assignmentReason, null);
         crm_touch_user_assigned_at($assignedUserId);
+
+        if ($lead['whatsapp'] !== '') {
+            crm_register_new_whatsapp_conversation(
+                $assignedUserId,
+                crm_normalize_lead_whatsapp((string) $lead['whatsapp'])
+            );
+        }
     }
 
     return $lead;

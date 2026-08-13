@@ -433,16 +433,21 @@ function whatsapp_page_messages_for_lead(array $lead): array
             if (preg_match('/^Mídia recebida pela Pilot Status em ([0-9]{2}\/[0-9]{2}\/[0-9]{4} [0-9]{2}:[0-9]{2}(?::[0-9]{2})?):\R\[crm_media\](.+)$/su', $block, $match) === 1) {
                 $media = json_decode((string) $match[2], true);
 
-                if (is_array($media) && whatsapp_page_media_url((string) ($media['url'] ?? '')) !== '') {
+                if (is_array($media)) {
                     $caption = trim((string) ($media['caption'] ?? ''));
-                    $messages[] = [
+                    $incomingMessage = [
                         'direction' => 'incoming',
                         'provider' => 'pilot_status',
                         'at' => whatsapp_page_parse_br_datetime((string) $match[1]),
                         'text' => $caption !== '' ? $caption : whatsapp_page_media_label($media),
-                        'media' => $media,
                         'label' => 'Recebida',
                     ];
+
+                    if (whatsapp_page_media_url((string) ($media['url'] ?? '')) !== '') {
+                        $incomingMessage['media'] = $media;
+                    }
+
+                    $messages[] = $incomingMessage;
                     continue;
                 }
             }
