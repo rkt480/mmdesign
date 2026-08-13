@@ -6276,6 +6276,12 @@ textarea:focus {
     line-height: 1.35;
   }
 
+  /* iOS zooms the page when a focused form control uses a font smaller than
+     16px. Keep template variable inputs at the native size on mobile. */
+  .whatsapp-crm-page .wa-template-variable-fields input {
+    font-size: 16px;
+  }
+
   .whatsapp-crm-page .wa-composer .wa-tool-button,
   .whatsapp-crm-page .wa-composer .wa-record-button,
   .whatsapp-crm-page .wa-composer .wa-send-button {
