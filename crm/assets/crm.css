@@ -1554,6 +1554,13 @@ textarea:focus {
   gap: 12px;
 }
 
+.access-weekend-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  padding-top: 2px;
+}
+
 .access-schedule-settings .commercial-help {
   margin: 0;
 }
@@ -2256,6 +2263,10 @@ textarea:focus {
   }
 
   .access-time-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .access-weekend-fields {
     grid-template-columns: 1fr;
   }
 

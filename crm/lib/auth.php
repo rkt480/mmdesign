@@ -305,6 +305,19 @@ function crm_user_access_schedule_enabled(array $user): bool
     return (int) ($user['access_schedule_enabled'] ?? 1) === 1;
 }
 
+function crm_user_access_day_enabled(array $user, int $weekday): bool
+{
+    if ($weekday === 6) {
+        return (int) ($user['access_saturday_enabled'] ?? 1) === 1;
+    }
+
+    if ($weekday === 7) {
+        return (int) ($user['access_sunday_enabled'] ?? 1) === 1;
+    }
+
+    return true;
+}
+
 function crm_user_access_is_allowed(array $user, ?DateTimeImmutable $now = null): bool
 {
     if ((string) ($user['role'] ?? '') !== 'vendedor' || !crm_user_access_schedule_enabled($user)) {
@@ -316,20 +329,37 @@ function crm_user_access_is_allowed(array $user, ?DateTimeImmutable $now = null)
 
     $start = crm_normalize_user_access_time((string) ($user['access_start_time'] ?? ''), '09:00:00');
     $end = crm_normalize_user_access_time((string) ($user['access_end_time'] ?? ''), '18:00:00');
+    $now ??= new DateTimeImmutable('now', new DateTimeZone(date_default_timezone_get()));
+    $weekday = (int) $now->format('N');
+
+    if (!crm_user_access_day_enabled($user, $weekday)) {
+        return false;
+    }
 
     // A malformed or equal interval must not lock the seller out permanently.
     if ($start >= $end) {
         return true;
     }
 
-    $now ??= new DateTimeImmutable('now', new DateTimeZone(date_default_timezone_get()));
     $current = $now->format('H:i:s');
 
     return $current >= $start && $current < $end;
 }
 
-function crm_user_access_block_message(array $user): string
+function crm_user_access_block_message(array $user, ?DateTimeImmutable $now = null): string
 {
+    crm_config();
+    $now ??= new DateTimeImmutable('now', new DateTimeZone(date_default_timezone_get()));
+    $weekday = (int) $now->format('N');
+
+    if ($weekday === 6 && !crm_user_access_day_enabled($user, 6)) {
+        return 'Seu acesso está bloqueado aos sábados.';
+    }
+
+    if ($weekday === 7 && !crm_user_access_day_enabled($user, 7)) {
+        return 'Seu acesso está bloqueado aos domingos.';
+    }
+
     $start = substr(crm_normalize_user_access_time((string) ($user['access_start_time'] ?? ''), '09:00:00'), 0, 5);
     $end = substr(crm_normalize_user_access_time((string) ($user['access_end_time'] ?? ''), '18:00:00'), 0, 5);
 

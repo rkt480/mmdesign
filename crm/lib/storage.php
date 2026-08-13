@@ -45,7 +45,7 @@ function crm_db(): PDO
 
 function crm_schema_version(): string
 {
-    return '20260812.1';
+    return '20260813.1';
 }
 
 function crm_schema_version_is_current(PDO $pdo): bool
@@ -225,6 +225,8 @@ function crm_ensure_crm_schema(PDO $pdo): void
             access_schedule_enabled TINYINT(1) NOT NULL DEFAULT 1,
             access_start_time TIME NOT NULL DEFAULT "09:00:00",
             access_end_time TIME NOT NULL DEFAULT "18:00:00",
+            access_saturday_enabled TINYINT(1) NOT NULL DEFAULT 1,
+            access_sunday_enabled TINYINT(1) NOT NULL DEFAULT 1,
             created_at DATETIME NOT NULL,
             updated_at DATETIME NOT NULL,
             INDEX idx_crm_users_role_active (role, active),
@@ -449,6 +451,8 @@ function crm_ensure_user_columns(PDO $pdo): void
         'access_schedule_enabled' => 'TINYINT(1) NOT NULL DEFAULT 1 AFTER last_assigned_at',
         'access_start_time' => 'TIME NOT NULL DEFAULT "09:00:00" AFTER access_schedule_enabled',
         'access_end_time' => 'TIME NOT NULL DEFAULT "18:00:00" AFTER access_start_time',
+        'access_saturday_enabled' => 'TINYINT(1) NOT NULL DEFAULT 1 AFTER access_end_time',
+        'access_sunday_enabled' => 'TINYINT(1) NOT NULL DEFAULT 1 AFTER access_saturday_enabled',
     ];
 
     foreach ($columns as $column => $definition) {
@@ -1324,6 +1328,8 @@ function crm_save_user(array $payload): array
     $accessScheduleEnabled = !empty($payload['access_schedule_enabled']) ? 1 : 0;
     $accessStartTime = crm_normalize_user_access_time((string) ($payload['access_start_time'] ?? ''), '09:00:00');
     $accessEndTime = crm_normalize_user_access_time((string) ($payload['access_end_time'] ?? ''), '18:00:00');
+    $accessSaturdayEnabled = !empty($payload['access_saturday_enabled']) ? 1 : 0;
+    $accessSundayEnabled = !empty($payload['access_sunday_enabled']) ? 1 : 0;
 
     if ($name === '' || $username === '') {
         return ['ok' => false, 'error' => 'Informe nome e usuário.'];
@@ -1370,6 +1376,8 @@ function crm_save_user(array $payload): array
                 'access_schedule_enabled = :access_schedule_enabled',
                 'access_start_time = :access_start_time',
                 'access_end_time = :access_end_time',
+                'access_saturday_enabled = :access_saturday_enabled',
+                'access_sunday_enabled = :access_sunday_enabled',
                 'updated_at = :updated_at',
             ];
             $params = [
@@ -1384,6 +1392,8 @@ function crm_save_user(array $payload): array
                 'access_schedule_enabled' => $accessScheduleEnabled,
                 'access_start_time' => $accessStartTime,
                 'access_end_time' => $accessEndTime,
+                'access_saturday_enabled' => $accessSaturdayEnabled,
+                'access_sunday_enabled' => $accessSundayEnabled,
                 'updated_at' => date('Y-m-d H:i:s'),
             ];
 
@@ -1401,10 +1411,12 @@ function crm_save_user(array $payload): array
         $stmt = crm_db()->prepare(
             'INSERT INTO crm_users
             (name, username, email, password_hash, role, active, participates_in_rotation, rotation_weight,
-             access_schedule_enabled, access_start_time, access_end_time, created_at, updated_at)
+             access_schedule_enabled, access_start_time, access_end_time,
+             access_saturday_enabled, access_sunday_enabled, created_at, updated_at)
             VALUES
             (:name, :username, :email, :password_hash, :role, :active, :participates_in_rotation, :rotation_weight,
-             :access_schedule_enabled, :access_start_time, :access_end_time, :created_at, :updated_at)'
+             :access_schedule_enabled, :access_start_time, :access_end_time,
+             :access_saturday_enabled, :access_sunday_enabled, :created_at, :updated_at)'
         );
         $stmt->execute([
             'name' => $name,
@@ -1418,6 +1430,8 @@ function crm_save_user(array $payload): array
             'access_schedule_enabled' => $accessScheduleEnabled,
             'access_start_time' => $accessStartTime,
             'access_end_time' => $accessEndTime,
+            'access_saturday_enabled' => $accessSaturdayEnabled,
+            'access_sunday_enabled' => $accessSundayEnabled,
             'created_at' => date('Y-m-d H:i:s'),
             'updated_at' => date('Y-m-d H:i:s'),
         ]);

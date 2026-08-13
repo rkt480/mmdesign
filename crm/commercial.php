@@ -36,6 +36,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'access_schedule_enabled' => ($_POST['access_schedule_enabled'] ?? '') === '1',
             'access_start_time' => $_POST['access_start_time'] ?? '09:00',
             'access_end_time' => $_POST['access_end_time'] ?? '18:00',
+            'access_saturday_enabled' => ($_POST['access_saturday_enabled'] ?? '') === '1',
+            'access_sunday_enabled' => ($_POST['access_sunday_enabled'] ?? '') === '1',
         ]);
 
         if (($result['ok'] ?? false) === true) {
@@ -90,7 +92,7 @@ $overdueLeads = crm_read_sla_overdue_leads(20);
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Comercial | CRM</title>
-    <link rel="stylesheet" href="./assets/crm.css?v=20260813-sidebar-order-v1" />
+    <link rel="stylesheet" href="./assets/crm.css?v=20260813-weekend-access-v1" />
   </head>
   <body class="settings-page commercial-page">
     <div class="app-shell">
@@ -258,7 +260,17 @@ $overdueLeads = crm_read_sla_overdue_leads(20);
                         <input type="time" name="access_end_time" value="18:00" required />
                       </label>
                     </div>
-                    <p class="commercial-help">Aplicado somente ao perfil Vendedor. O acesso é liberado no horário inicial e bloqueado a partir do horário final.</p>
+                    <div class="access-weekend-fields" aria-label="Acesso no fim de semana">
+                      <label class="checkbox-field">
+                        <input type="checkbox" name="access_saturday_enabled" value="1" checked />
+                        <span>Permitir acesso no sábado</span>
+                      </label>
+                      <label class="checkbox-field">
+                        <input type="checkbox" name="access_sunday_enabled" value="1" checked />
+                        <span>Permitir acesso no domingo</span>
+                      </label>
+                    </div>
+                    <p class="commercial-help">Aplicado somente ao perfil Vendedor. Nos dias permitidos, o acesso segue o horário definido acima.</p>
                   </div>
                   <button class="integration-save" type="submit">
                     <span aria-hidden="true">✓</span>
@@ -351,7 +363,17 @@ $overdueLeads = crm_read_sla_overdue_leads(20);
                                 <input type="time" name="access_end_time" value="<?= htmlspecialchars(substr(crm_normalize_user_access_time((string) ($crmUser['access_end_time'] ?? ''), '18:00:00'), 0, 5)) ?>" required />
                               </label>
                             </div>
-                            <p class="commercial-help">Aplicado somente ao perfil Vendedor. O acesso é liberado no horário inicial e bloqueado a partir do horário final.</p>
+                            <div class="access-weekend-fields" aria-label="Acesso no fim de semana">
+                              <label class="checkbox-field">
+                                <input type="checkbox" name="access_saturday_enabled" value="1" <?= crm_user_access_day_enabled($crmUser, 6) ? 'checked' : '' ?> />
+                                <span>Permitir acesso no sábado</span>
+                              </label>
+                              <label class="checkbox-field">
+                                <input type="checkbox" name="access_sunday_enabled" value="1" <?= crm_user_access_day_enabled($crmUser, 7) ? 'checked' : '' ?> />
+                                <span>Permitir acesso no domingo</span>
+                              </label>
+                            </div>
+                            <p class="commercial-help">Aplicado somente ao perfil Vendedor. Nos dias permitidos, o acesso segue o horário definido acima.</p>
                           </div>
                           <button class="integration-save" type="submit">
                             <span aria-hidden="true">✓</span>

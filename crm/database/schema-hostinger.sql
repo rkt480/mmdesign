@@ -91,6 +91,8 @@ CREATE TABLE IF NOT EXISTS crm_users (
   access_schedule_enabled TINYINT(1) NOT NULL DEFAULT 1,
   access_start_time TIME NOT NULL DEFAULT '09:00:00',
   access_end_time TIME NOT NULL DEFAULT '18:00:00',
+  access_saturday_enabled TINYINT(1) NOT NULL DEFAULT 1,
+  access_sunday_enabled TINYINT(1) NOT NULL DEFAULT 1,
   created_at DATETIME NOT NULL,
   updated_at DATETIME NOT NULL,
   INDEX idx_crm_users_role_active (role, active),
