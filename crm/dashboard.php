@@ -129,7 +129,7 @@ arsort($lostReasons);
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Dashboard | CRM</title>
-    <link rel="stylesheet" href="./assets/crm.css?v=20260811-mobile-keyboard-v7" />
+    <link rel="stylesheet" href="./assets/crm.css?v=20260812-mobile-whatsapp-v1" />
   </head>
   <body class="settings-page dashboard-page">
     <div class="app-shell">

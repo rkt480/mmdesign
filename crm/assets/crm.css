@@ -2162,10 +2162,6 @@ textarea:focus {
 }
 
 @media (max-width: 620px) {
-  .sidebar-tabs > a:first-child {
-    display: none;
-  }
-
   .schedule-form {
     grid-template-columns: 1fr;
   }
