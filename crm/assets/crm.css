@@ -163,6 +163,10 @@ a {
   width: 58px;
 }
 
+.sidebar-tabs:empty {
+  display: none;
+}
+
 .sidebar-tabs a {
   display: grid;
   width: 58px;

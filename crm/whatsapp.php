@@ -809,7 +809,7 @@ foreach ($whatsappTemplates as $template) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
     <meta name="csrf-token" content="<?= htmlspecialchars(crm_csrf_token()) ?>" />
     <title>WhatsApp | MM Design</title>
-    <link rel="stylesheet" href="./assets/crm.css?v=20260812-mobile-whatsapp-v1" />
+    <link rel="stylesheet" href="./assets/crm.css?v=20260812-mobile-whatsapp-v2" />
   </head>
   <body class="whatsapp-page whatsapp-crm-page" data-wa-initial-view="<?= is_array($activeLead) ? 'thread' : 'inbox' ?>" data-wa-mobile-view="<?= is_array($activeLead) ? 'thread' : 'inbox' ?>" data-wa-active-lead-id="<?= htmlspecialchars((string) ($activeLead['id'] ?? '')) ?>" data-wa-incoming-signature="<?= htmlspecialchars(is_array($activeLead) ? crm_whatsapp_incoming_signature($activeLead) : '') ?>" data-wa-lead-feed-version="<?= htmlspecialchars($leadFeedVersion) ?>">
     <main class="wa-web-shell" aria-label="Atendimento WhatsApp do CRM">
@@ -818,12 +818,6 @@ foreach ($whatsappTemplates as $template) {
           <span class="brand-mark"><img src="./assets/mmdesign-mark.png" alt="MM DESIGN" /></span>
         </a>
         <nav class="sidebar-tabs" aria-label="Atalhos do CRM">
-          <a class="active" href="whatsapp.php" title="Conversas do WhatsApp" aria-label="Conversas do WhatsApp">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M7.4 14.8H6.2a4 4 0 0 1-4-4V7.2a4 4 0 0 1 4-4h7.1a4 4 0 0 1 4 4v.6" />
-              <path d="M10.7 8.2h6.2a4 4 0 0 1 4 4v2.7a4 4 0 0 1-4 4h-2.5L11 21v-2.1h-.3a4 4 0 0 1-4-4v-2.7a4 4 0 0 1 4-4Z" />
-            </svg>
-          </a>
           <?php if ($canManageSettings): ?>
             <a href="whatsapp-templates.php" title="Templates WhatsApp" aria-label="Templates WhatsApp">
               <svg viewBox="0 0 24 24" aria-hidden="true">
