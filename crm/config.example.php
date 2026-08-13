@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 date_default_timezone_set('America/Sao_Paulo');
 
+// Em produção, prefira as variáveis MMDESIGN_* do ambiente para não manter
+// senhas, hashes ou tokens diretamente no arquivo de configuração.
+
 return [
     'admin_user' => 'admin',
     'admin_password_hash' => 'cole-aqui-o-hash-gerado-com-password_hash',

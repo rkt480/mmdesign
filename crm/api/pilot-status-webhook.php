@@ -2,31 +2,49 @@
 
 declare(strict_types=1);
 
+require_once dirname(__DIR__) . '/lib/security.php';
 require_once dirname(__DIR__) . '/lib/storage.php';
 require_once dirname(__DIR__) . '/lib/pilot-status.php';
 require_once dirname(__DIR__) . '/lib/email.php';
 require_once dirname(__DIR__) . '/lib/meta-capi.php';
 
 header('Content-Type: application/json; charset=utf-8');
-header('X-Content-Type-Options: nosniff');
+crm_send_security_headers();
+
+if (crm_throttle_is_limited('pilot-webhook', 'endpoint', 300, 60)) {
+    http_response_code(429);
+    echo json_encode(['ok' => false, 'error' => 'Muitas requisições.']);
+    exit;
+}
+
+crm_throttle_record('pilot-webhook', 'endpoint', 60);
+
+$contentLength = (int) ($_SERVER['CONTENT_LENGTH'] ?? 0);
+
+if ($contentLength > 40 * 1024 * 1024) {
+    http_response_code(413);
+    echo json_encode(['ok' => false, 'error' => 'A requisição excede o tamanho permitido.']);
+    exit;
+}
 
 $rawBody = file_get_contents('php://input') ?: '';
-$headers = function_exists('getallheaders') ? getallheaders() : [];
 
-pilot_status_log('Webhook hit recebido.', [
-    'method' => $_SERVER['REQUEST_METHOD'] ?? '',
-    'uri' => $_SERVER['REQUEST_URI'] ?? '',
-    'headers' => $headers,
-    'query' => $_GET,
-    'body' => $rawBody,
-]);
+if (strlen($rawBody) > 40 * 1024 * 1024) {
+    http_response_code(413);
+    echo json_encode(['ok' => false, 'error' => 'A requisição excede o tamanho permitido.']);
+    exit;
+}
 
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET') {
     $challenge = $_GET['hub_challenge'] ?? $_GET['challenge'] ?? $_GET['echo'] ?? null;
-    if ($challenge !== null) {
+    if ($challenge !== null && pilot_status_validate_webhook('', [])) {
         echo (string)$challenge;
         exit;
     }
+
+    http_response_code(401);
+    echo json_encode(['ok' => false, 'error' => 'Webhook não autorizado.']);
+    exit;
 }
 
 if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {

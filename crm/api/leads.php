@@ -9,7 +9,7 @@ require_once dirname(__DIR__) . '/lib/security.php';
 require_once dirname(__DIR__) . '/lib/forms.php';
 
 header('Content-Type: application/json; charset=utf-8');
-header('X-Content-Type-Options: nosniff');
+crm_send_security_headers();
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
@@ -17,7 +17,23 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
-$payload = json_decode(file_get_contents('php://input') ?: '{}', true);
+$contentLength = (int) ($_SERVER['CONTENT_LENGTH'] ?? 0);
+
+if ($contentLength > 256 * 1024) {
+    http_response_code(413);
+    echo json_encode(['ok' => false, 'error' => 'A requisição excede o tamanho permitido.']);
+    exit;
+}
+
+$rawBody = file_get_contents('php://input') ?: '';
+
+if (strlen($rawBody) > 256 * 1024) {
+    http_response_code(413);
+    echo json_encode(['ok' => false, 'error' => 'A requisição excede o tamanho permitido.']);
+    exit;
+}
+
+$payload = json_decode($rawBody !== '' ? $rawBody : '{}', true);
 
 if (!is_array($payload)) {
     http_response_code(400);

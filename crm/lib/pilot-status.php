@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/storage.php';
 require_once __DIR__ . '/settings.php';
+require_once __DIR__ . '/security.php';
 
 function pilot_status_settings(): array
 {
@@ -148,7 +149,7 @@ function pilot_status_log(string $message, array $context = []): void
     $line = '[' . date('Y-m-d H:i:s') . '] ' . $message;
 
     if ($context !== []) {
-        $line .= ' ' . json_encode($context, JSON_UNESCAPED_UNICODE);
+        $line .= ' ' . json_encode(crm_security_redact_log_context($context), JSON_UNESCAPED_UNICODE);
     }
 
     @file_put_contents($dir . '/pilot-status.log', $line . PHP_EOL, FILE_APPEND | LOCK_EX);
@@ -1411,11 +1412,14 @@ function pilot_status_validate_webhook(string $body, array $payload): bool
     $secret = trim((string) $settings['webhook_secret']);
 
     if ($secret === '') {
-        return true;
+        return false;
     }
 
     $plainCandidates = [
         (string) ($_GET['token'] ?? ''),
+        (string) ($_GET['verify_token'] ?? ''),
+        (string) ($_GET['hub_verify_token'] ?? ''),
+        (string) ($_GET['hub.verify_token'] ?? ''),
         (string) ($_SERVER['HTTP_X_PILOT_STATUS_TOKEN'] ?? ''),
         (string) ($_SERVER['HTTP_X_WEBHOOK_TOKEN'] ?? ''),
         (string) ($payload['token'] ?? ''),

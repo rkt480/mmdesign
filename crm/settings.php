@@ -19,6 +19,7 @@ $notificationEmail = crm_notification_email();
 $metaSettings = crm_meta_capi_settings();
 $metaPixelId = $metaSettings['pixel_id'];
 $metaAccessToken = $metaSettings['access_token'];
+$metaAccessTokenConfigured = $metaAccessToken !== '';
 $metaTestEventCode = $metaSettings['test_event_code'];
 $metaWhatsAppSettings = crm_meta_whatsapp_settings();
 $pilotStatusSettings = crm_pilot_status_settings();
@@ -31,6 +32,9 @@ $whatsappConfigured = ($whatsappProvider !== 'meta_cloud' || $metaWhatsAppConfig
 $emailConfigured = $notificationEmail !== '';
 $pushConfigured = crm_push_is_configured();
 $metaConfigured = $metaPixelId !== '' && $metaAccessToken !== '';
+$metaWhatsAppVerifyTokenConfigured = $metaWhatsAppSettings['verify_token'] !== '';
+$metaWhatsAppAppSecretConfigured = $metaWhatsAppSettings['app_secret'] !== '';
+$pilotStatusWebhookSecretConfigured = $pilotStatusSettings['webhook_secret'] !== '';
 $gtmConfigured = $googleTagManagerId !== '';
 $googleCalendarConfigured = crm_google_calendar_is_configured();
 $googleCalendarConnected = crm_google_calendar_is_connected();
@@ -58,10 +62,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $settings['meta_whatsapp_graph_version'] = crm_normalize_meta_graph_version((string) ($_POST['meta_whatsapp_graph_version'] ?? '20.0'));
         $settings['meta_whatsapp_phone_number_id'] = preg_replace('/\D+/', '', (string) ($_POST['meta_whatsapp_phone_number_id'] ?? '')) ?? '';
         $settings['meta_whatsapp_business_account_id'] = preg_replace('/\D+/', '', (string) ($_POST['meta_whatsapp_business_account_id'] ?? '')) ?? '';
-        $settings['meta_whatsapp_verify_token'] = trim((string) ($_POST['meta_whatsapp_verify_token'] ?? ''));
+        $metaWhatsAppVerifyToken = trim((string) ($_POST['meta_whatsapp_verify_token'] ?? ''));
+
+        if ($metaWhatsAppVerifyToken !== '') {
+            $settings['meta_whatsapp_verify_token'] = $metaWhatsAppVerifyToken;
+        }
+
         $settings['meta_whatsapp_coex_enabled'] = (($_POST['meta_whatsapp_coex_enabled'] ?? '') === '1');
         $settings['pilot_status_base_url'] = crm_normalize_url_base((string) ($_POST['pilot_status_base_url'] ?? ''), 'https://pilotstatus.com.br/v1');
-        $settings['pilot_status_webhook_secret'] = trim((string) ($_POST['pilot_status_webhook_secret'] ?? ''));
+        $pilotStatusWebhookSecret = trim((string) ($_POST['pilot_status_webhook_secret'] ?? ''));
+
+        if ($pilotStatusWebhookSecret !== '') {
+            $settings['pilot_status_webhook_secret'] = $pilotStatusWebhookSecret;
+        }
 
         $metaWhatsAppAccessToken = trim((string) ($_POST['meta_whatsapp_access_token'] ?? ''));
         $metaWhatsAppAppSecret = trim((string) ($_POST['meta_whatsapp_app_secret'] ?? ''));
@@ -117,7 +130,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($settingsSection === 'meta') {
         $settings['meta_pixel_id'] = preg_replace('/\D+/', '', (string) ($_POST['meta_pixel_id'] ?? '')) ?? '';
-        $settings['meta_access_token'] = trim((string) ($_POST['meta_access_token'] ?? ''));
+        $metaAccessTokenInput = trim((string) ($_POST['meta_access_token'] ?? ''));
+
+        if ($metaAccessTokenInput !== '') {
+            $settings['meta_access_token'] = $metaAccessTokenInput;
+        }
+
         $settings['meta_test_event_code'] = trim((string) ($_POST['meta_test_event_code'] ?? ''));
     }
 
@@ -280,18 +298,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                       WhatsApp Business Account ID
                       <input type="text" name="meta_whatsapp_business_account_id" value="<?= htmlspecialchars($metaWhatsAppSettings['business_account_id']) ?>" placeholder="Ex: 123456789012345" inputmode="numeric" autocomplete="off" />
                     </label>
-                    <label>
-                      Access Token
-                      <input type="password" name="meta_whatsapp_access_token" value="" placeholder="<?= $metaWhatsAppSettings['access_token'] !== '' ? 'Token salvo. Preencha só para trocar.' : 'Cole o token permanente ou temporário' ?>" autocomplete="off" />
-                    </label>
-                    <label>
-                      Verify Token do webhook
-                      <input type="text" name="meta_whatsapp_verify_token" value="<?= htmlspecialchars($metaWhatsAppSettings['verify_token']) ?>" placeholder="Crie um segredo para validar o webhook" autocomplete="off" />
-                    </label>
-                    <label>
-                      App Secret
-                      <input type="password" name="meta_whatsapp_app_secret" value="" placeholder="<?= $metaWhatsAppSettings['app_secret'] !== '' ? 'App Secret salvo. Preencha só para trocar.' : 'Opcional para validar X-Hub-Signature-256' ?>" autocomplete="off" />
-                    </label>
+                  <label>
+                    Access Token
+                    <input type="password" name="meta_whatsapp_access_token" value="" placeholder="<?= $metaWhatsAppSettings['access_token'] !== '' ? 'Token salvo. Preencha só para trocar.' : 'Cole o token permanente ou temporário' ?>" autocomplete="new-password" />
+                  </label>
+                  <label>
+                    Verify Token do webhook
+                    <input type="password" name="meta_whatsapp_verify_token" value="" placeholder="<?= $metaWhatsAppVerifyTokenConfigured ? 'Token salvo. Preencha só para trocar.' : 'Crie um segredo para validar o webhook' ?>" autocomplete="new-password" />
+                  </label>
+                  <label>
+                    App Secret
+                    <input type="password" name="meta_whatsapp_app_secret" value="" placeholder="<?= $metaWhatsAppAppSecretConfigured ? 'App Secret salvo. Preencha só para trocar.' : 'Obrigatório para validar X-Hub-Signature-256' ?>" autocomplete="new-password" />
+                  </label>
                     <label class="checkbox-field">
                       <input type="checkbox" name="meta_whatsapp_coex_enabled" value="1" <?= $metaWhatsAppSettings['coex_enabled'] ? 'checked' : '' ?> />
                       <span>COEX ativo neste número</span>
@@ -317,10 +335,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                       API key
                       <input type="password" name="pilot_status_api_key" value="" placeholder="<?= $pilotStatusSettings['api_key'] !== '' ? 'API key salva. Preencha só para trocar.' : 'Cole a chave ps_ do número' ?>" autocomplete="off" />
                     </label>
-                    <label>
-                      Segredo do webhook
-                      <input type="text" name="pilot_status_webhook_secret" value="<?= htmlspecialchars($pilotStatusSettings['webhook_secret']) ?>" placeholder="Opcional para validar chamadas recebidas" autocomplete="off" />
-                    </label>
+                  <label>
+                    Segredo do webhook
+                    <input type="password" name="pilot_status_webhook_secret" value="" placeholder="<?= $pilotStatusWebhookSecretConfigured ? 'Segredo salvo. Preencha só para trocar.' : 'Obrigatório para validar chamadas recebidas' ?>" autocomplete="new-password" />
+                  </label>
                     <?php if ($pilotStatusWebhookUrl !== ''): ?>
                       <label>
                         URL do webhook Pilot Status
@@ -494,7 +512,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                   </label>
                   <label>
                     Access Token
-                    <input type="password" name="meta_access_token" value="<?= htmlspecialchars($metaAccessToken) ?>" placeholder="Cole o token da API de Conversões" autocomplete="off" />
+                    <input type="password" name="meta_access_token" value="" placeholder="<?= $metaAccessTokenConfigured ? 'Token salvo. Preencha só para trocar.' : 'Cole o token da API de Conversões' ?>" autocomplete="new-password" />
                   </label>
                   <label>
                     Código de teste

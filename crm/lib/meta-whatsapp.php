@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/storage.php';
 require_once __DIR__ . '/settings.php';
+require_once __DIR__ . '/security.php';
 
 function meta_whatsapp_settings(): array
 {
@@ -53,7 +54,7 @@ function meta_whatsapp_log(string $message, array $context = []): void
     $line = '[' . date('Y-m-d H:i:s') . '] ' . $message;
 
     if ($context !== []) {
-        $line .= ' ' . json_encode($context, JSON_UNESCAPED_UNICODE);
+        $line .= ' ' . json_encode(crm_security_redact_log_context($context), JSON_UNESCAPED_UNICODE);
     }
 
     @file_put_contents($dir . '/meta-whatsapp.log', $line . PHP_EOL, FILE_APPEND | LOCK_EX);
@@ -476,7 +477,7 @@ function meta_whatsapp_validate_webhook_signature(string $body): bool
     $secret = trim((string) $settings['app_secret']);
 
     if ($secret === '') {
-        return true;
+        return false;
     }
 
     $received = trim((string) ($_SERVER['HTTP_X_HUB_SIGNATURE_256'] ?? ''));

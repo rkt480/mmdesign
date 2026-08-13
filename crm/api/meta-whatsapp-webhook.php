@@ -6,8 +6,18 @@ require_once dirname(__DIR__) . '/lib/storage.php';
 require_once dirname(__DIR__) . '/lib/meta-whatsapp.php';
 require_once dirname(__DIR__) . '/lib/email.php';
 require_once dirname(__DIR__) . '/lib/meta-capi.php';
+require_once dirname(__DIR__) . '/lib/security.php';
 
-header('X-Content-Type-Options: nosniff');
+crm_send_security_headers();
+
+if (crm_throttle_is_limited('meta-webhook', 'endpoint', 300, 60)) {
+    http_response_code(429);
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode(['ok' => false, 'error' => 'Muitas requisições.']);
+    exit;
+}
+
+crm_throttle_record('meta-webhook', 'endpoint', 60);
 
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     if (meta_whatsapp_validate_webhook_challenge()) {
@@ -29,7 +39,21 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
+$contentLength = (int) ($_SERVER['CONTENT_LENGTH'] ?? 0);
+
+if ($contentLength > 8 * 1024 * 1024) {
+    http_response_code(413);
+    echo json_encode(['ok' => false, 'error' => 'A requisição excede o tamanho permitido.']);
+    exit;
+}
+
 $body = file_get_contents('php://input') ?: '';
+
+if (strlen($body) > 8 * 1024 * 1024) {
+    http_response_code(413);
+    echo json_encode(['ok' => false, 'error' => 'A requisição excede o tamanho permitido.']);
+    exit;
+}
 
 if (!meta_whatsapp_validate_webhook_signature($body)) {
     http_response_code(401);

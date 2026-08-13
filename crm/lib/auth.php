@@ -9,19 +9,6 @@ function crm_config(): array
     return require dirname(__DIR__) . '/config.php';
 }
 
-function crm_send_security_headers(): void
-{
-    if (headers_sent()) {
-        return;
-    }
-
-    header('X-Content-Type-Options: nosniff');
-    header('X-Frame-Options: SAMEORIGIN');
-    header('Referrer-Policy: strict-origin-when-cross-origin');
-    header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
-    header('Pragma: no-cache');
-}
-
 function crm_login_path(): string
 {
     $scriptName = str_replace('\\', '/', (string) ($_SERVER['SCRIPT_NAME'] ?? ''));
@@ -46,7 +33,12 @@ function crm_request_expects_json(): bool
 function crm_start_session(): void
 {
     if (session_status() !== PHP_SESSION_ACTIVE) {
-        $secure = !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off';
+        ini_set('session.use_strict_mode', '1');
+        ini_set('session.use_only_cookies', '1');
+        ini_set('session.cookie_httponly', '1');
+        ini_set('session.cookie_samesite', 'Lax');
+
+        $secure = crm_request_is_https();
 
         session_set_cookie_params([
             'lifetime' => 0,
@@ -56,6 +48,7 @@ function crm_start_session(): void
             'samesite' => 'Lax',
         ]);
 
+        session_name('mmdesign_crm_session');
         session_start();
     }
 }
@@ -232,7 +225,17 @@ function crm_clear_login_failures(string $user): void
 function crm_logout(): void
 {
     crm_start_session();
+    $sessionName = session_name();
     $_SESSION = [];
+
+    setcookie($sessionName, '', [
+        'expires' => time() - 42000,
+        'path' => '/',
+        'secure' => crm_request_is_https(),
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ]);
+
     session_destroy();
 }
 
