@@ -2075,6 +2075,14 @@ textarea:focus {
 }
 
 @media (max-width: 880px) {
+  .sidebar-whatsapp {
+    display: none !important;
+  }
+
+  .sidebar-tabs:has(> .sidebar-whatsapp:only-child) {
+    display: none;
+  }
+
   .app-shell {
     grid-template-columns: 1fr;
     padding: 14px;
