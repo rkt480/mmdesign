@@ -207,6 +207,51 @@ function whatsapp_page_clean_sent_message_text(string $text): string
     return trim($text);
 }
 
+function whatsapp_page_is_internal_observation(string $text): bool
+{
+    return preg_match('/^(?:Follow-up cancelado automaticamente|Lead redistribuído automaticamente|Agendamento criado no Google Agenda|Pilot Status evento:|Falha ao enviar|Falha no envio|WhatsApp confirmou)/iu', trim($text)) === 1;
+}
+
+function whatsapp_page_is_outgoing_history_block(string $block): bool
+{
+    return preg_match('/^(?:Mídia|Mensagem) enviada (?:via|pelo) /iu', $block) === 1
+        || preg_match('/^Template ".+" enviado via /iu', $block) === 1
+        || (preg_match('/^Observação do CRM em /iu', $block) === 1
+            && preg_match('/CRM message ID:/iu', $block) === 1);
+}
+
+function whatsapp_page_block_datetime(string $block): string
+{
+    if (preg_match('/\bem ([0-9]{2}\/\d{2}\/\d{4} [0-9]{2}:[0-9]{2}(?::[0-9]{2})?):/u', $block, $match) === 1) {
+        return whatsapp_page_parse_br_datetime((string) $match[1]);
+    }
+
+    if (preg_match('/^Observação do CRM em ([0-9]{2}\/\d{2}\/\d{4} [0-9]{2}:[0-9]{2}(?::[0-9]{2})?):/u', $block, $match) === 1) {
+        return whatsapp_page_parse_br_datetime((string) $match[1]);
+    }
+
+    return '';
+}
+
+function whatsapp_page_outgoing_history_minute_keys(array $blocks): array
+{
+    $minuteKeys = [];
+
+    foreach ($blocks as $block) {
+        if (!whatsapp_page_is_outgoing_history_block($block)) {
+            continue;
+        }
+
+        $timestamp = whatsapp_page_block_datetime($block);
+        $timestampValue = whatsapp_page_timestamp($timestamp);
+        if ($timestampValue > 0) {
+            $minuteKeys[date('Y-m-d H:i', $timestampValue)] = true;
+        }
+    }
+
+    return $minuteKeys;
+}
+
 function whatsapp_page_message_provider(string $providerLabel, string $fallback = 'pilot_status'): string
 {
     $providerLabel = strtolower(trim($providerLabel));
@@ -406,7 +451,10 @@ function whatsapp_page_messages_for_lead(array $lead): array
     $notes = trim((string) ($lead['notes'] ?? ''));
 
     if ($notes !== '') {
-        foreach (whatsapp_page_note_blocks($notes) as $block) {
+        $noteBlocks = whatsapp_page_note_blocks($notes);
+        $outgoingHistoryMinuteKeys = whatsapp_page_outgoing_history_minute_keys($noteBlocks);
+
+        foreach ($noteBlocks as $block) {
             $block = trim($block);
 
             if ($block === '') {
@@ -552,11 +600,32 @@ function whatsapp_page_messages_for_lead(array $lead): array
             }
 
             if (preg_match('/^Observação do CRM em ([0-9]{2}\/\d{2}\/\d{4} [0-9]{2}:[0-9]{2}(?::[0-9]{2})?):\R(.+)$/su', $block, $match) === 1) {
+                $observationText = trim((string) $match[2]);
+                $observationTimestamp = whatsapp_page_parse_br_datetime((string) $match[1]);
+                $observationTimestampValue = whatsapp_page_timestamp($observationTimestamp);
+                $observationMinuteKey = $observationTimestampValue > 0 ? date('Y-m-d H:i', $observationTimestampValue) : '';
+
+                // Older phone-sent messages could be persisted with the generic
+                // CRM-note prefix. Recover them when the same minute also has a
+                // known outgoing WhatsApp record, while preserving clear internal notes.
+                if ($observationMinuteKey !== ''
+                    && isset($outgoingHistoryMinuteKeys[$observationMinuteKey])
+                    && !whatsapp_page_is_internal_observation($observationText)) {
+                    $messages[] = [
+                        'direction' => 'outgoing',
+                        'provider' => $provider,
+                        'at' => $observationTimestamp,
+                        'text' => whatsapp_page_clean_sent_message_text($observationText),
+                        'label' => 'Enviada',
+                    ];
+                    continue;
+                }
+
                 $messages[] = [
                     'direction' => 'note',
                     'provider' => $provider,
-                    'at' => whatsapp_page_parse_br_datetime((string) $match[1]),
-                    'text' => trim((string) $match[2]),
+                    'at' => $observationTimestamp,
+                    'text' => $observationText,
                     'label' => 'Observação do CRM',
                 ];
                 continue;
