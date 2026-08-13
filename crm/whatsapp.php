@@ -239,7 +239,7 @@ function whatsapp_page_is_technical_delivery_note(string $text): bool
  */
 function whatsapp_page_note_blocks(string $notes): array
 {
-    $recordStart = '(?:Observação do CRM em|Mensagem recebida pelo provedor anterior|Mensagem recebida pela Meta Cloud API|Mensagem recebida pela Pilot Status|Mídia recebida pela Pilot Status|Mídia enviada via|Mensagem enviada via|Falha ao enviar via|Pilot Status evento:)';
+    $recordStart = '(?:Observação do CRM em|Mensagem recebida pelo provedor anterior|Mensagem recebida pela Meta Cloud API|Mensagem recebida pela Pilot Status|Mídia recebida pela Pilot Status|Mídia enviada (?:via|pelo)|Mensagem enviada (?:via|pelo)|Template .+ enviado via|Falha ao enviar via|Pilot Status evento:)';
     $blocks = [];
 
     foreach (preg_split('/(?:\R){2,}/u', trim($notes)) ?: [] as $group) {
@@ -468,7 +468,7 @@ function whatsapp_page_messages_for_lead(array $lead): array
                 }
             }
 
-            if (preg_match('/^Mídia enviada via (.+) em ([0-9]{2}\/[0-9]{2}\/[0-9]{4} [0-9]{2}:[0-9]{2}(?::[0-9]{2})?):\R\[crm_media\]([^\r\n]+)(?:\R(.*))?$/su', $block, $match) === 1) {
+            if (preg_match('/^Mídia enviada (?:via|pelo) (.+) em ([0-9]{2}\/[0-9]{2}\/[0-9]{4} [0-9]{2}:[0-9]{2}(?::[0-9]{2})?):\R\[crm_media\]([^\r\n]+)(?:\R(.*))?$/su', $block, $match) === 1) {
                 $media = json_decode((string) $match[3], true);
 
                 if (is_array($media) && whatsapp_page_media_url((string) ($media['url'] ?? '')) !== '') {
@@ -486,7 +486,7 @@ function whatsapp_page_messages_for_lead(array $lead): array
                 }
             }
 
-            if (preg_match('/^(?:Mensagem|Mídia) enviada via (.+) em ([0-9]{2}\/[0-9]{2}\/[0-9]{4} [0-9]{2}:[0-9]{2}(?::[0-9]{2})?):\R(.+)$/su', $block, $match) === 1) {
+            if (preg_match('/^(?:Mensagem|Mídia) enviada (?:via|pelo) (.+) em ([0-9]{2}\/[0-9]{2}\/[0-9]{4} [0-9]{2}:[0-9]{2}(?::[0-9]{2})?):\R(.+)$/su', $block, $match) === 1) {
                 $sentProviderLabel = strtolower((string) $match[1]);
                 $sentText = whatsapp_page_clean_sent_message_text(trim((string) $match[3]));
                 $messages[] = [
@@ -510,6 +510,45 @@ function whatsapp_page_messages_for_lead(array $lead): array
                     'label' => 'Falha no envio',
                 ];
                 continue;
+            }
+
+            if (preg_match('/^Template "([^"]+)" enviado via (.+) em ([0-9]{2}\/\d{2}\/\d{4} [0-9]{2}:[0-9]{2}(?::[0-9]{2})?):\R(.+)$/su', $block, $match) === 1) {
+                $templateText = whatsapp_page_clean_sent_message_text(trim((string) $match[4]));
+                $messages[] = [
+                    'direction' => 'outgoing',
+                    'provider' => whatsapp_page_message_provider((string) $match[2]),
+                    'at' => whatsapp_page_parse_br_datetime((string) $match[3]),
+                    'text' => $templateText,
+                    'label' => 'Enviada',
+                ];
+                continue;
+            }
+
+            // A few older webhook deliveries were saved as a generic CRM
+            // observation but still contain the technical message ID. Treat
+            // them as sent WhatsApp messages so the ID never appears in the
+            // conversation and the bubble gets the outgoing styling.
+            if (preg_match('/CRM message ID:\s*[^\r\n]+/iu', $block) === 1) {
+                $legacyText = $block;
+                $legacyAt = (string) ($lead['updated_at'] ?? $lead['created_at'] ?? date('Y-m-d H:i:s'));
+
+                if (preg_match('/^Observação do CRM em ([0-9]{2}\/\d{2}\/\d{4} [0-9]{2}:[0-9]{2}(?::[0-9]{2})?):\R(.+)$/su', $block, $legacyMatch) === 1) {
+                    $legacyAt = whatsapp_page_parse_br_datetime((string) $legacyMatch[1]);
+                    $legacyText = trim((string) $legacyMatch[2]);
+                }
+
+                $legacyText = whatsapp_page_clean_sent_message_text($legacyText);
+
+                if ($legacyText !== '') {
+                    $messages[] = [
+                        'direction' => 'outgoing',
+                        'provider' => 'meta_cloud',
+                        'at' => $legacyAt,
+                        'text' => $legacyText,
+                        'label' => 'Enviada',
+                    ];
+                    continue;
+                }
             }
 
             if (preg_match('/^Observação do CRM em ([0-9]{2}\/\d{2}\/\d{4} [0-9]{2}:[0-9]{2}(?::[0-9]{2})?):\R(.+)$/su', $block, $match) === 1) {
