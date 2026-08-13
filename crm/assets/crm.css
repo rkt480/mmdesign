@@ -5917,8 +5917,9 @@ textarea:focus {
 
 @media (max-width: 760px) {
   .whatsapp-crm-page {
-    /* Android's three-button navigation bar can overlap edge-to-edge PWAs. */
-    --wa-mobile-bottom-clearance: max(64px, env(safe-area-inset-bottom, 0px));
+    /* Keep the normal mobile layout compact. Extra clearance is enabled only
+       while the keyboard is open, when Android can cover the focused field. */
+    --wa-mobile-bottom-clearance: max(10px, env(safe-area-inset-bottom, 0px));
   }
 
   html:has(body.whatsapp-crm-page) {
@@ -6156,6 +6157,10 @@ textarea:focus {
     height: 100dvh;
     max-height: 100vh;
     max-height: 100dvh;
+  }
+
+  body.whatsapp-crm-page.wa-keyboard-open {
+    --wa-mobile-bottom-clearance: max(64px, env(safe-area-inset-bottom, 0px));
   }
 
   body.whatsapp-crm-page.wa-keyboard-open .wa-thread {
