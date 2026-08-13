@@ -1555,9 +1555,12 @@ function crm_register_new_whatsapp_conversation(int $userId, string $conversatio
     }
 
     $stmt = crm_db()->prepare(
-        'INSERT IGNORE INTO whatsapp_conversation_reads
+        'INSERT INTO whatsapp_conversation_reads
             (user_id, conversation_key, read_incoming_count, updated_at)
-         VALUES (:user_id, :conversation_key, 0, :updated_at)'
+         VALUES (:user_id, :conversation_key, 0, :updated_at)
+         ON DUPLICATE KEY UPDATE
+            read_incoming_count = 0,
+            updated_at = VALUES(updated_at)'
     );
     $stmt->execute([
         'user_id' => $userId,
@@ -1566,6 +1569,21 @@ function crm_register_new_whatsapp_conversation(int $userId, string $conversatio
     ]);
 
     return true;
+}
+
+function crm_register_new_whatsapp_conversation_for_active_users(string $conversationKey): void
+{
+    $conversationKey = trim($conversationKey);
+
+    if ($conversationKey === '') {
+        return;
+    }
+
+    $users = crm_db()->query('SELECT id FROM crm_users WHERE active = 1')->fetchAll();
+
+    foreach ($users as $user) {
+        crm_register_new_whatsapp_conversation((int) ($user['id'] ?? 0), $conversationKey);
+    }
 }
 
 function crm_mark_whatsapp_conversation_read(int $userId, string $conversationKey, int $incomingCount): bool
@@ -1738,13 +1756,12 @@ function crm_create_lead(array $payload): array
     if ($assignedUserId !== null) {
         crm_record_lead_assignment((string) $lead['id'], null, $assignedUserId, $assignmentAction, $assignmentReason, null);
         crm_touch_user_assigned_at($assignedUserId);
+    }
 
-        if ($lead['whatsapp'] !== '') {
-            crm_register_new_whatsapp_conversation(
-                $assignedUserId,
-                crm_normalize_lead_whatsapp((string) $lead['whatsapp'])
-            );
-        }
+    if ($lead['whatsapp'] !== '') {
+        crm_register_new_whatsapp_conversation_for_active_users(
+            crm_normalize_lead_whatsapp((string) $lead['whatsapp'])
+        );
     }
 
     return $lead;
@@ -2638,9 +2655,23 @@ function crm_record_followup_step_history(array $queueItem, string $status, ?str
 
 function crm_delete_lead(string $id): bool
 {
+    $lead = crm_find_lead($id);
     [$accessSql, $accessParams] = crm_lead_access_sql('leads');
     $stmt = crm_db()->prepare('DELETE FROM leads WHERE id = :id' . $accessSql);
     $stmt->execute(['id' => $id] + $accessParams);
+
+    if ($stmt->rowCount() > 0 && is_array($lead)) {
+        $whatsapp = crm_normalize_lead_whatsapp((string) ($lead['whatsapp'] ?? ''));
+
+        if ($whatsapp !== '' && crm_find_lead_by_whatsapp($whatsapp) === null) {
+            $conversationKey = crm_whatsapp_number_variants($whatsapp)[0] ?? $whatsapp;
+            $deleteReads = crm_db()->prepare(
+                'DELETE FROM whatsapp_conversation_reads
+                 WHERE conversation_key = :conversation_key'
+            );
+            $deleteReads->execute(['conversation_key' => $conversationKey]);
+        }
+    }
 
     return $stmt->rowCount() > 0;
 }
