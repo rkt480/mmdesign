@@ -212,6 +212,15 @@ function whatsapp_page_is_internal_observation(string $text): bool
     return preg_match('/^(?:Follow-up cancelado automaticamente|Lead redistribuído automaticamente|Agendamento criado no Google Agenda|Pilot Status evento:|Falha ao enviar|Falha no envio|WhatsApp confirmou)/iu', trim($text)) === 1;
 }
 
+function whatsapp_page_is_customer_facing_observation(string $text): bool
+{
+    if (whatsapp_page_is_internal_observation($text)) {
+        return false;
+    }
+
+    return preg_match('/\b(?:olá|oi|bom dia|boa tarde|boa noite|temos|vou encaminhar|gostaria|poderia|informar|atendimento|informações|desconto)\b/iu', trim($text)) === 1;
+}
+
 function whatsapp_page_is_outgoing_history_block(string $block): bool
 {
     return preg_match('/^(?:Mídia|Mensagem) enviada (?:via|pelo) /iu', $block) === 1
@@ -645,6 +654,44 @@ function whatsapp_page_messages_for_lead(array $lead): array
             ];
         }
     }
+
+    // A legacy phone message can be stored as a plain CRM observation without
+    // a provider prefix or message ID. When it sits between two outgoing
+    // messages in the same conversation and has customer-facing wording,
+    // recover it from the message order as well.
+    foreach ($messages as $index => &$message) {
+        if (($message['direction'] ?? '') !== 'note'
+            || !whatsapp_page_is_customer_facing_observation((string) ($message['text'] ?? ''))) {
+            continue;
+        }
+
+        $hasOutgoingBefore = false;
+        for ($before = $index - 1; $before >= 0; $before--) {
+            if (($messages[$before]['direction'] ?? '') === 'outgoing') {
+                $hasOutgoingBefore = true;
+                break;
+            }
+        }
+
+        $hasOutgoingAfter = false;
+        for ($after = $index + 1, $messageCount = count($messages); $after < $messageCount; $after++) {
+            if (($messages[$after]['direction'] ?? '') === 'outgoing') {
+                $hasOutgoingAfter = true;
+                break;
+            }
+        }
+
+        if ($hasOutgoingBefore && $hasOutgoingAfter) {
+            if (preg_match('/^Observação do CRM(?: em [0-9]{2}\/\d{2}\/\d{4} [0-9]{2}:[0-9]{2}(?::[0-9]{2})?)?:\R(.+)$/su', (string) ($message['text'] ?? ''), $legacyObservationMatch) === 1) {
+                $message['text'] = trim((string) $legacyObservationMatch[1]);
+            }
+
+            $message['direction'] = 'outgoing';
+            $message['provider'] = $provider;
+            $message['label'] = 'Enviada';
+        }
+    }
+    unset($message);
 
     foreach ($messages as $sequence => &$message) {
         $message['_sequence'] = $sequence;
