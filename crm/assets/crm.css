@@ -5916,6 +5916,11 @@ textarea:focus {
 }
 
 @media (max-width: 760px) {
+  .whatsapp-crm-page {
+    /* Android's three-button navigation bar can overlap edge-to-edge PWAs. */
+    --wa-mobile-bottom-clearance: max(64px, env(safe-area-inset-bottom, 0px));
+  }
+
   html:has(body.whatsapp-crm-page) {
     overflow: hidden;
     overflow-x: clip;
@@ -5951,7 +5956,7 @@ textarea:focus {
     max-height: 100vh;
     max-height: 100dvh;
     gap: 10px;
-    padding: 10px 10px max(10px, env(safe-area-inset-bottom));
+    padding: 10px 10px calc(10px + var(--wa-mobile-bottom-clearance));
     overflow: hidden;
     overflow-x: clip;
   }
@@ -6125,10 +6130,12 @@ textarea:focus {
     min-width: 0;
     max-width: 100%;
     min-height: 0;
-    max-height: none;
+    max-height: min(55dvh, calc(100dvh - 68px));
     overflow: visible;
     overflow-x: clip;
-    padding: 8px 0 0;
+    padding: 8px 0 var(--wa-mobile-bottom-clearance);
+    overflow-y: auto;
+    scroll-padding-bottom: var(--wa-mobile-bottom-clearance);
   }
 
   /* While the iOS keyboard is open, keep the focused conversation as the
@@ -6144,7 +6151,7 @@ textarea:focus {
   body.whatsapp-crm-page.wa-keyboard-open .wa-web-shell {
     grid-template-rows: minmax(0, 1fr);
     gap: 0;
-    padding: 0;
+    padding: 0 0 var(--wa-mobile-bottom-clearance);
     height: 100vh;
     height: 100dvh;
     max-height: 100vh;

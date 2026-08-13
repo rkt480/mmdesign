@@ -800,10 +800,10 @@ foreach ($whatsappTemplates as $template) {
 <html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
     <meta name="csrf-token" content="<?= htmlspecialchars(crm_csrf_token()) ?>" />
     <title>WhatsApp | MM Design</title>
-    <link rel="stylesheet" href="./assets/crm.css?v=20260812-ios-template-input-v1" />
+    <link rel="stylesheet" href="./assets/crm.css?v=20260812-android-keyboard-v1" />
   </head>
   <body class="whatsapp-page whatsapp-crm-page" data-wa-initial-view="<?= is_array($activeLead) ? 'thread' : 'inbox' ?>" data-wa-mobile-view="<?= is_array($activeLead) ? 'thread' : 'inbox' ?>" data-wa-active-lead-id="<?= htmlspecialchars((string) ($activeLead['id'] ?? '')) ?>" data-wa-incoming-signature="<?= htmlspecialchars(is_array($activeLead) ? crm_whatsapp_incoming_signature($activeLead) : '') ?>" data-wa-lead-feed-version="<?= htmlspecialchars($leadFeedVersion) ?>">
     <main class="wa-web-shell" aria-label="Atendimento WhatsApp do CRM">
@@ -1384,10 +1384,50 @@ foreach ($whatsappTemplates as $template) {
       });
       document.querySelector("[data-wa-mobile-back]")?.addEventListener("click", () => setWaMobileView("inbox"));
 
+      const keepWaFocusedControlVisible = () => {
+        if (window.innerWidth > 760) {
+          return;
+        }
+
+        const control = document.activeElement;
+        if (!control?.matches("[data-wa-message], [data-wa-template-fields] input")) {
+          return;
+        }
+
+        const scrollContainer = control.closest(".wa-thread-bottom");
+        if (!scrollContainer) {
+          return;
+        }
+
+        const viewport = window.visualViewport;
+        const viewportTop = viewport?.offsetTop || 0;
+        const viewportBottom = viewportTop + (viewport?.height || window.innerHeight);
+        const containerRect = scrollContainer.getBoundingClientRect();
+        const controlRect = control.getBoundingClientRect();
+        const visibleTop = Math.max(containerRect.top, viewportTop) + 8;
+        const visibleBottom = Math.min(containerRect.bottom, viewportBottom) - 72;
+
+        if (controlRect.bottom > visibleBottom) {
+          scrollContainer.scrollTop += controlRect.bottom - visibleBottom;
+        } else if (controlRect.top < visibleTop) {
+          scrollContainer.scrollTop -= visibleTop - controlRect.top;
+        }
+      };
+
+      // Keep the focused message/template field above the Android keyboard
+      // and navigation bar after their resize animation finishes.
+      document.addEventListener("focusin", (event) => {
+        if (!event.target?.matches?.("[data-wa-message], [data-wa-template-fields] input")) {
+          return;
+        }
+
+        window.requestAnimationFrame(keepWaFocusedControlVisible);
+        window.setTimeout(keepWaFocusedControlVisible, 180);
+        window.setTimeout(keepWaFocusedControlVisible, 420);
+      });
+
       // The dynamic viewport units keep the shell aligned with the visible
-      // area on iOS. JavaScript only switches to the focused conversation;
-      // assigning an intermediate visualViewport height here made the shell
-      // finish above the keyboard after the keyboard animation.
+      // area while the Android keyboard is open.
       const syncWaVisualViewport = () => {
         const viewport = window.visualViewport;
 
@@ -1396,7 +1436,8 @@ foreach ($whatsappTemplates as $template) {
         }
 
         const messageFocused = document.activeElement?.matches("[data-wa-message]");
-        const keyboardOpen = messageFocused || window.innerHeight - viewport.height > 120;
+        const templateFieldFocused = document.activeElement?.matches("[data-wa-template-fields] input");
+        const keyboardOpen = messageFocused || templateFieldFocused || window.innerHeight - viewport.height > 120;
         document.body.classList.toggle("wa-keyboard-open", keyboardOpen);
 
         if (keyboardOpen) {
@@ -1421,13 +1462,18 @@ foreach ($whatsappTemplates as $template) {
             }
 
             document.querySelector(".wa-message-surface")?.scrollTo({ left: 0, behavior: "auto" });
+            keepWaFocusedControlVisible();
           });
         }
 
-        if (keyboardOpen && document.activeElement?.matches("[data-wa-message]")) {
+        if (keyboardOpen && document.activeElement?.matches("[data-wa-message], [data-wa-template-fields] input")) {
           window.requestAnimationFrame(() => {
-            const surface = document.querySelector(".wa-message-surface");
-            surface?.scrollTo({ top: surface.scrollHeight, behavior: "auto" });
+            if (document.activeElement?.matches("[data-wa-message]")) {
+              const surface = document.querySelector(".wa-message-surface");
+              surface?.scrollTo({ top: surface.scrollHeight, behavior: "auto" });
+            }
+
+            keepWaFocusedControlVisible();
           });
         }
       };
