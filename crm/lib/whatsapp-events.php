@@ -3,9 +3,9 @@
 declare(strict_types=1);
 
 /**
- * Returns a stable version for incoming messages only. Outgoing messages,
- * delivery receipts and CRM edits are deliberately excluded so the open
- * conversation is not refreshed for unrelated activity.
+ * Returns a stable version for conversation messages. Delivery receipts and
+ * CRM edits are deliberately excluded so the open conversation is not
+ * refreshed for unrelated activity.
  */
 function crm_whatsapp_incoming_signature(array $lead): string
 {
@@ -20,7 +20,7 @@ function crm_whatsapp_incoming_signature(array $lead): string
     $notes = trim((string) ($lead['notes'] ?? ''));
 
     if ($notes !== '') {
-        $recordStart = '(?:Mensagem recebida pelo provedor anterior|Mensagem recebida pela Meta Cloud API|Mensagem recebida pela Pilot Status|Mídia recebida pela Pilot Status)';
+        $recordStart = '(?:Mensagem recebida pelo provedor anterior|Mensagem recebida pela Meta Cloud API|Mensagem recebida pela Pilot Status|Mídia recebida pela Pilot Status|Mídia enviada via|Mensagem enviada via)';
 
         foreach (preg_split('/(?:\R){2,}/u', $notes) ?: [] as $group) {
             foreach (preg_split('/(?=^' . $recordStart . ')/mu', $group) ?: [] as $block) {

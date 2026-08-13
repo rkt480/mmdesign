@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/settings.php';
+require_once __DIR__ . '/attribution.php';
 
 function crm_db(): PDO
 {
@@ -1711,6 +1712,7 @@ function crm_find_lead_by_whatsapp(string $whatsapp): ?array
 
 function crm_create_lead(array $payload): array
 {
+    $payload = crm_apply_page_attribution($payload);
     $settings = crm_sales_distribution_settings();
     $assignedUserId = crm_validate_assignable_user_id(isset($payload['assigned_user_id']) ? (int) $payload['assigned_user_id'] : null);
     $assignmentAction = $assignedUserId !== null ? 'manual_assignment' : '';
@@ -1922,6 +1924,29 @@ function crm_append_lead_note(string $id, string $note): bool
     ] + $firstContactParams + $accessParams);
 
     return $stmt->rowCount() > 0;
+}
+
+function crm_lead_has_whatsapp_message_id(array $lead, string $messageId): bool
+{
+    $messageId = trim($messageId);
+
+    if ($messageId === '') {
+        return false;
+    }
+
+    $notes = (string) ($lead['notes'] ?? '');
+    $lineMarker = 'CRM message ID: ' . $messageId;
+
+    if (preg_match('/(?:^|\R)' . preg_quote($lineMarker, '/') . '(?:\R|$)/u', $notes) === 1) {
+        return true;
+    }
+
+    // Media messages recorded by older CRM versions use the message ID
+    // inside their structured [crm_media] payload.
+    $jsonMarker = json_encode($messageId, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+    return is_string($jsonMarker)
+        && str_contains($notes, '"crm_message_id":' . $jsonMarker);
 }
 
 function crm_find_lead_by_pilot_status_message_id(string $messageId): ?array

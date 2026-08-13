@@ -1,6 +1,45 @@
 const leadForm = document.querySelector("#leadForm");
 const formStatus = document.querySelector("#formStatus");
 
+const attributionFields = [
+  "utm_source",
+  "utm_medium",
+  "utm_campaign",
+  "utm_content",
+  "utm_term",
+];
+
+function readMarketingAttribution() {
+  const current = new URLSearchParams(window.location.search);
+  let stored = {};
+
+  try {
+    stored = JSON.parse(sessionStorage.getItem("mmdesign_attribution") || "{}");
+  } catch {
+    stored = {};
+  }
+
+  const attribution = {};
+
+  attributionFields.forEach((field) => {
+    const value = String(current.get(field) || stored[field] || "").trim();
+
+    if (value !== "") {
+      attribution[field] = value;
+    }
+  });
+
+  if (Object.keys(attribution).length > 0) {
+    try {
+      sessionStorage.setItem("mmdesign_attribution", JSON.stringify(attribution));
+    } catch {
+      // Storage may be unavailable in private browsing; the current URL still works.
+    }
+  }
+
+  return attribution;
+}
+
 leadForm?.addEventListener("submit", (event) => {
   event.preventDefault();
 
@@ -9,6 +48,7 @@ leadForm?.addEventListener("submit", (event) => {
   const whatsapp = String(data.get("whatsapp") || "").trim();
   const company = String(data.get("company") || "").trim();
   const submitButton = leadForm.querySelector("button[type='submit']");
+  const attribution = readMarketingAttribution();
 
   const payload = {
     name,
@@ -20,6 +60,7 @@ leadForm?.addEventListener("submit", (event) => {
     page: window.location.href,
     landing_path: window.location.pathname,
     referrer: document.referrer,
+    ...attribution,
   };
 
   formStatus.textContent = "Enviando para o CRM...";

@@ -70,6 +70,7 @@ if (!is_array($payload)) {
 }
 
 $incomingMessages = meta_whatsapp_extract_incoming_messages($payload);
+$coexistenceMessages = meta_whatsapp_extract_coexistence_outgoing_messages($payload);
 $statuses = meta_whatsapp_extract_statuses($payload);
 
 if ($statuses !== []) {
@@ -84,7 +85,7 @@ if ($statuses !== []) {
     }
 }
 
-if ($incomingMessages === []) {
+if ($incomingMessages === [] && $coexistenceMessages === []) {
     echo json_encode([
         'ok' => true,
         'skipped' => true,
@@ -110,6 +111,10 @@ foreach ($incomingMessages as $incoming) {
         $name = 'Contato WhatsApp ' . substr($whatsapp, -4);
     }
 
+    $attribution = is_array($incoming['attribution'] ?? null)
+        ? $incoming['attribution']
+        : crm_attribution_empty();
+
     $leadPayload = [
         'name' => $name,
         'whatsapp' => $whatsapp,
@@ -119,9 +124,12 @@ foreach ($incomingMessages as $incoming) {
         'advertises' => 'whatsapp',
         'message' => $message !== '' ? $message : 'Mensagem recebida pela Meta Cloud API.',
         'page' => 'Meta WhatsApp Cloud API',
-        'utm_source' => 'meta_whatsapp_cloud',
-        'utm_medium' => 'whatsapp',
-        'utm_campaign' => meta_whatsapp_settings()['coex_enabled'] ? 'coex_mensagem_recebida' : 'mensagem_recebida',
+        'utm_source' => (string) ($attribution['utm_source'] ?? '') ?: 'meta_whatsapp_cloud',
+        'utm_medium' => (string) ($attribution['utm_medium'] ?? '') ?: 'whatsapp',
+        'utm_campaign' => (string) ($attribution['utm_campaign'] ?? '') ?: (meta_whatsapp_settings()['coex_enabled'] ? 'coex_mensagem_recebida' : 'mensagem_recebida'),
+        'utm_content' => (string) ($attribution['utm_content'] ?? ''),
+        'utm_term' => (string) ($attribution['utm_term'] ?? ''),
+        'referrer' => (string) ($attribution['referrer'] ?? ''),
         'landing_path' => 'crm/api/meta-whatsapp-webhook.php',
     ];
 
@@ -210,6 +218,85 @@ foreach ($incomingMessages as $incoming) {
         'email' => $emailResult,
         'meta' => $metaResult,
     ];
+}
+
+foreach ($coexistenceMessages as $outgoing) {
+    $whatsapp = (string) ($outgoing['number'] ?? '');
+    $message = trim((string) ($outgoing['text'] ?? ''));
+    $messageId = trim((string) ($outgoing['id'] ?? ''));
+    $name = trim((string) ($outgoing['name'] ?? ''));
+
+    if ($whatsapp === '' || $message === '') {
+        continue;
+    }
+
+    if ($name === '') {
+        $name = 'Contato WhatsApp ' . substr($whatsapp, -4);
+    }
+
+    $leadPayload = [
+        'name' => $name,
+        'whatsapp' => $whatsapp,
+        'company' => 'Não informado',
+        'segment' => 'WhatsApp',
+        'advertises' => 'whatsapp',
+        'message' => '',
+        'page' => 'Meta WhatsApp Business App (Coexistência)',
+        'utm_source' => 'meta_whatsapp_cloud',
+        'utm_medium' => 'whatsapp',
+        'utm_campaign' => 'coex_mensagem_enviada',
+        'landing_path' => 'crm/api/meta-whatsapp-webhook.php',
+    ];
+
+    try {
+        $leadResult = crm_create_lead_once($leadPayload);
+        $lead = $leadResult['lead'];
+
+        if ($messageId !== '' && crm_lead_has_whatsapp_message_id($lead, $messageId)) {
+            $results[] = [
+                'ok' => true,
+                'lead_id' => $lead['id'],
+                'message_id' => $messageId,
+                'duplicate' => true,
+                'source' => 'whatsapp_business_app',
+            ];
+            continue;
+        }
+
+        $rawTimestamp = trim((string) ($outgoing['timestamp'] ?? ''));
+        $timestamp = ctype_digit($rawTimestamp) ? (int) $rawTimestamp : strtotime($rawTimestamp);
+        $sentAt = $timestamp !== false && $timestamp > 0
+            ? date('d/m/Y H:i:s', $timestamp)
+            : date('d/m/Y H:i:s');
+        $note = 'Mensagem enviada via WhatsApp Business App em ' . $sentAt . ":\n" . $message;
+
+        if ($messageId !== '') {
+            $note .= "\nCRM message ID: " . $messageId;
+        }
+
+        crm_append_lead_note((string) $lead['id'], $note);
+        crm_update_whatsapp_status((string) $lead['id'], 'enviado');
+
+        $results[] = [
+            'ok' => true,
+            'lead_id' => $lead['id'],
+            'created' => (bool) ($leadResult['created'] ?? false),
+            'message_id' => $messageId,
+            'source' => 'whatsapp_business_app',
+            'historical' => (bool) ($outgoing['historical'] ?? false),
+        ];
+    } catch (Throwable $error) {
+        meta_whatsapp_log('Erro ao registrar mensagem enviada pelo WhatsApp Business App.', [
+            'outgoing' => $outgoing,
+            'error' => $error->getMessage(),
+        ]);
+
+        $results[] = [
+            'ok' => false,
+            'whatsapp' => $whatsapp,
+            'error' => 'Não foi possível registrar a mensagem enviada pelo aplicativo.',
+        ];
+    }
 }
 
 http_response_code(200);

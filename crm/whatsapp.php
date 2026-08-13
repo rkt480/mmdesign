@@ -57,7 +57,7 @@ function whatsapp_page_provider_for_lead(array $lead): string
         (string) ($lead['notes'] ?? ''),
     ]));
 
-    if (str_contains($source, 'meta_whatsapp') || str_contains($source, 'meta cloud')) {
+    if (str_contains($source, 'meta_whatsapp') || str_contains($source, 'meta cloud') || str_contains($source, 'meta whatsapp business app')) {
         return 'meta_cloud';
     }
 
@@ -202,8 +202,24 @@ function whatsapp_page_clean_sent_message_text(string $text): string
     $text = preg_replace('/\R?Status inicial: aceito pela Pilot Status; aguardando confirmação de entrega\.\R?/iu', "\n", $text) ?? $text;
     $text = preg_replace('/\R?Status: aceito pela API\.\R?/iu', "\n", $text) ?? $text;
     $text = preg_replace('/\R?Pilot Status ID:\s*[^\r\n]+/iu', '', $text) ?? $text;
+    $text = preg_replace('/\R?CRM message ID:\s*[^\r\n]+/iu', '', $text) ?? $text;
 
     return trim($text);
+}
+
+function whatsapp_page_message_provider(string $providerLabel, string $fallback = 'pilot_status'): string
+{
+    $providerLabel = strtolower(trim($providerLabel));
+
+    if (str_contains($providerLabel, 'meta') || str_contains($providerLabel, 'business app') || str_contains($providerLabel, 'coexist')) {
+        return 'meta_cloud';
+    }
+
+    if (str_contains($providerLabel, 'pilot')) {
+        return 'pilot_status';
+    }
+
+    return $fallback;
 }
 
 function whatsapp_page_is_technical_delivery_note(string $text): bool
@@ -460,7 +476,7 @@ function whatsapp_page_messages_for_lead(array $lead): array
                     $caption = whatsapp_page_clean_sent_message_text(trim((string) ($match[4] ?? '')));
                     $messages[] = [
                         'direction' => 'outgoing',
-                        'provider' => str_contains($sentProviderLabel, 'meta') ? 'meta_cloud' : 'pilot_status',
+                        'provider' => whatsapp_page_message_provider($sentProviderLabel),
                         'at' => whatsapp_page_parse_br_datetime((string) $match[2]),
                         'text' => $caption !== '' ? $caption : whatsapp_page_sent_media_label($media),
                         'media' => $media,
@@ -475,7 +491,7 @@ function whatsapp_page_messages_for_lead(array $lead): array
                 $sentText = whatsapp_page_clean_sent_message_text(trim((string) $match[3]));
                 $messages[] = [
                     'direction' => 'outgoing',
-                    'provider' => str_contains($sentProviderLabel, 'meta') ? 'meta_cloud' : 'pilot_status',
+                    'provider' => whatsapp_page_message_provider($sentProviderLabel),
                     'at' => whatsapp_page_parse_br_datetime((string) $match[2]),
                     'text' => $sentText,
                     'label' => 'Enviada',
@@ -488,7 +504,7 @@ function whatsapp_page_messages_for_lead(array $lead): array
                 $displayFailureText = preg_replace('/Falha ao enviar via WhatsApp/iu', 'Falha ao enviar mensagem', $displayFailureText) ?? $displayFailureText;
                 $messages[] = [
                     'direction' => 'note',
-                    'provider' => str_contains(strtolower((string) $match[1]), 'meta') ? 'meta_cloud' : 'pilot_status',
+                    'provider' => whatsapp_page_message_provider((string) $match[1]),
                     'at' => whatsapp_page_parse_br_datetime((string) $match[2]),
                     'text' => $displayFailureText,
                     'label' => 'Falha no envio',

@@ -966,7 +966,7 @@ function pilot_status_collect_phone_candidates(mixed $value, string $key = ''): 
 
 function pilot_status_payload_is_from_me(array $payload): bool
 {
-    foreach ([['fromMe'], ['from_me'], ['direction'], ['message', 'fromMe'], ['message', 'direction'], ['data', 'fromMe'], ['data', 'direction'], ['data', 'message', 'fromMe'], ['data', 'message', 'direction']] as $path) {
+    foreach ([['fromMe'], ['from_me'], ['direction'], ['key', 'fromMe'], ['key', 'from_me'], ['message', 'fromMe'], ['message', 'direction'], ['data', 'fromMe'], ['data', 'from_me'], ['data', 'direction'], ['data', 'key', 'fromMe'], ['data', 'key', 'from_me'], ['data', 'message', 'fromMe'], ['data', 'message', 'direction']] as $path) {
         $value = pilot_status_read_path($payload, $path);
 
         if (is_bool($value)) {
@@ -1191,6 +1191,37 @@ function pilot_status_extract_profile_picture_url(array $payload): string
 
 function pilot_status_extract_single_incoming_message(array $payload): array
 {
+    $fromNumber = pilot_status_normalize_phone_candidate(pilot_status_first_payload_value($payload, [
+        ['from'],
+        ['sender', 'phone'],
+        ['sender', 'number'],
+        ['sender', 'id'],
+        ['message', 'from'],
+        ['data', 'from'],
+        ['data', 'sender', 'phone'],
+        ['data', 'sender', 'number'],
+        ['data', 'sender', 'id'],
+        ['data', 'message', 'from'],
+    ]));
+    $toNumber = pilot_status_normalize_phone_candidate(pilot_status_first_payload_value($payload, [
+        ['to'],
+        ['recipient_id'],
+        ['recipientId'],
+        ['destination'],
+        ['destinationNumber'],
+        ['destination_number'],
+        ['key', 'remoteJid'],
+        ['message', 'to'],
+        ['message', 'recipient_id'],
+        ['data', 'to'],
+        ['data', 'recipient_id'],
+        ['data', 'recipientId'],
+        ['data', 'destination'],
+        ['data', 'destinationNumber'],
+        ['data', 'message', 'to'],
+        ['data', 'message', 'recipient_id'],
+        ['data', 'key', 'remoteJid'],
+    ]));
     $phone = [
         'raw' => '',
         'number' => '',
@@ -1274,10 +1305,13 @@ function pilot_status_extract_single_incoming_message(array $payload): array
         'timestamp' => pilot_status_first_payload_value($payload, [['timestamp'], ['message', 'timestamp'], ['data', 'timestamp'], ['data', 'message', 'timestamp']]),
         'raw_number' => $phone['raw'],
         'number' => $phone['number'],
+        'from_number' => $fromNumber,
+        'to_number' => $toNumber,
         'text' => pilot_status_extract_text($payload),
         'media' => pilot_status_extract_incoming_media($payload),
         'name' => pilot_status_extract_name($payload),
         'profile_picture_url' => pilot_status_extract_profile_picture_url($payload),
+        'attribution' => crm_extract_marketing_attribution($payload),
         'from_me' => pilot_status_payload_is_from_me($payload),
         'is_group' => (bool) $phone['is_group'],
         'event' => pilot_status_first_payload_value($payload, [['event'], ['type'], ['eventType']]),
@@ -1400,6 +1434,148 @@ function pilot_status_extract_incoming_messages(array $payload): array
             continue;
         }
 
+        $messages[] = $incoming;
+    }
+
+    return $messages;
+}
+
+/**
+ * Pilot Status can forward Meta's coexistence echo webhook and can also send
+ * provider-specific payloads with a `fromMe` flag. Keep those messages out of
+ * the incoming-message path, but expose them so the CRM can record the copy
+ * sent from the WhatsApp Business App.
+ *
+ * @return list<array<string, mixed>>
+ */
+function pilot_status_extract_outgoing_messages(array $payload): array
+{
+    $items = [];
+    $rootConnectedNumber = pilot_status_normalize_phone_candidate(
+        pilot_status_first_payload_value($payload, [
+            ['metadata', 'display_phone_number'],
+            ['display_phone_number'],
+            ['connected_number'],
+            ['business_number'],
+        ])
+    );
+
+    foreach (($payload['entry'] ?? []) as $entry) {
+        if (!is_array($entry)) {
+            continue;
+        }
+
+        foreach (($entry['changes'] ?? []) as $change) {
+            if (!is_array($change)) {
+                continue;
+            }
+
+            $field = strtolower(trim((string) ($change['field'] ?? '')));
+            $value = $change['value'] ?? [];
+
+            if (!is_array($value) || !in_array($field, ['smb_message_echoes', 'history', 'messages'], true)) {
+                continue;
+            }
+
+            $connectedNumber = pilot_status_normalize_phone_candidate(
+                pilot_status_first_payload_value($value, [
+                    ['metadata', 'display_phone_number'],
+                    ['display_phone_number'],
+                    ['connected_number'],
+                    ['business_number'],
+                ])
+            ) ?: $rootConnectedNumber;
+
+            if ($field === 'smb_message_echoes' || $field === 'messages') {
+                $echoes = is_array($value['message_echoes'] ?? null)
+                    ? $value['message_echoes']
+                    : (is_array($value['messages'] ?? null) ? $value['messages'] : []);
+
+                foreach ($echoes as $echo) {
+                    if (is_array($echo)) {
+                        $echo['_connected_number'] = $connectedNumber;
+                        $echo['_coexistence_echo'] = true;
+                        $items[] = $echo;
+                    }
+                }
+            } else {
+                foreach (($value['history'] ?? []) as $historyChunk) {
+                    if (!is_array($historyChunk)) {
+                        continue;
+                    }
+
+                    foreach (($historyChunk['threads'] ?? []) as $thread) {
+                        if (!is_array($thread)) {
+                            continue;
+                        }
+
+                        $threadNumber = pilot_status_normalize_phone_candidate((string) ($thread['id'] ?? ''));
+
+                        foreach (($thread['messages'] ?? []) as $historyMessage) {
+                            if (is_array($historyMessage)) {
+                                $historyMessage['_connected_number'] = $connectedNumber;
+                                $historyMessage['_thread_number'] = $threadNumber;
+                                $historyMessage['_historical'] = true;
+                                $items[] = $historyMessage;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Some Pilot Status payloads are already a single provider event rather
+    // than Meta's native envelope. Only consider the payload here when it
+    // explicitly identifies an app-originated message.
+    if ($items === [] && pilot_status_payload_is_from_me($payload)) {
+        $payload['_connected_number'] = $rootConnectedNumber;
+        $items[] = $payload;
+    }
+
+    $messages = [];
+
+    foreach ($items as $item) {
+        $incoming = pilot_status_extract_single_incoming_message($item);
+        $connectedNumber = pilot_status_normalize_phone_candidate((string) ($item['_connected_number'] ?? '')) ?: $rootConnectedNumber;
+        $fromNumber = pilot_status_normalize_phone_candidate((string) ($incoming['from_number'] ?? ''));
+        $toNumber = pilot_status_normalize_phone_candidate((string) ($incoming['to_number'] ?? ''));
+        $isOutgoing = ($incoming['from_me'] ?? false) === true
+            || ($item['_coexistence_echo'] ?? false) === true
+            || ($connectedNumber !== '' && $fromNumber === $connectedNumber && $toNumber !== '');
+
+        if (!$isOutgoing || ($incoming['is_group'] ?? false) === true) {
+            continue;
+        }
+
+        $number = $toNumber !== '' ? $toNumber : pilot_status_normalize_phone_candidate((string) ($item['_thread_number'] ?? ''));
+
+        if ($number === '' || $number === $connectedNumber) {
+            continue;
+        }
+
+        $type = strtolower(trim((string) ($item['type'] ?? '')));
+        $text = trim((string) ($incoming['text'] ?? ''));
+
+        if ($text === '') {
+            $text = match ($type) {
+                'image' => 'Imagem enviada pelo WhatsApp Business App.',
+                'audio' => 'Áudio enviado pelo WhatsApp Business App.',
+                'video' => 'Vídeo enviado pelo WhatsApp Business App.',
+                'document' => 'Documento enviado pelo WhatsApp Business App.',
+                'sticker' => 'Sticker enviado pelo WhatsApp Business App.',
+                default => '',
+            };
+        }
+
+        if ($text === '') {
+            continue;
+        }
+
+        $incoming['number'] = $number;
+        $incoming['from_me'] = true;
+        $incoming['source'] = 'whatsapp_business_app';
+        $incoming['historical'] = (bool) ($item['_historical'] ?? false);
         $messages[] = $incoming;
     }
 

@@ -491,6 +491,155 @@ function meta_whatsapp_validate_webhook_signature(string $body): bool
     return hash_equals($expected, $received);
 }
 
+function meta_whatsapp_message_text(array $message, bool $appOriginated = false): string
+{
+    $type = strtolower(trim((string) ($message['type'] ?? '')));
+    $text = '';
+
+    if ($type === 'text') {
+        $text = trim((string) ($message['text']['body'] ?? ''));
+    } elseif (isset($message['button']['text'])) {
+        $text = trim((string) $message['button']['text']);
+    } elseif (isset($message['interactive']['button_reply']['title'])) {
+        $text = trim((string) $message['interactive']['button_reply']['title']);
+    } elseif (isset($message['interactive']['list_reply']['title'])) {
+        $text = trim((string) $message['interactive']['list_reply']['title']);
+    } elseif (isset($message[$type]['caption'])) {
+        $text = trim((string) $message[$type]['caption']);
+    }
+
+    if ($text !== '') {
+        return $text;
+    }
+
+    if (!$appOriginated) {
+        return '';
+    }
+
+    return match ($type) {
+        'image' => 'Imagem enviada pelo WhatsApp Business App.',
+        'audio' => 'Áudio enviado pelo WhatsApp Business App.',
+        'video' => 'Vídeo enviado pelo WhatsApp Business App.',
+        'document' => 'Documento enviado pelo WhatsApp Business App.',
+        'sticker' => 'Sticker enviado pelo WhatsApp Business App.',
+        default => '',
+    };
+}
+
+/**
+ * Extracts the messages mirrored by WhatsApp Coexistence when the business
+ * sends them from the WhatsApp Business App. These arrive in a different
+ * webhook field from customer messages, with `from` set to the business
+ * number and `to` set to the customer number.
+ *
+ * @return list<array<string, mixed>>
+ */
+function meta_whatsapp_extract_coexistence_outgoing_messages(array $payload): array
+{
+    $messages = [];
+
+    foreach (($payload['entry'] ?? []) as $entry) {
+        if (!is_array($entry)) {
+            continue;
+        }
+
+        foreach (($entry['changes'] ?? []) as $change) {
+            if (!is_array($change)) {
+                continue;
+            }
+
+            $field = strtolower(trim((string) ($change['field'] ?? '')));
+            $value = $change['value'] ?? [];
+
+            if (!is_array($value) || !in_array($field, ['smb_message_echoes', 'history', 'messages'], true)) {
+                continue;
+            }
+
+            $metadata = is_array($value['metadata'] ?? null) ? $value['metadata'] : [];
+            $businessNumber = crm_normalize_whatsapp_number((string) ($metadata['display_phone_number'] ?? ''));
+
+            if ($field === 'history' && $businessNumber === '') {
+                continue;
+            }
+
+            $contacts = [];
+
+            foreach (($value['contacts'] ?? []) as $contact) {
+                if (!is_array($contact)) {
+                    continue;
+                }
+
+                $contactNumber = crm_normalize_whatsapp_number((string) ($contact['wa_id'] ?? $contact['phone_number'] ?? ''));
+
+                if ($contactNumber !== '') {
+                    $contacts[$contactNumber] = trim((string) ($contact['profile']['name'] ?? $contact['name'] ?? ''));
+                }
+            }
+
+            $candidates = [];
+
+            if ($field === 'smb_message_echoes' || $field === 'messages') {
+                $candidates = is_array($value['message_echoes'] ?? null)
+                    ? $value['message_echoes']
+                    : (is_array($value['messages'] ?? null) ? $value['messages'] : []);
+            } else {
+                foreach (($value['history'] ?? []) as $historyChunk) {
+                    if (!is_array($historyChunk)) {
+                        continue;
+                    }
+
+                    foreach (($historyChunk['threads'] ?? []) as $thread) {
+                        if (!is_array($thread)) {
+                            continue;
+                        }
+
+                        $threadNumber = crm_normalize_whatsapp_number((string) ($thread['id'] ?? ''));
+
+                        foreach (($thread['messages'] ?? []) as $historyMessage) {
+                            if (is_array($historyMessage)) {
+                                $historyMessage['_thread_number'] = $threadNumber;
+                                $candidates[] = $historyMessage;
+                            }
+                        }
+                    }
+                }
+            }
+
+            foreach ($candidates as $message) {
+                if (!is_array($message)) {
+                    continue;
+                }
+
+                $from = crm_normalize_whatsapp_number((string) ($message['from'] ?? ''));
+                $number = crm_normalize_whatsapp_number((string) ($message['to'] ?? $message['recipient_id'] ?? $message['_thread_number'] ?? ''));
+
+                if ($number === '' || $number === $businessNumber || ($businessNumber !== '' && $from !== '' && $from !== $businessNumber)) {
+                    continue;
+                }
+
+                $text = meta_whatsapp_message_text($message, true);
+
+                if ($text === '') {
+                    continue;
+                }
+
+                $messages[] = [
+                    'id' => trim((string) ($message['id'] ?? '')),
+                    'number' => $number,
+                    'name' => (string) ($contacts[$number] ?? ''),
+                    'text' => $text,
+                    'type' => strtolower(trim((string) ($message['type'] ?? ''))),
+                    'timestamp' => trim((string) ($message['timestamp'] ?? '')),
+                    'source' => 'whatsapp_business_app',
+                    'historical' => $field === 'history',
+                ];
+            }
+        }
+    }
+
+    return $messages;
+}
+
 function meta_whatsapp_extract_incoming_messages(array $payload): array
 {
     $messages = [];
@@ -545,17 +694,7 @@ function meta_whatsapp_extract_incoming_messages(array $payload): array
                     continue;
                 }
 
-                $text = '';
-
-                if (($message['type'] ?? '') === 'text') {
-                    $text = trim((string) ($message['text']['body'] ?? ''));
-                } elseif (isset($message['button']['text'])) {
-                    $text = trim((string) $message['button']['text']);
-                } elseif (isset($message['interactive']['button_reply']['title'])) {
-                    $text = trim((string) $message['interactive']['button_reply']['title']);
-                } elseif (isset($message['interactive']['list_reply']['title'])) {
-                    $text = trim((string) $message['interactive']['list_reply']['title']);
-                }
+                $text = meta_whatsapp_message_text($message);
 
                 $messages[] = [
                     'id' => (string) ($message['id'] ?? ''),
@@ -565,6 +704,7 @@ function meta_whatsapp_extract_incoming_messages(array $payload): array
                     'text' => $text,
                     'type' => (string) ($message['type'] ?? ''),
                     'timestamp' => (string) ($message['timestamp'] ?? ''),
+                    'attribution' => crm_extract_marketing_attribution($message),
                 ];
             }
         }

@@ -314,6 +314,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                       <input type="checkbox" name="meta_whatsapp_coex_enabled" value="1" <?= $metaWhatsAppSettings['coex_enabled'] ? 'checked' : '' ?> />
                       <span>COEX ativo neste número</span>
                     </label>
+                    <small class="settings-help">Com COEX, assine também o campo <code>smb_message_echoes</code> no webhook da Meta para que as mensagens enviadas pelo aplicativo do celular sejam copiadas para o histórico do CRM.</small>
                     <?php if ($metaWhatsAppWebhookUrl !== ''): ?>
                       <label>
                         URL do webhook oficial
