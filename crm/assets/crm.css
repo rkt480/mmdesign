@@ -422,6 +422,10 @@ button {
   align-items: end;
 }
 
+.dashboard-page .app-header {
+  width: min(1180px, 100%);
+}
+
 .dashboard-filter-form label {
   min-width: 210px;
   color: #334155;
