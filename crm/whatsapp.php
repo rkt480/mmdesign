@@ -25,7 +25,12 @@ if (session_status() === PHP_SESSION_ACTIVE) {
     session_write_close();
 }
 
-$leads = crm_read_leads();
+$requestedLeadId = trim((string) ($_GET['lead'] ?? ''));
+$isWaConversationFragment = ($_GET['_wa_fragment'] ?? '') === 'conversation';
+$fragmentLead = $isWaConversationFragment && $requestedLeadId !== ''
+    ? crm_find_lead($requestedLeadId)
+    : null;
+$leads = is_array($fragmentLead) ? [$fragmentLead] : crm_read_lead_summaries();
 $provider = crm_whatsapp_provider();
 $providerLabel = crm_whatsapp_provider_label($provider);
 $metaConfigured = crm_meta_whatsapp_is_configured();
@@ -49,7 +54,6 @@ if (!in_array($providerFilter, ['all', 'meta_cloud', 'pilot_status'], true)) {
     $providerFilter = 'all';
 }
 
-$requestedLeadId = trim((string) ($_GET['lead'] ?? ''));
 $https = !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off';
 $host = (string) ($_SERVER['HTTP_HOST'] ?? '');
 $scriptDir = rtrim(str_replace('\\', '/', dirname((string) ($_SERVER['SCRIPT_NAME'] ?? '/crm/whatsapp.php'))), '/');
@@ -793,14 +797,14 @@ $providerCounts = [
     'meta_cloud' => 0,
     'pilot_status' => 0,
 ];
-$requestedLead = null;
+$requestedLead = is_array($fragmentLead) ? $fragmentLead : null;
 $requestedConversationKey = '';
 
 if ($requestedLeadId !== '') {
     foreach ($leads as $lead) {
         if ((string) ($lead['id'] ?? '') === $requestedLeadId) {
-            $requestedLead = $lead;
-            $requestedConversationKey = crm_normalize_lead_whatsapp((string) ($lead['whatsapp'] ?? ''));
+            $requestedLead = is_array($requestedLead) ? $requestedLead : (crm_find_lead($requestedLeadId) ?? $lead);
+            $requestedConversationKey = crm_normalize_lead_whatsapp((string) ($requestedLead['whatsapp'] ?? ''));
             break;
         }
     }
@@ -977,6 +981,9 @@ foreach ($whatsappTemplates as $template) {
         'body' => (string) ($template['body_text'] ?? ''),
         'variables' => crm_whatsapp_template_variable_keys((string) ($template['body_text'] ?? '')),
     ];
+}
+if ($isWaConversationFragment) {
+    ob_start();
 }
 ?>
 <!doctype html>
@@ -1517,7 +1524,8 @@ foreach ($whatsappTemplates as $template) {
         Array.from(avatarsToFetch).slice(0, 12).forEach(requestAvatarImage);
       }
 
-      const templatePicker = document.querySelector("[data-wa-template-picker]");
+      const bindWaTemplatePicker = (root = document) => {
+      const templatePicker = root.querySelector("[data-wa-template-picker]");
       if (templatePicker) {
         const templateSelect = templatePicker.querySelector("[data-wa-template-select]");
         const templateFields = templatePicker.querySelector("[data-wa-template-fields]");
@@ -1572,6 +1580,9 @@ foreach ($whatsappTemplates as $template) {
           templateSend.textContent = "Enviando…";
         });
       }
+      };
+
+      bindWaTemplatePicker();
 
       document.querySelectorAll(".wa-message-surface").forEach((surface) => {
         surface.scrollTop = surface.scrollHeight;
@@ -1799,11 +1810,18 @@ foreach ($whatsappTemplates as $template) {
         const mediaInput = composer?.querySelector("[data-wa-media]");
         const recordingPreview = composer?.querySelector("[data-wa-recording-preview]");
         const isRecording = recordingPreview && !recordingPreview.hidden;
+        const templateSelect = document.querySelector("[data-wa-template-select]");
 
-        return Boolean(isRecording || messageInput?.value.trim() || mediaInput?.files?.length);
+        return Boolean(
+          isRecording
+          || messageInput?.value.trim()
+          || mediaInput?.files?.length
+          || templateSelect?.value
+        );
       };
 
       let conversationRefreshInFlight = false;
+      let waConversationViewGeneration = 0;
       let pendingConversationRefresh = false;
       let pendingIncomingSignature = "";
       let pendingRefreshTimer = null;
@@ -1813,6 +1831,7 @@ foreach ($whatsappTemplates as $template) {
           return;
         }
 
+        const viewGeneration = waConversationViewGeneration;
         conversationRefreshInFlight = true;
 
         try {
@@ -1829,6 +1848,11 @@ foreach ($whatsappTemplates as $template) {
           }
 
           const html = await response.text();
+
+          if (viewGeneration !== waConversationViewGeneration) {
+            return;
+          }
+
           const refreshedDocument = new DOMParser().parseFromString(html, "text/html");
           const currentSurface = document.querySelector(".wa-message-surface");
           const refreshedSurface = refreshedDocument.querySelector(".wa-message-surface");
@@ -1939,7 +1963,10 @@ foreach ($whatsappTemplates as $template) {
         }).catch(() => {});
       }
 
+      let waIncomingListenerGeneration = 0;
+
       async function startIncomingMessageListener() {
+        const listenerGeneration = ++waIncomingListenerGeneration;
         const leadId = document.body.dataset.waActiveLeadId || "";
         let signature = document.body.dataset.waIncomingSignature || "";
 
@@ -1947,7 +1974,7 @@ foreach ($whatsappTemplates as $template) {
           return;
         }
 
-        while (!conversationRefreshInFlight) {
+        while (!conversationRefreshInFlight && listenerGeneration === waIncomingListenerGeneration) {
           try {
             const endpoint = new URL("api/whatsapp-realtime.php", window.location.href);
             endpoint.searchParams.set("lead", leadId);
@@ -1965,14 +1992,16 @@ foreach ($whatsappTemplates as $template) {
 
             signature = data.signature || signature;
 
-            if (data.changed) {
+            if (data.changed && listenerGeneration === waIncomingListenerGeneration) {
               requestConversationRefresh(signature);
               return;
             }
           } catch (error) {
             // A conexão será refeita após uma falha momentânea, sem alterar a
             // posição ou o conteúdo que o vendedor está usando.
-            window.setTimeout(startIncomingMessageListener, 2000);
+            if (listenerGeneration === waIncomingListenerGeneration) {
+              window.setTimeout(startIncomingMessageListener, 2000);
+            }
             return;
           }
         }
@@ -1980,7 +2009,8 @@ foreach ($whatsappTemplates as $template) {
 
       startIncomingMessageListener();
 
-      document.querySelectorAll(".wa-composer").forEach((form) => {
+      const bindWaComposer = (root = document) => {
+      root.querySelectorAll(".wa-composer").forEach((form) => {
         const attachButton = form.querySelector("[data-wa-attach]");
         const emojiButton = form.querySelector("[data-wa-emoji]");
         const emojiMenu = form.querySelector("[data-wa-emoji-menu]");
@@ -2560,6 +2590,9 @@ foreach ($whatsappTemplates as $template) {
           }
         });
       });
+      };
+
+      bindWaComposer();
 
       function parseCurrencyDigits(value) {
         const normalized = String(value || "").replace(/[^\d,]/g, "");
@@ -2717,7 +2750,270 @@ foreach ($whatsappTemplates as $template) {
 
         renderWaTags();
       }
+
+      // Conversation changes stay inside the existing shell. The server
+      // returns only the selected thread and lead panel, so the inbox list,
+      // search state and already-loaded assets remain untouched.
+      let waSoftSwitchRequestId = 0;
+
+      const waConversationStructure = (root) => {
+        const composer = root?.querySelector("[data-wa-composer]");
+
+        return [
+          Boolean(root?.querySelector("[data-wa-template-picker]")),
+          Boolean(composer),
+          composer?.hasAttribute("hidden") ? "hidden" : "visible",
+        ].join("|");
+      };
+
+      const markActiveConversationLink = (leadId) => {
+        document.querySelectorAll("[data-wa-chat]").forEach((chat) => {
+          const isActive = chat.dataset.waLeadId === leadId;
+          chat.classList.toggle("active", isActive);
+
+          if (isActive) {
+            chat.classList.remove("has-unread");
+            chat.querySelector(".wa-unread-badge")?.remove();
+          }
+        });
+      };
+
+      const syncConversationFormLead = (leadId) => {
+        document.querySelectorAll(".wa-thread [name='lead_id']").forEach((input) => {
+          input.value = leadId;
+        });
+      };
+
+      const softSwitchConversation = async (link, pushHistory = true) => {
+        const currentThread = document.querySelector(".wa-thread");
+        const currentPanel = document.querySelector(".wa-lead-panel");
+        const currentSurface = currentThread?.querySelector(".wa-message-surface");
+        const currentBottom = currentThread?.querySelector(".wa-thread-bottom");
+
+        if (!currentThread || !currentPanel) {
+          return false;
+        }
+
+        const requestId = ++waSoftSwitchRequestId;
+        waConversationViewGeneration += 1;
+        waIncomingListenerGeneration += 1;
+        const endpoint = new URL(link.href, window.location.href);
+        endpoint.searchParams.set("_wa_fragment", "conversation");
+        document.body.setAttribute("aria-busy", "true");
+
+        try {
+          const response = await fetch(endpoint, {
+            headers: {
+              Accept: "application/json",
+              "X-Requested-With": "XMLHttpRequest",
+            },
+            cache: "no-store",
+          });
+          const payload = await response.json().catch(() => ({}));
+
+          if (requestId !== waSoftSwitchRequestId) {
+            return true;
+          }
+
+          if (!response.ok || payload.ok !== true || !payload.thread || !payload.lead_panel) {
+            return false;
+          }
+
+          const fragmentDocument = new DOMParser().parseFromString(
+            `<main>${payload.thread}${payload.lead_panel}</main>`,
+            "text/html"
+          );
+          const nextThread = fragmentDocument.querySelector(".wa-thread");
+          const nextPanel = fragmentDocument.querySelector(".wa-lead-panel");
+          const nextSurface = nextThread?.querySelector(".wa-message-surface");
+          const nextBottom = nextThread?.querySelector(".wa-thread-bottom");
+
+          if (!nextThread || !nextPanel || !nextSurface || !nextBottom) {
+            return false;
+          }
+
+          const nextLeadId = String(payload.active_lead_id || link.dataset.waLeadId || "");
+
+          if (!currentSurface) {
+            currentThread.replaceWith(nextThread);
+            currentPanel.replaceWith(nextPanel);
+            bindWaTemplatePicker(nextThread);
+            bindWaComposer(nextThread);
+            syncConversationFormLead(nextLeadId);
+            document.body.dataset.waActiveLeadId = nextLeadId;
+            document.body.dataset.waIncomingSignature = payload.incoming_signature || "";
+            markActiveConversationLink(nextLeadId);
+
+            if (pushHistory) {
+              window.history.pushState({}, "", link.href);
+            }
+
+            nextThread.querySelector("[data-wa-mobile-back]")?.addEventListener(
+              "click",
+              () => setWaMobileView("inbox"),
+              { once: true }
+            );
+            nextThread.querySelectorAll("[data-wa-avatar-fetch]").forEach(requestAvatarImage);
+            nextPanel.querySelectorAll("[data-wa-avatar-fetch]").forEach(requestAvatarImage);
+            setWaMobileView("thread");
+            nextSurface.scrollTop = nextSurface.scrollHeight;
+            startIncomingMessageListener();
+            return true;
+          }
+
+          if (!currentBottom || waConversationStructure(currentThread) !== waConversationStructure(nextThread)) {
+            return false;
+          }
+
+          const wasAtBottom = currentSurface.scrollHeight - currentSurface.scrollTop - currentSurface.clientHeight < 100;
+          const previousScrollTop = currentSurface.scrollTop;
+          const currentHeader = currentThread.querySelector(".wa-thread-header");
+          const nextHeader = nextThread.querySelector(".wa-thread-header");
+          const currentBanner = currentThread.querySelector(".wa-window-banner");
+          const nextBanner = nextThread.querySelector(".wa-window-banner");
+
+          currentHeader?.replaceWith(nextHeader);
+          currentSurface.replaceWith(nextSurface);
+
+          if (currentBanner && nextBanner) {
+            currentBanner.replaceWith(nextBanner);
+          }
+
+          currentPanel.replaceWith(nextPanel);
+          syncConversationFormLead(nextLeadId);
+          document.body.dataset.waActiveLeadId = nextLeadId;
+          document.body.dataset.waIncomingSignature = payload.incoming_signature || "";
+          markActiveConversationLink(nextLeadId);
+
+          if (pushHistory) {
+            window.history.pushState({}, "", link.href);
+          }
+
+          currentThread.querySelector("[data-wa-mobile-back]")?.addEventListener(
+            "click",
+            () => setWaMobileView("inbox"),
+            { once: true }
+          );
+          currentThread.querySelectorAll("[data-wa-avatar-fetch]").forEach(requestAvatarImage);
+          nextPanel.querySelectorAll("[data-wa-avatar-fetch]").forEach(requestAvatarImage);
+          setWaMobileView("thread");
+
+          const restoreConversationScroll = () => {
+            nextSurface.scrollTop = wasAtBottom
+              ? nextSurface.scrollHeight
+              : Math.min(previousScrollTop, nextSurface.scrollHeight);
+          };
+
+          window.requestAnimationFrame(() => {
+            restoreConversationScroll();
+            window.requestAnimationFrame(restoreConversationScroll);
+          });
+
+          startIncomingMessageListener();
+          return true;
+        } catch (error) {
+          return false;
+        } finally {
+          if (requestId === waSoftSwitchRequestId) {
+            document.body.removeAttribute("aria-busy");
+          }
+        }
+      };
+
+      document.addEventListener("click", (event) => {
+        const link = event.target.closest?.("a[data-wa-chat]");
+
+        if (!link || event.defaultPrevented || event.button !== 0
+          || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey
+          || link.dataset.waLeadId === document.body.dataset.waActiveLeadId) {
+          return;
+        }
+
+        // Never replace a composer while an attendant has unsaved text,
+        // media or an active recording. The regular page navigation remains
+        // the safe fallback in that case.
+        if (hasUnsavedConversationContent() || document.activeElement?.closest(".wa-lead-panel")) {
+          return;
+        }
+
+        event.preventDefault();
+        softSwitchConversation(link).then((switched) => {
+          if (!switched) {
+            window.location.assign(link.href);
+          }
+        });
+      }, true);
+
+      window.addEventListener("popstate", () => {
+        const destination = new URL(window.location.href);
+        const leadId = destination.searchParams.get("lead") || "";
+        const link = [...document.querySelectorAll("[data-wa-chat]")]
+          .find((candidate) => candidate.dataset.waLeadId === leadId);
+
+        if (!link) {
+          window.location.reload();
+          return;
+        }
+
+        softSwitchConversation(link, false).then((switched) => {
+          if (!switched) {
+            window.location.reload();
+          }
+        });
+      });
     </script>
     <script src="./assets/crm-navigation.js?v=20260812-fast-navigation-v3"></script>
   </body>
 </html>
+<?php
+if ($isWaConversationFragment) {
+    $fragmentHtml = ob_get_clean();
+    $threadMarkup = '';
+    $leadPanelMarkup = '';
+    $previousLibxmlState = libxml_use_internal_errors(true);
+
+    if (class_exists('DOMDocument')) {
+        $fragmentDocument = new DOMDocument('1.0', 'UTF-8');
+        $fragmentDocument->loadHTML($fragmentHtml, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+
+        foreach ($fragmentDocument->getElementsByTagName('*') as $node) {
+            $classes = ' ' . preg_replace('/\s+/', ' ', trim($node->getAttribute('class'))) . ' ';
+
+            if ($threadMarkup === '' && str_contains($classes, ' wa-thread ')) {
+                $threadMarkup = $fragmentDocument->saveHTML($node);
+            }
+
+            if ($leadPanelMarkup === '' && str_contains($classes, ' wa-lead-panel ')) {
+                $leadPanelMarkup = $fragmentDocument->saveHTML($node);
+            }
+
+            if ($threadMarkup !== '' && $leadPanelMarkup !== '') {
+                break;
+            }
+        }
+    }
+
+    libxml_clear_errors();
+    libxml_use_internal_errors($previousLibxmlState);
+
+    if ($threadMarkup === '' || $leadPanelMarkup === '') {
+        http_response_code(500);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode([
+            'ok' => false,
+            'error' => 'Não foi possível preparar a troca rápida da conversa.',
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        exit;
+    }
+
+    header('Content-Type: application/json; charset=utf-8');
+    header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+    echo json_encode([
+        'ok' => true,
+        'thread' => $threadMarkup,
+        'lead_panel' => $leadPanelMarkup,
+        'active_lead_id' => (string) ($activeLead['id'] ?? ''),
+        'incoming_signature' => is_array($activeLead) ? crm_whatsapp_incoming_signature($activeLead) : '',
+    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    exit;
+}

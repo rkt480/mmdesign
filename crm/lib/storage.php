@@ -1574,9 +1574,11 @@ function crm_read_lead_summaries(): array
 {
     [$accessSql, $accessParams] = crm_lead_access_sql('leads');
     $stmt = crm_db()->prepare(
-        'SELECT leads.id, leads.name, leads.whatsapp, leads.cpf, leads.message,
-                leads.notes, leads.tags, leads.status, leads.kanban_position,
-                leads.assigned_user_id, leads.created_at,
+        'SELECT leads.id, leads.name, leads.whatsapp, leads.profile_picture_url,
+                leads.cpf, leads.message, leads.notes, leads.tags, leads.status,
+                leads.kanban_position, leads.assigned_user_id, leads.created_at,
+                leads.updated_at, leads.last_activity_at, leads.page,
+                leads.utm_source, leads.landing_path,
                 crm_users.name AS assigned_user_name, crm_users.username AS assigned_username
         FROM leads
         LEFT JOIN crm_users ON crm_users.id = leads.assigned_user_id
