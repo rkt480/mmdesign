@@ -154,7 +154,7 @@ arsort($lostReasons);
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Dashboard | CRM</title>
-    <link rel="stylesheet" href="./assets/crm.css?v=20260813-sidebar-order-v1" />
+    <link rel="stylesheet" href="./assets/crm.css?v=20260816-dashboard-filter-v2" />
   </head>
   <body class="settings-page dashboard-page">
     <div class="app-shell">
