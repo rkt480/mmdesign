@@ -2756,16 +2756,6 @@ if ($isWaConversationFragment) {
       // search state and already-loaded assets remain untouched.
       let waSoftSwitchRequestId = 0;
 
-      const waConversationStructure = (root) => {
-        const composer = root?.querySelector("[data-wa-composer]");
-
-        return [
-          Boolean(root?.querySelector("[data-wa-template-picker]")),
-          Boolean(composer),
-          composer?.hasAttribute("hidden") ? "hidden" : "visible",
-        ].join("|");
-      };
-
       const markActiveConversationLink = (leadId) => {
         document.querySelectorAll("[data-wa-chat]").forEach((chat) => {
           const isActive = chat.dataset.waLeadId === leadId;
@@ -2788,7 +2778,6 @@ if ($isWaConversationFragment) {
         const currentThread = document.querySelector(".wa-thread");
         const currentPanel = document.querySelector(".wa-lead-panel");
         const currentSurface = currentThread?.querySelector(".wa-message-surface");
-        const currentBottom = currentThread?.querySelector(".wa-thread-bottom");
 
         if (!currentThread || !currentPanel) {
           return false;
@@ -2834,52 +2823,17 @@ if ($isWaConversationFragment) {
 
           const nextLeadId = String(payload.active_lead_id || link.dataset.waLeadId || "");
 
-          if (!currentSurface) {
-            currentThread.replaceWith(nextThread);
-            currentPanel.replaceWith(nextPanel);
-            bindWaTemplatePicker(nextThread);
-            bindWaComposer(nextThread);
-            syncConversationFormLead(nextLeadId);
-            document.body.dataset.waActiveLeadId = nextLeadId;
-            document.body.dataset.waIncomingSignature = payload.incoming_signature || "";
-            markActiveConversationLink(nextLeadId);
+          const wasAtBottom = !currentSurface
+            || currentSurface.scrollHeight - currentSurface.scrollTop - currentSurface.clientHeight < 100;
+          const previousScrollTop = currentSurface?.scrollTop || 0;
 
-            if (pushHistory) {
-              window.history.pushState({}, "", link.href);
-            }
-
-            nextThread.querySelector("[data-wa-mobile-back]")?.addEventListener(
-              "click",
-              () => setWaMobileView("inbox"),
-              { once: true }
-            );
-            nextThread.querySelectorAll("[data-wa-avatar-fetch]").forEach(requestAvatarImage);
-            nextPanel.querySelectorAll("[data-wa-avatar-fetch]").forEach(requestAvatarImage);
-            setWaMobileView("thread");
-            nextSurface.scrollTop = nextSurface.scrollHeight;
-            startIncomingMessageListener();
-            return true;
-          }
-
-          if (!currentBottom || waConversationStructure(currentThread) !== waConversationStructure(nextThread)) {
-            return false;
-          }
-
-          const wasAtBottom = currentSurface.scrollHeight - currentSurface.scrollTop - currentSurface.clientHeight < 100;
-          const previousScrollTop = currentSurface.scrollTop;
-          const currentHeader = currentThread.querySelector(".wa-thread-header");
-          const nextHeader = nextThread.querySelector(".wa-thread-header");
-          const currentBanner = currentThread.querySelector(".wa-window-banner");
-          const nextBanner = nextThread.querySelector(".wa-window-banner");
-
-          currentHeader?.replaceWith(nextHeader);
-          currentSurface.replaceWith(nextSurface);
-
-          if (currentBanner && nextBanner) {
-            currentBanner.replaceWith(nextBanner);
-          }
-
+          // Replace the complete conversation surface so changes between an
+          // open composer and a template-only composer never fall back to a
+          // full document navigation.
+          currentThread.replaceWith(nextThread);
           currentPanel.replaceWith(nextPanel);
+          bindWaTemplatePicker(nextThread);
+          bindWaComposer(nextThread);
           syncConversationFormLead(nextLeadId);
           document.body.dataset.waActiveLeadId = nextLeadId;
           document.body.dataset.waIncomingSignature = payload.incoming_signature || "";
@@ -2889,12 +2843,12 @@ if ($isWaConversationFragment) {
             window.history.pushState({}, "", link.href);
           }
 
-          currentThread.querySelector("[data-wa-mobile-back]")?.addEventListener(
+          nextThread.querySelector("[data-wa-mobile-back]")?.addEventListener(
             "click",
             () => setWaMobileView("inbox"),
             { once: true }
           );
-          currentThread.querySelectorAll("[data-wa-avatar-fetch]").forEach(requestAvatarImage);
+          nextThread.querySelectorAll("[data-wa-avatar-fetch]").forEach(requestAvatarImage);
           nextPanel.querySelectorAll("[data-wa-avatar-fetch]").forEach(requestAvatarImage);
           setWaMobileView("thread");
 
