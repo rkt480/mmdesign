@@ -415,6 +415,35 @@ button {
   transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease, opacity 0.18s ease;
 }
 
+.dashboard-filter-form {
+  display: grid;
+  grid-template-columns: minmax(210px, 260px) auto auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.dashboard-filter-form label {
+  min-width: 210px;
+  color: #334155;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.dashboard-filter-form select,
+.dashboard-filter-form button,
+.dashboard-filter-form .secondary-action {
+  min-height: 44px;
+}
+
+.dashboard-filter-form .secondary-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 16px;
+  font-size: 0.9rem;
+  font-weight: 900;
+}
+
 .push-control {
   color: #075985 !important;
   background: #e0f2fe !important;
@@ -2175,6 +2204,15 @@ textarea:focus {
     flex-direction: column;
   }
 
+  .dashboard-filter-form {
+    width: 100%;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+  }
+
+  .dashboard-filter-form label {
+    min-width: 0;
+  }
+
   .push-onboarding {
     align-items: flex-start;
     flex-direction: column;
@@ -2231,6 +2269,15 @@ textarea:focus {
 }
 
 @media (max-width: 620px) {
+  .dashboard-filter-form {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-filter-form button,
+  .dashboard-filter-form .secondary-action {
+    width: 100%;
+  }
+
   .schedule-form {
     grid-template-columns: 1fr;
   }

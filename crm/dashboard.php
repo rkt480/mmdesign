@@ -9,6 +9,7 @@ require_once __DIR__ . '/lib/settings.php';
 crm_require_sales_manager();
 
 $canManageSettings = crm_current_user_is_admin();
+$assignableUsers = crm_read_assignable_users(false);
 $leads = crm_read_leads();
 $kanbanColumns = crm_read_kanban_columns();
 $statusLabels = [];
@@ -41,6 +42,30 @@ function dashboard_pipeline_value(array $lead): float
 {
     return dashboard_money($lead, 'proposal_value');
 }
+
+$filterSeller = trim((string) ($_GET['seller'] ?? ''));
+$filterSellerId = null;
+$filterUnassigned = false;
+
+if ($filterSeller === 'unassigned') {
+    $filterUnassigned = true;
+} elseif (preg_match('/^\d+$/', $filterSeller) === 1 && (int) $filterSeller > 0) {
+    $filterSellerId = (int) $filterSeller;
+} else {
+    $filterSeller = '';
+}
+
+$leads = array_values(array_filter($leads, static function (array $lead) use ($filterSellerId, $filterUnassigned): bool {
+    if ($filterSellerId !== null && (int) ($lead['assigned_user_id'] ?? 0) !== $filterSellerId) {
+        return false;
+    }
+
+    if ($filterUnassigned && (int) ($lead['assigned_user_id'] ?? 0) !== 0) {
+        return false;
+    }
+
+    return true;
+}));
 
 $totalLeads = count($leads);
 $closedLeads = array_values(array_filter($leads, static fn(array $lead): bool => (string) ($lead['status'] ?? '') === 'fechado'));
@@ -189,6 +214,22 @@ arsort($lostReasons);
             <p class="eyebrow">Gestão comercial</p>
             <h1>Dashboard do gestor</h1>
           </div>
+          <form class="dashboard-filter-form" method="get" action="dashboard.php">
+            <label for="dashboard-seller-filter">
+              Vendedor
+              <select id="dashboard-seller-filter" name="seller">
+                <option value="">Todos os vendedores</option>
+                <option value="unassigned" <?= $filterUnassigned ? 'selected' : '' ?>>Sem vendedor</option>
+                <?php foreach ($assignableUsers as $user): ?>
+                  <option value="<?= (int) $user['id'] ?>" <?= $filterSellerId === (int) $user['id'] ? 'selected' : '' ?>><?= htmlspecialchars(crm_user_label($user)) ?></option>
+                <?php endforeach; ?>
+              </select>
+            </label>
+            <button type="submit">Filtrar</button>
+            <?php if ($filterSeller !== ''): ?>
+              <a class="secondary-action" href="dashboard.php">Limpar</a>
+            <?php endif; ?>
+          </form>
         </header>
 
         <main class="dashboard settings-layout manager-dashboard">
