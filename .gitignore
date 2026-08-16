@@ -4,6 +4,7 @@ crm/config.local.php
 crm/data/settings.json
 .env
 .env.*
+!.env.example
 
 # Arquivos de log e temporários do CRM
 crm/data/*.log
