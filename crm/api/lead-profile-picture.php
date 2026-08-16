@@ -8,6 +8,12 @@ require_once dirname(__DIR__) . '/lib/pilot-status.php';
 
 crm_require_login();
 
+// Profile lookup may call the external provider. Release the session lock so
+// several visible avatars do not serialize the rest of the CRM requests.
+if (session_status() === PHP_SESSION_ACTIVE) {
+    session_write_close();
+}
+
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
 header('X-Content-Type-Options: nosniff');

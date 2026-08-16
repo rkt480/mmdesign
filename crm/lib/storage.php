@@ -1540,6 +1540,36 @@ function crm_read_leads(): array
     return $stmt->fetchAll();
 }
 
+function crm_read_lead_feed_version(): string
+{
+    [$accessSql, $accessParams] = crm_lead_access_sql('leads');
+    $stmt = crm_db()->prepare(
+        'SELECT leads.id, leads.status, leads.assigned_user_id,
+                leads.updated_at, leads.last_activity_at
+         FROM leads
+         WHERE 1 = 1' . $accessSql . '
+         ORDER BY leads.status ASC, leads.kanban_position ASC, leads.created_at DESC'
+    );
+    $stmt->execute($accessParams);
+
+    $versionRows = [];
+
+    foreach ($stmt->fetchAll() as $lead) {
+        $versionRows[] = [
+            (string) ($lead['id'] ?? ''),
+            (string) ($lead['status'] ?? ''),
+            (string) ($lead['assigned_user_id'] ?? ''),
+            (string) ($lead['updated_at'] ?? ''),
+            (string) ($lead['last_activity_at'] ?? ''),
+        ];
+    }
+
+    return hash(
+        'sha256',
+        json_encode($versionRows, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: ''
+    );
+}
+
 function crm_read_lead_summaries(): array
 {
     [$accessSql, $accessParams] = crm_lead_access_sql('leads');
@@ -1577,6 +1607,59 @@ function crm_read_whatsapp_conversation_count(int $userId, string $conversationK
     $count = $stmt->fetchColumn();
 
     return $count === false ? null : max(0, (int) $count);
+}
+
+/**
+ * Reads all inbox read markers in one query. The WhatsApp inbox can contain
+ * many conversations, so querying the marker table once per row makes every
+ * page navigation progressively slower.
+ *
+ * @param list<string> $conversationKeys
+ * @return array<string, int>
+ */
+function crm_read_whatsapp_conversation_counts(int $userId, array $conversationKeys): array
+{
+    if ($userId <= 0) {
+        return [];
+    }
+
+    $keys = array_values(array_unique(array_filter(
+        array_map(static fn($key): string => trim((string) $key), $conversationKeys),
+        static fn(string $key): bool => $key !== ''
+    )));
+
+    if ($keys === []) {
+        return [];
+    }
+
+    $placeholders = [];
+    $params = ['user_id' => $userId];
+
+    foreach ($keys as $index => $key) {
+        $parameter = 'conversation_key_' . $index;
+        $placeholders[] = ':' . $parameter;
+        $params[$parameter] = $key;
+    }
+
+    $stmt = crm_db()->prepare(
+        'SELECT conversation_key, read_incoming_count
+         FROM whatsapp_conversation_reads
+         WHERE user_id = :user_id
+           AND conversation_key IN (' . implode(', ', $placeholders) . ')'
+    );
+    $stmt->execute($params);
+
+    $counts = [];
+
+    foreach ($stmt->fetchAll() as $row) {
+        $key = trim((string) ($row['conversation_key'] ?? ''));
+
+        if ($key !== '') {
+            $counts[$key] = max(0, (int) ($row['read_incoming_count'] ?? 0));
+        }
+    }
+
+    return $counts;
 }
 
 function crm_register_new_whatsapp_conversation(int $userId, string $conversationKey): bool

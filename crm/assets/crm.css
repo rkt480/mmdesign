@@ -4633,6 +4633,8 @@ textarea:focus {
   padding: 12px;
   color: var(--text);
   border-radius: 18px;
+  content-visibility: auto;
+  contain-intrinsic-size: 78px;
 }
 
 .whatsapp-crm-page .wa-chat-item:hover,
@@ -4784,6 +4786,8 @@ textarea:focus {
   padding: 10px 12px 8px;
   border-radius: 16px;
   box-shadow: 0 10px 24px rgba(48, 63, 91, 0.08);
+  content-visibility: auto;
+  contain-intrinsic-size: 72px;
 }
 
 .whatsapp-crm-page .wa-message p {

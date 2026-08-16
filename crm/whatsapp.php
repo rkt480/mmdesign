@@ -16,6 +16,15 @@ $currentUser = crm_current_user();
 $currentUserId = (int) ($currentUser['id'] ?? 0);
 $canManageSales = crm_current_user_can_manage_sales();
 $canManageSettings = crm_current_user_is_admin();
+$csrfToken = crm_csrf_token();
+
+// Do not keep the PHP session locked while the inbox is being assembled.
+// Realtime polling, avatar requests and form submissions can then run in
+// parallel with the initial page render.
+if (session_status() === PHP_SESSION_ACTIVE) {
+    session_write_close();
+}
+
 $leads = crm_read_leads();
 $provider = crm_whatsapp_provider();
 $providerLabel = crm_whatsapp_provider_label($provider);
@@ -711,9 +720,16 @@ function whatsapp_page_messages_for_lead(array $lead): array
  * @param list<array<string, mixed>> $messages
  * @return array{last_at: string, last_direction: string, preview: string, incoming_count: int, last_message_key: string}
  */
-function whatsapp_page_conversation_summary(array $messages, string $fallbackPreview, string $fallbackAt): array
+function whatsapp_page_conversation_summary(
+    array $messages,
+    string $fallbackPreview,
+    string $fallbackAt,
+    bool $messagesAlreadySorted = false
+): array
 {
-    usort($messages, 'whatsapp_page_compare_messages');
+    if (!$messagesAlreadySorted) {
+        usort($messages, 'whatsapp_page_compare_messages');
+    }
 
     $lastMessage = null;
     $incomingCount = 0;
@@ -777,6 +793,18 @@ $providerCounts = [
     'meta_cloud' => 0,
     'pilot_status' => 0,
 ];
+$requestedLead = null;
+$requestedConversationKey = '';
+
+if ($requestedLeadId !== '') {
+    foreach ($leads as $lead) {
+        if ((string) ($lead['id'] ?? '') === $requestedLeadId) {
+            $requestedLead = $lead;
+            $requestedConversationKey = crm_normalize_lead_whatsapp((string) ($lead['whatsapp'] ?? ''));
+            break;
+        }
+    }
+}
 
 foreach ($leads as $lead) {
     $whatsapp = crm_normalize_lead_whatsapp((string) ($lead['whatsapp'] ?? ''));
@@ -789,8 +817,15 @@ foreach ($leads as $lead) {
 
     $leadProvider = whatsapp_page_provider_for_lead($lead);
     $leadDate = whatsapp_page_latest_lead_date($lead);
-    $preview = whatsapp_page_preview_for_lead($lead);
     $leadMessages = whatsapp_page_messages_for_lead($lead);
+    $leadSummary = whatsapp_page_conversation_summary(
+        $leadMessages,
+        trim((string) ($lead['message'] ?? '')) !== ''
+            ? whatsapp_page_short_text(trim((string) ($lead['message'] ?? '')))
+            : 'Sem mensagens registradas ainda.',
+        $leadDate,
+        true
+    );
 
     if (!isset($conversationGroups[$conversationKey])) {
         $conversationGroups[$conversationKey] = [
@@ -798,7 +833,7 @@ foreach ($leads as $lead) {
             'lead_ids' => [],
             'provider' => $leadProvider,
             'last_at' => $leadDate,
-            'preview' => $preview,
+            'preview' => (string) $leadSummary['preview'],
             'messages' => $leadMessages,
             'conversation_key' => $conversationKey,
         ];
@@ -816,7 +851,7 @@ foreach ($leads as $lead) {
     ) {
         $conversationGroups[$conversationKey]['lead'] = $lead;
         $conversationGroups[$conversationKey]['last_at'] = $leadDate;
-        $conversationGroups[$conversationKey]['preview'] = $preview;
+        $conversationGroups[$conversationKey]['preview'] = (string) $leadSummary['preview'];
     }
 
     if (
@@ -829,6 +864,12 @@ foreach ($leads as $lead) {
         $conversationGroups[$conversationKey]['provider'] = $leadProvider;
     }
 }
+
+$conversationKeys = array_map(
+    static fn(array $conversation): string => (string) ($conversation['conversation_key'] ?? ''),
+    array_values($conversationGroups)
+);
+$readConversationCounts = crm_read_whatsapp_conversation_counts($currentUserId, $conversationKeys);
 
 foreach ($conversationGroups as $whatsapp => $conversation) {
     $uniqueConversationMessages = [];
@@ -846,35 +887,25 @@ foreach ($conversationGroups as $whatsapp => $conversation) {
         $uniqueConversationMessages[$messageKey] = $message;
     }
 
+    $conversationMessages = array_values($uniqueConversationMessages);
     $conversation += whatsapp_page_conversation_summary(
-        array_values($uniqueConversationMessages),
+        $conversationMessages,
         (string) $conversation['preview'],
         (string) $conversation['last_at']
     );
-    $readIncomingCount = $currentUserId > 0
-        ? crm_read_whatsapp_conversation_count($currentUserId, (string) $conversation['conversation_key'])
-        : null;
-
-    if ($readIncomingCount === null) {
-        // A conversation without a read marker is new for this seller. Its
-        // first incoming message must appear as unread instead of being
-        // mistaken for old history.
-        $readIncomingCount = 0;
-
-        if ($currentUserId > 0) {
-            crm_mark_whatsapp_conversation_read(
-                $currentUserId,
-                (string) $conversation['conversation_key'],
-                $readIncomingCount
-            );
-        }
-    }
+    // A conversation without a marker is new for this seller. Treat it as
+    // unread without writing a marker during every page render.
+    $readIncomingCount = $readConversationCounts[(string) $conversation['conversation_key']] ?? 0;
 
     $conversation['unread_count'] = max(
         0,
         (int) ($conversation['incoming_count'] ?? 0) - $readIncomingCount
     );
-    unset($conversation['messages']);
+    $conversation['messages'] = $conversationMessages;
+
+    if ($requestedConversationKey === '' || $requestedConversationKey !== (string) $conversation['conversation_key']) {
+        unset($conversation['messages']);
+    }
 
     $providerCounts['all']++;
 
@@ -889,19 +920,16 @@ foreach ($conversationGroups as $whatsapp => $conversation) {
     $conversations[] = $conversation;
 }
 
+// The grouped histories are only needed while building the inbox. Releasing
+// them before rendering keeps large CRM accounts from holding duplicate
+// message arrays in memory during the HTML response.
+unset($conversationGroups, $conversationKeys, $readConversationCounts, $uniqueConversationMessages);
+
 usort($conversations, static fn(array $a, array $b): int => whatsapp_page_timestamp((string) $b['last_at']) <=> whatsapp_page_timestamp((string) $a['last_at']));
 
 $activeConversation = null;
-$requestedLead = null;
 
 if ($requestedLeadId !== '') {
-    foreach ($leads as $lead) {
-        if ((string) ($lead['id'] ?? '') === $requestedLeadId) {
-            $requestedLead = $lead;
-            break;
-        }
-    }
-
     foreach ($conversations as $conversation) {
         if (in_array($requestedLeadId, $conversation['lead_ids'] ?? [], true)) {
             $activeConversation = $conversation;
@@ -914,29 +942,7 @@ $activeLead = is_array($requestedLead) ? $requestedLead : (is_array($activeConve
 $activeMessages = [];
 
 if (is_array($activeConversation)) {
-    $activeLeadIds = $activeConversation['lead_ids'] ?? [];
-
-    foreach ($leads as $lead) {
-        if (in_array((string) ($lead['id'] ?? ''), $activeLeadIds, true)) {
-            $activeMessages = array_merge($activeMessages, whatsapp_page_messages_for_lead($lead));
-        }
-    }
-
-    $uniqueMessages = [];
-
-    foreach ($activeMessages as $message) {
-        $messageTimestamp = whatsapp_page_timestamp((string) ($message['at'] ?? ''));
-        $key = implode('|', [
-            (string) ($message['direction'] ?? ''),
-            (string) ($message['provider'] ?? ''),
-            $messageTimestamp > 0 ? date('Y-m-d H:i', $messageTimestamp) : '',
-            trim((string) ($message['text'] ?? '')),
-            trim((string) (($message['media'] ?? [])['crm_message_id'] ?? ($message['media'] ?? [])['id'] ?? ($message['media'] ?? [])['url'] ?? '')),
-        ]);
-        $uniqueMessages[$key] = $message;
-    }
-
-    $activeMessages = array_values($uniqueMessages);
+    $activeMessages = array_values($activeConversation['messages'] ?? []);
     usort($activeMessages, 'whatsapp_page_compare_messages');
 }
 
@@ -978,9 +984,9 @@ foreach ($whatsappTemplates as $template) {
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
-    <meta name="csrf-token" content="<?= htmlspecialchars(crm_csrf_token()) ?>" />
+    <meta name="csrf-token" content="<?= htmlspecialchars($csrfToken) ?>" />
     <title>WhatsApp | MM Design</title>
-    <link rel="stylesheet" href="./assets/crm.css?v=20260813-sidebar-kanban-v1" />
+    <link rel="stylesheet" href="./assets/crm.css?v=20260816-whatsapp-performance-v1" />
   </head>
   <body class="whatsapp-page whatsapp-crm-page" data-wa-initial-view="<?= is_array($activeLead) ? 'thread' : 'inbox' ?>" data-wa-mobile-view="<?= is_array($activeLead) ? 'thread' : 'inbox' ?>" data-wa-active-lead-id="<?= htmlspecialchars((string) ($activeLead['id'] ?? '')) ?>" data-wa-incoming-signature="<?= htmlspecialchars(is_array($activeLead) ? crm_whatsapp_incoming_signature($activeLead) : '') ?>" data-wa-lead-feed-version="<?= htmlspecialchars($leadFeedVersion) ?>">
     <main class="wa-web-shell" aria-label="Atendimento WhatsApp do CRM">
@@ -1169,7 +1175,7 @@ foreach ($whatsappTemplates as $template) {
               <section class="wa-template-picker" data-wa-template-picker>
                 <div class="wa-template-picker-heading"><div><p class="eyebrow"><?= $provider === 'pilot_status' ? 'Pilot Status' : 'API oficial' ?></p><strong>Enviar template aprovado</strong></div><span><?= $provider === 'pilot_status' ? 'Pilot' : 'Meta' ?></span></div>
                 <form method="post" action="send-whatsapp-template.php" data-wa-template-form>
-                  <input type="hidden" name="_csrf_token" value="<?= htmlspecialchars(crm_csrf_token()) ?>" />
+                  <input type="hidden" name="_csrf_token" value="<?= htmlspecialchars($csrfToken) ?>" />
                   <input type="hidden" name="lead_id" value="<?= htmlspecialchars((string) ($activeLead['id'] ?? '')) ?>" />
                   <input type="hidden" name="provider_filter" value="<?= htmlspecialchars($providerFilter) ?>" />
                   <div class="wa-template-picker-row"><select name="template_id" data-wa-template-select required><option value="">Selecione um template</option><?php foreach ($whatsappTemplates as $template): $isApproved = crm_whatsapp_template_is_sendable($template); ?><option value="<?= (int) $template['id'] ?>" <?= !$isApproved ? 'disabled' : '' ?>><?= htmlspecialchars((string) $template['name']) ?> · <?= htmlspecialchars(whatsapp_template_status_label_for_conversation($template)) ?></option><?php endforeach; ?></select><button type="submit" data-wa-template-send disabled>Enviar template</button></div>
@@ -1203,7 +1209,7 @@ foreach ($whatsappTemplates as $template) {
               </div>
               <input class="wa-media-input" type="file" name="media" accept="image/jpeg,image/png,image/webp,image/gif,audio/*,application/pdf,application/msword,application/rtf,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,text/plain,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt" data-wa-media hidden />
             </div>
-            <input type="hidden" name="_csrf_token" value="<?= htmlspecialchars(crm_csrf_token()) ?>" />
+            <input type="hidden" name="_csrf_token" value="<?= htmlspecialchars($csrfToken) ?>" />
             <input type="hidden" name="lead_id" value="<?= htmlspecialchars((string) ($activeLead['id'] ?? '')) ?>" />
             <input type="hidden" name="provider_filter" value="<?= htmlspecialchars($providerFilter) ?>" />
             <div class="wa-composer-main">
@@ -1288,7 +1294,7 @@ foreach ($whatsappTemplates as $template) {
           <section class="wa-lead-block">
             <h3>Dados do contato</h3>
             <form class="wa-side-form" method="post" action="update.php">
-              <input type="hidden" name="_csrf_token" value="<?= htmlspecialchars(crm_csrf_token()) ?>" />
+              <input type="hidden" name="_csrf_token" value="<?= htmlspecialchars($csrfToken) ?>" />
               <input type="hidden" name="id" value="<?= htmlspecialchars((string) ($activeLead['id'] ?? '')) ?>" />
               <input type="hidden" name="status" value="<?= htmlspecialchars((string) ($activeLead['status'] ?? 'novo')) ?>" />
               <input type="hidden" name="redirect_to" value="<?= htmlspecialchars($activeLeadReturnUrl) ?>" />
@@ -1311,7 +1317,7 @@ foreach ($whatsappTemplates as $template) {
           <section class="wa-lead-block">
             <h3>Valores e previsão</h3>
             <form class="wa-side-form" method="post" action="update.php">
-              <input type="hidden" name="_csrf_token" value="<?= htmlspecialchars(crm_csrf_token()) ?>" />
+              <input type="hidden" name="_csrf_token" value="<?= htmlspecialchars($csrfToken) ?>" />
               <input type="hidden" name="id" value="<?= htmlspecialchars((string) ($activeLead['id'] ?? '')) ?>" />
               <input type="hidden" name="status" value="<?= htmlspecialchars((string) ($activeLead['status'] ?? 'novo')) ?>" />
               <input type="hidden" name="redirect_to" value="<?= htmlspecialchars($activeLeadReturnUrl) ?>" />
@@ -1330,7 +1336,7 @@ foreach ($whatsappTemplates as $template) {
           <section class="wa-lead-block">
             <h3>Tags e observações do vendedor</h3>
             <form class="wa-side-form" method="post" action="update.php">
-              <input type="hidden" name="_csrf_token" value="<?= htmlspecialchars(crm_csrf_token()) ?>" />
+              <input type="hidden" name="_csrf_token" value="<?= htmlspecialchars($csrfToken) ?>" />
               <input type="hidden" name="id" value="<?= htmlspecialchars((string) ($activeLead['id'] ?? '')) ?>" />
               <input type="hidden" name="status" value="<?= htmlspecialchars((string) ($activeLead['status'] ?? 'novo')) ?>" />
               <input type="hidden" name="redirect_to" value="<?= htmlspecialchars($activeLeadReturnUrl) ?>" />
@@ -1351,7 +1357,7 @@ foreach ($whatsappTemplates as $template) {
               <button type="submit">Salvar tags</button>
             </form>
             <form class="wa-side-form" method="post" action="update.php">
-              <input type="hidden" name="_csrf_token" value="<?= htmlspecialchars(crm_csrf_token()) ?>" />
+              <input type="hidden" name="_csrf_token" value="<?= htmlspecialchars($csrfToken) ?>" />
               <input type="hidden" name="id" value="<?= htmlspecialchars((string) ($activeLead['id'] ?? '')) ?>" />
               <input type="hidden" name="status" value="<?= htmlspecialchars((string) ($activeLead['status'] ?? 'novo')) ?>" />
               <input type="hidden" name="redirect_to" value="<?= htmlspecialchars($activeLeadReturnUrl) ?>" />
@@ -1366,7 +1372,7 @@ foreach ($whatsappTemplates as $template) {
           <section class="wa-lead-block">
             <h3>Follow-up</h3>
             <form class="wa-side-form" method="post" action="assign-followup.php">
-              <input type="hidden" name="_csrf_token" value="<?= htmlspecialchars(crm_csrf_token()) ?>" />
+              <input type="hidden" name="_csrf_token" value="<?= htmlspecialchars($csrfToken) ?>" />
               <input type="hidden" name="lead_id" value="<?= htmlspecialchars((string) ($activeLead['id'] ?? '')) ?>" />
               <input type="hidden" name="redirect_to" value="<?= htmlspecialchars($activeLeadReturnUrl) ?>" />
               <label>
@@ -1393,7 +1399,7 @@ foreach ($whatsappTemplates as $template) {
               <?php endif; ?>
             <?php else: ?>
               <form class="wa-side-form" method="post" action="schedule-lead.php">
-                <input type="hidden" name="_csrf_token" value="<?= htmlspecialchars(crm_csrf_token()) ?>" />
+                <input type="hidden" name="_csrf_token" value="<?= htmlspecialchars($csrfToken) ?>" />
                 <input type="hidden" name="lead_id" value="<?= htmlspecialchars((string) ($activeLead['id'] ?? '')) ?>" />
                 <input type="hidden" name="redirect_to" value="<?= htmlspecialchars($activeLeadReturnUrl) ?>" />
                 <label>
@@ -1474,7 +1480,7 @@ foreach ($whatsappTemplates as $template) {
         avatar.replaceChildren(image, fallback);
       };
 
-      document.querySelectorAll("[data-wa-avatar-fetch]").forEach((avatar) => {
+      const requestAvatarImage = (avatar) => {
         const leadId = avatar.dataset.waAvatarLeadId || "";
         if (!leadId || avatarRequests.has(leadId)) return;
 
@@ -1493,7 +1499,23 @@ foreach ($whatsappTemplates as $template) {
           .catch(() => {});
 
         avatarRequests.set(leadId, request);
-      });
+      };
+
+      const avatarsToFetch = document.querySelectorAll("[data-wa-avatar-fetch]");
+      if ("IntersectionObserver" in window) {
+        const avatarObserver = new IntersectionObserver((entries, observer) => {
+          entries.forEach((entry) => {
+            if (!entry.isIntersecting) return;
+
+            observer.unobserve(entry.target);
+            requestAvatarImage(entry.target);
+          });
+        }, { rootMargin: "220px 0px" });
+
+        avatarsToFetch.forEach((avatar) => avatarObserver.observe(avatar));
+      } else {
+        Array.from(avatarsToFetch).slice(0, 12).forEach(requestAvatarImage);
+      }
 
       const templatePicker = document.querySelector("[data-wa-template-picker]");
       if (templatePicker) {
