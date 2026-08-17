@@ -982,8 +982,21 @@ foreach ($whatsappTemplates as $template) {
         'variables' => crm_whatsapp_template_variable_keys((string) ($template['body_text'] ?? '')),
     ];
 }
+
 if ($isWaConversationFragment) {
     ob_start();
+    require __DIR__ . '/partials/whatsapp-conversation-fragment.php';
+    $fragmentMarkup = ob_get_clean();
+
+    header('Content-Type: application/json; charset=utf-8');
+    header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+    echo json_encode([
+        'ok' => true,
+        'fragment' => $fragmentMarkup,
+        'active_lead_id' => (string) ($activeLead['id'] ?? ''),
+        'incoming_signature' => is_array($activeLead) ? crm_whatsapp_incoming_signature($activeLead) : '',
+    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
+    exit;
 }
 ?>
 <!doctype html>
@@ -2774,6 +2787,23 @@ if ($isWaConversationFragment) {
         });
       };
 
+      const notifyConversationSwitchError = () => {
+        const inbox = document.querySelector(".wa-inbox");
+
+        if (!inbox) {
+          return;
+        }
+
+        inbox.querySelector("[data-wa-switch-error]")?.remove();
+        const notice = document.createElement("div");
+        notice.className = "wa-toast";
+        notice.dataset.waSwitchError = "true";
+        notice.setAttribute("role", "status");
+        notice.textContent = "Não foi possível carregar esta conversa. Tente novamente.";
+        inbox.prepend(notice);
+        window.setTimeout(() => notice.remove(), 4500);
+      };
+
       const softSwitchConversation = async (link, pushHistory = true) => {
         const currentThread = document.querySelector(".wa-thread");
         const currentPanel = document.querySelector(".wa-lead-panel");
@@ -2804,12 +2834,12 @@ if ($isWaConversationFragment) {
             return true;
           }
 
-          if (!response.ok || payload.ok !== true || !payload.thread || !payload.lead_panel) {
+          if (!response.ok || payload.ok !== true || !payload.fragment) {
             return false;
           }
 
           const fragmentDocument = new DOMParser().parseFromString(
-            `<main>${payload.thread}${payload.lead_panel}</main>`,
+            `<main>${payload.fragment}</main>`,
             "text/html"
           );
           const nextThread = fragmentDocument.querySelector(".wa-thread");
@@ -2893,7 +2923,7 @@ if ($isWaConversationFragment) {
         event.preventDefault();
         softSwitchConversation(link).then((switched) => {
           if (!switched) {
-            window.location.assign(link.href);
+            notifyConversationSwitchError();
           }
         });
       }, true);
@@ -2919,55 +2949,3 @@ if ($isWaConversationFragment) {
     <script src="./assets/crm-navigation.js?v=20260812-fast-navigation-v3"></script>
   </body>
 </html>
-<?php
-if ($isWaConversationFragment) {
-    $fragmentHtml = ob_get_clean();
-    $threadMarkup = '';
-    $leadPanelMarkup = '';
-    $previousLibxmlState = libxml_use_internal_errors(true);
-
-    if (class_exists('DOMDocument')) {
-        $fragmentDocument = new DOMDocument('1.0', 'UTF-8');
-        $fragmentDocument->loadHTML($fragmentHtml, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
-
-        foreach ($fragmentDocument->getElementsByTagName('*') as $node) {
-            $classes = ' ' . preg_replace('/\s+/', ' ', trim($node->getAttribute('class'))) . ' ';
-
-            if ($threadMarkup === '' && str_contains($classes, ' wa-thread ')) {
-                $threadMarkup = $fragmentDocument->saveHTML($node);
-            }
-
-            if ($leadPanelMarkup === '' && str_contains($classes, ' wa-lead-panel ')) {
-                $leadPanelMarkup = $fragmentDocument->saveHTML($node);
-            }
-
-            if ($threadMarkup !== '' && $leadPanelMarkup !== '') {
-                break;
-            }
-        }
-    }
-
-    libxml_clear_errors();
-    libxml_use_internal_errors($previousLibxmlState);
-
-    if ($threadMarkup === '' || $leadPanelMarkup === '') {
-        http_response_code(500);
-        header('Content-Type: application/json; charset=utf-8');
-        echo json_encode([
-            'ok' => false,
-            'error' => 'Não foi possível preparar a troca rápida da conversa.',
-        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-        exit;
-    }
-
-    header('Content-Type: application/json; charset=utf-8');
-    header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
-    echo json_encode([
-        'ok' => true,
-        'thread' => $threadMarkup,
-        'lead_panel' => $leadPanelMarkup,
-        'active_lead_id' => (string) ($activeLead['id'] ?? ''),
-        'incoming_signature' => is_array($activeLead) ? crm_whatsapp_incoming_signature($activeLead) : '',
-    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-    exit;
-}
