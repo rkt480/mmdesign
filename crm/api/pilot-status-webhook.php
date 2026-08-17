@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once dirname(__DIR__) . '/lib/security.php';
 require_once dirname(__DIR__) . '/lib/storage.php';
 require_once dirname(__DIR__) . '/lib/pilot-status.php';
+require_once dirname(__DIR__) . '/lib/whatsapp.php';
 require_once dirname(__DIR__) . '/lib/email.php';
 require_once dirname(__DIR__) . '/lib/meta-capi.php';
 
@@ -327,12 +328,30 @@ foreach ($incomingMessages as $incoming) {
         }
     }
 
+    $afterHoursReply = ['ok' => true, 'skipped' => true, 'reason' => 'Resposta fora do horário não acionada.'];
+
+    try {
+        $afterHoursReply = crm_whatsapp_send_after_hours_reply(
+            $lead,
+            (string) ($incoming['id'] ?? ''),
+            'pilot_status'
+        );
+    } catch (Throwable $error) {
+        pilot_status_log('Erro ao enviar resposta automática fora do horário.', [
+            'lead_id' => (string) $lead['id'],
+            'message_id' => (string) ($incoming['id'] ?? ''),
+            'error' => $error->getMessage(),
+        ]);
+        $afterHoursReply = ['ok' => false, 'error' => 'Resposta automática fora do horário falhou.'];
+    }
+
     $results[] = [
         'ok' => true,
         'lead_id' => $lead['id'],
         'created' => (bool) ($leadResult['created'] ?? false),
         'message_id' => (string) ($incoming['id'] ?? ''),
         'followup' => $followupAutomation,
+        'after_hours_reply' => $afterHoursReply,
         'email' => $emailResult,
         'meta' => $metaResult,
     ];

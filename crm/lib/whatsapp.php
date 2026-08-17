@@ -18,6 +18,139 @@ function crm_whatsapp_provider_label(?string $provider = null): string
     };
 }
 
+function crm_whatsapp_after_hours_settings(): array
+{
+    $settings = crm_read_settings();
+
+    return [
+        'enabled' => !empty($settings['whatsapp_after_hours_enabled']),
+        'business_start_time' => crm_normalize_whatsapp_business_time(
+            (string) ($settings['whatsapp_business_start_time'] ?? ''),
+            '08:00:00'
+        ),
+        'business_end_time' => crm_normalize_whatsapp_business_time(
+            (string) ($settings['whatsapp_business_end_time'] ?? ''),
+            '18:00:00'
+        ),
+        'saturday_enabled' => !empty($settings['whatsapp_business_saturday_enabled']),
+        'sunday_enabled' => !empty($settings['whatsapp_business_sunday_enabled']),
+        'message' => trim((string) ($settings['whatsapp_after_hours_message'] ?? ''))
+            ?: 'Olá! Nosso atendimento funciona em horário comercial. Recebemos sua mensagem e retornaremos assim que possível.',
+    ];
+}
+
+function crm_whatsapp_is_outside_business_hours(?DateTimeImmutable $now = null): bool
+{
+    $afterHours = crm_whatsapp_after_hours_settings();
+
+    if (!$afterHours['enabled']) {
+        return false;
+    }
+
+    $now ??= new DateTimeImmutable('now', new DateTimeZone(date_default_timezone_get()));
+    $dayOfWeek = (int) $now->format('N');
+
+    if ($dayOfWeek === 6 && !$afterHours['saturday_enabled']) {
+        return true;
+    }
+
+    if ($dayOfWeek === 7 && !$afterHours['sunday_enabled']) {
+        return true;
+    }
+
+    $currentTime = $now->format('H:i:s');
+
+    return $currentTime < $afterHours['business_start_time']
+        || $currentTime >= $afterHours['business_end_time'];
+}
+
+function crm_whatsapp_after_hours_reply_was_sent(array $lead, string $incomingMessageId): bool
+{
+    $incomingMessageId = trim($incomingMessageId);
+    $notes = (string) ($lead['notes'] ?? '');
+
+    if ($incomingMessageId !== '' && str_contains($notes, 'CRM gatilho de horário: ' . $incomingMessageId)) {
+        return true;
+    }
+
+    return preg_match(
+        '/Resposta automática fora do horário enviada via .* em '
+        . preg_quote(date('d/m/Y'), '/')
+        . ' \d{2}:\d{2}:\d{2}/u',
+        $notes
+    ) === 1;
+}
+
+function crm_whatsapp_send_after_hours_reply(
+    array $lead,
+    string $incomingMessageId,
+    ?string $provider = null
+): array {
+    $afterHours = crm_whatsapp_after_hours_settings();
+
+    if (!$afterHours['enabled']) {
+        return ['ok' => true, 'skipped' => true, 'reason' => 'Resposta fora do horário desativada.'];
+    }
+
+    if (!crm_whatsapp_is_outside_business_hours()) {
+        return ['ok' => true, 'skipped' => true, 'reason' => 'Dentro do horário comercial.'];
+    }
+
+    $incomingMessageId = trim($incomingMessageId);
+
+    $number = crm_normalize_lead_whatsapp((string) ($lead['whatsapp'] ?? ''));
+
+    if ($number === '') {
+        return ['ok' => false, 'error' => 'Este contato não tem WhatsApp válido para resposta automática.'];
+    }
+
+    $provider = $provider ?? crm_whatsapp_provider();
+    $leadId = trim((string) ($lead['id'] ?? ''));
+    $lockName = 'crm_after_hours_reply_' . substr(hash('sha256', $leadId . date('Y-m-d')), 0, 40);
+    $lockStmt = crm_db()->prepare('SELECT GET_LOCK(:lock_name, 5)');
+    $lockStmt->execute(['lock_name' => $lockName]);
+
+    if ((int) $lockStmt->fetchColumn() !== 1) {
+        return ['ok' => true, 'skipped' => true, 'reason' => 'Outra resposta automática está sendo processada.'];
+    }
+
+    try {
+        $freshLead = $leadId !== '' ? crm_find_lead($leadId, false) : null;
+        $leadForCheck = is_array($freshLead) ? $freshLead : $lead;
+
+        if (crm_whatsapp_after_hours_reply_was_sent($leadForCheck, $incomingMessageId)) {
+            return ['ok' => true, 'skipped' => true, 'duplicate' => true, 'reason' => 'Resposta automática já enviada neste período fora do horário.'];
+        }
+
+        $result = $provider === 'meta_cloud'
+            ? meta_whatsapp_send_text($number, $afterHours['message'])
+            : pilot_status_send_text($number, $afterHours['message']);
+
+        if (($result['ok'] ?? false) !== true) {
+            return $result;
+        }
+
+        $messageIdMarker = $incomingMessageId !== ''
+            ? "\nCRM gatilho de horário: " . $incomingMessageId
+            : '';
+        $queuedLabel = $provider === 'pilot_status' ? ' (aceita pelo provedor)' : '';
+        $note = 'Resposta automática fora do horário enviada via '
+            . crm_whatsapp_provider_label($provider)
+            . $queuedLabel
+            . ' em ' . date('d/m/Y H:i:s') . ":\n"
+            . $afterHours['message']
+            . $messageIdMarker;
+
+        crm_append_lead_note($leadId, $note);
+        crm_update_whatsapp_status($leadId, $provider === 'pilot_status' ? 'aguardando' : 'enviado');
+
+        return $result + ['automatic' => true];
+    } finally {
+        $unlockStmt = crm_db()->prepare('SELECT RELEASE_LOCK(:lock_name)');
+        $unlockStmt->execute(['lock_name' => $lockName]);
+    }
+}
+
 function crm_whatsapp_send_text(string $number, string $text, bool $usePresence = true): array
 {
     if (crm_whatsapp_provider() === 'meta_cloud') {

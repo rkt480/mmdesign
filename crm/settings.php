@@ -22,6 +22,7 @@ $metaAccessToken = $metaSettings['access_token'];
 $metaAccessTokenConfigured = $metaAccessToken !== '';
 $metaTestEventCode = $metaSettings['test_event_code'];
 $metaWhatsAppSettings = crm_meta_whatsapp_settings();
+$whatsappAfterHoursSettings = crm_whatsapp_after_hours_settings();
 $pilotStatusSettings = crm_pilot_status_settings();
 $googleTagManagerId = crm_google_tag_manager_id();
 $googleCalendarSettings = crm_google_calendar_settings();
@@ -69,6 +70,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         $settings['meta_whatsapp_coex_enabled'] = (($_POST['meta_whatsapp_coex_enabled'] ?? '') === '1');
+        $businessStartTime = crm_normalize_whatsapp_business_time(
+            (string) ($_POST['whatsapp_business_start_time'] ?? '08:00'),
+            '08:00:00'
+        );
+        $businessEndTime = crm_normalize_whatsapp_business_time(
+            (string) ($_POST['whatsapp_business_end_time'] ?? '18:00'),
+            '18:00:00'
+        );
+
+        if ($businessStartTime >= $businessEndTime) {
+            $error = 'O início do horário comercial deve ser anterior ao fim.';
+        }
+
+        $settings['whatsapp_after_hours_enabled'] = (($_POST['whatsapp_after_hours_enabled'] ?? '') === '1');
+        $settings['whatsapp_business_start_time'] = $businessStartTime;
+        $settings['whatsapp_business_end_time'] = $businessEndTime;
+        $settings['whatsapp_business_saturday_enabled'] = (($_POST['whatsapp_business_saturday_enabled'] ?? '') === '1');
+        $settings['whatsapp_business_sunday_enabled'] = (($_POST['whatsapp_business_sunday_enabled'] ?? '') === '1');
+        $settings['whatsapp_after_hours_message'] = trim((string) ($_POST['whatsapp_after_hours_message'] ?? ''));
         $settings['pilot_status_base_url'] = crm_normalize_url_base((string) ($_POST['pilot_status_base_url'] ?? ''), 'https://pilotstatus.com.br/v1');
         $pilotStatusWebhookSecret = trim((string) ($_POST['pilot_status_webhook_secret'] ?? ''));
 
@@ -321,6 +341,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <input type="url" value="<?= htmlspecialchars($metaWhatsAppWebhookUrl) ?>" readonly />
                       </label>
                     <?php endif; ?>
+
+                    <div class="settings-subgroup">
+                      <div>
+                        <p class="integration-kicker">Automação</p>
+                        <h3>Resposta fora do horário</h3>
+                      </div>
+                      <label class="checkbox-field">
+                        <input type="checkbox" name="whatsapp_after_hours_enabled" value="1" <?= $whatsappAfterHoursSettings['enabled'] ? 'checked' : '' ?> />
+                        <span>Responder automaticamente fora do horário comercial</span>
+                      </label>
+                      <div class="access-time-fields">
+                        <label>
+                          Início do atendimento
+                          <input type="time" name="whatsapp_business_start_time" value="<?= htmlspecialchars(substr($whatsappAfterHoursSettings['business_start_time'], 0, 5)) ?>" required />
+                        </label>
+                        <label>
+                          Fim do atendimento
+                          <input type="time" name="whatsapp_business_end_time" value="<?= htmlspecialchars(substr($whatsappAfterHoursSettings['business_end_time'], 0, 5)) ?>" required />
+                        </label>
+                      </div>
+                      <div class="access-weekend-fields">
+                        <label class="checkbox-field">
+                          <input type="checkbox" name="whatsapp_business_saturday_enabled" value="1" <?= $whatsappAfterHoursSettings['saturday_enabled'] ? 'checked' : '' ?> />
+                          <span>Atender aos sábados</span>
+                        </label>
+                        <label class="checkbox-field">
+                          <input type="checkbox" name="whatsapp_business_sunday_enabled" value="1" <?= $whatsappAfterHoursSettings['sunday_enabled'] ? 'checked' : '' ?> />
+                          <span>Atender aos domingos</span>
+                        </label>
+                      </div>
+                      <label>
+                        Mensagem automática
+                        <textarea name="whatsapp_after_hours_message" rows="4" maxlength="1000" required><?= htmlspecialchars($whatsappAfterHoursSettings['message']) ?></textarea>
+                      </label>
+                      <small class="settings-help">A mensagem é enviada somente quando o cliente iniciar ou continuar a conversa fora do horário. Ela é uma resposta de atendimento e fica separada dos templates e da fila de follow-up.</small>
+                    </div>
                   </div>
 
                   <div class="settings-subgroup">

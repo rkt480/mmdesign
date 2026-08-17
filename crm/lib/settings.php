@@ -237,6 +237,21 @@ function crm_normalize_meta_graph_version(string $version): string
     return $normalized;
 }
 
+function crm_normalize_whatsapp_business_time(string $time, string $fallback): string
+{
+    $normalized = trim($time);
+
+    if (preg_match('/^(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/', $normalized) === 1) {
+        return substr($normalized, 0, 5) . ':00';
+    }
+
+    if (preg_match('/^(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d$/', $normalized) === 1) {
+        return $normalized;
+    }
+
+    return $fallback;
+}
+
 function crm_meta_whatsapp_settings(): array
 {
     $settings = crm_read_settings();
