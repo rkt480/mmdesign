@@ -216,6 +216,7 @@ function whatsapp_page_clean_sent_message_text(string $text): string
     $text = preg_replace('/\R?Status: aceito pela API\.\R?/iu', "\n", $text) ?? $text;
     $text = preg_replace('/\R?Pilot Status ID:\s*[^\r\n]+/iu', '', $text) ?? $text;
     $text = preg_replace('/\R?CRM message ID:\s*[^\r\n]+/iu', '', $text) ?? $text;
+    $text = preg_replace('/\R?CRM gatilho de horário:\s*[^\r\n]+/iu', '', $text) ?? $text;
 
     return trim($text);
 }
@@ -237,6 +238,7 @@ function whatsapp_page_is_customer_facing_observation(string $text): bool
 function whatsapp_page_is_outgoing_history_block(string $block): bool
 {
     return preg_match('/^(?:Mídia|Mensagem) enviada (?:via|pelo) /iu', $block) === 1
+        || preg_match('/^Resposta automática fora do horário enviada via /iu', $block) === 1
         || preg_match('/^Template ".+" enviado via /iu', $block) === 1
         || (preg_match('/^Observação do CRM em /iu', $block) === 1
             && preg_match('/CRM message ID:/iu', $block) === 1);
@@ -306,15 +308,38 @@ function whatsapp_page_is_technical_delivery_note(string $text): bool
  */
 function whatsapp_page_note_blocks(string $notes): array
 {
-    $recordStart = '(?:Observação do CRM em|Mensagem recebida pelo provedor anterior|Mensagem recebida pela Meta Cloud API|Mensagem recebida pela Pilot Status|Mídia recebida pela Pilot Status|Mídia enviada (?:via|pelo)|Mensagem enviada (?:via|pelo)|Template .+ enviado via|Falha ao enviar via|Pilot Status evento:)';
+    $recordStart = '(?:Resposta automática fora do horário enviada via|Observação do CRM em|Mensagem recebida pelo provedor anterior|Mensagem recebida pela Meta Cloud API|Mensagem recebida pela Pilot Status|Mídia recebida pela Pilot Status|Mídia enviada (?:via|pelo)|Mensagem enviada (?:via|pelo)|Template .+ enviado via|Falha ao enviar via|Pilot Status evento:)';
     $blocks = [];
 
-    foreach (preg_split('/(?:\R){2,}/u', trim($notes)) ?: [] as $group) {
-        foreach (preg_split('/(?=^' . $recordStart . ')/mu', $group) ?: [] as $block) {
-            $block = trim($block);
+    // A resposta fora do horário pode conter parágrafos separados por linhas
+    // em branco. Só considere uma linha em branco como separador quando o
+    // próximo bloco começar com um marcador conhecido do CRM.
+    $groups = preg_split('/(?:\R){2,}(?=^' . $recordStart . ')/mu', trim($notes)) ?: [];
 
-            if ($block !== '') {
-                $blocks[] = $block;
+    foreach ($groups as $group) {
+        $group = trim($group);
+
+        if (preg_match('/^Resposta automática fora do horário enviada via /iu', $group) === 1) {
+            if ($group !== '') {
+                $blocks[] = $group;
+            }
+
+            continue;
+        }
+
+        foreach (preg_split('/(?:\R){2,}/u', $group) ?: [] as $legacyGroup) {
+            $legacyGroup = trim($legacyGroup);
+
+            if ($legacyGroup === '') {
+                continue;
+            }
+
+            foreach (preg_split('/(?=^' . $recordStart . ')/mu', $legacyGroup) ?: [] as $block) {
+                $block = trim($block);
+
+                if ($block !== '') {
+                    $blocks[] = $block;
+                }
             }
         }
     }
@@ -557,6 +582,19 @@ function whatsapp_page_messages_for_lead(array $lead): array
             }
 
             if (preg_match('/^(?:Mensagem|Mídia) enviada (?:via|pelo) (.+) em ([0-9]{2}\/[0-9]{2}\/[0-9]{4} [0-9]{2}:[0-9]{2}(?::[0-9]{2})?):\R(.+)$/su', $block, $match) === 1) {
+                $sentProviderLabel = strtolower((string) $match[1]);
+                $sentText = whatsapp_page_clean_sent_message_text(trim((string) $match[3]));
+                $messages[] = [
+                    'direction' => 'outgoing',
+                    'provider' => whatsapp_page_message_provider($sentProviderLabel),
+                    'at' => whatsapp_page_parse_br_datetime((string) $match[2]),
+                    'text' => $sentText,
+                    'label' => 'Enviada',
+                ];
+                continue;
+            }
+
+            if (preg_match('/^Resposta automática fora do horário enviada via (.+?) em ([0-9]{2}\/[0-9]{2}\/[0-9]{4} [0-9]{2}:[0-9]{2}(?::[0-9]{2})?):\R(.+)$/su', $block, $match) === 1) {
                 $sentProviderLabel = strtolower((string) $match[1]);
                 $sentText = whatsapp_page_clean_sent_message_text(trim((string) $match[3]));
                 $messages[] = [
