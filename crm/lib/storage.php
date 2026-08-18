@@ -3066,13 +3066,18 @@ function crm_process_sla_reassignments(int $limit = 50): array
             continue;
         }
 
+        $previousUserName = trim((string) ($lead['assigned_user_name'] ?? ''));
+        $previousUserUsername = trim((string) ($lead['assigned_username'] ?? ''));
+        $previousUserLabel = $previousUserName !== ''
+            ? $previousUserName
+            : ($previousUserUsername !== '' ? $previousUserUsername : 'Usuário anterior não encontrado');
         $reason = 'Redistribuição automática por inatividade acima de ' . (int) $settings['sla_inactivity_minutes'] . ' minutos.';
         $action = $settings['sla_action'] === 'manager_review' ? 'sla_manager_review' : 'sla_reassignment';
 
         if (crm_assign_lead_to_user($leadId, (int) $nextUser['id'], $action, $reason, null, false)) {
             crm_append_lead_note(
                 $leadId,
-                'Lead redistribuído automaticamente em ' . date('d/m/Y H:i') . ".\nMotivo: " . $reason . "\nNovo vendedor: " . crm_user_label($nextUser)
+                'Lead redistribuído automaticamente em ' . date('d/m/Y H:i') . ".\nMotivo: " . $reason . "\nVendedor anterior: " . $previousUserLabel . "\nNovo vendedor: " . crm_user_label($nextUser)
             );
             $reassigned++;
             $details[] = [
