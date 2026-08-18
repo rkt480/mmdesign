@@ -450,6 +450,11 @@ function crm_sales_distribution_settings(): array
         'sla_inactivity_minutes' => $slaMinutes,
         'sla_warning_minutes' => $warningMinutes,
         'sla_action' => in_array($slaAction, ['rotation', 'manager_review'], true) ? $slaAction : 'rotation',
+        // The access schedule is also the seller's effective SLA work window.
+        // Keep this enabled by default so existing schedules do not cause
+        // automatic reassignment after the seller has been locked out.
+        'sla_respect_access_schedule' => !array_key_exists('sales_sla_respect_access_schedule', $settings)
+            || !empty($settings['sales_sla_respect_access_schedule']),
         'sla_statuses' => crm_normalize_sales_sla_statuses($settings['sales_sla_statuses'] ?? ['novo', 'contatado', 'followup']),
     ];
 }

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/settings.php';
 require_once __DIR__ . '/attribution.php';
+require_once __DIR__ . '/auth.php';
 
 function crm_db(): PDO
 {
@@ -2855,6 +2856,105 @@ function crm_update_whatsapp_status(string $id, string $status, ?string $error =
     return $stmt->rowCount() > 0;
 }
 
+function crm_sla_timezone(): DateTimeZone
+{
+    // crm_config() applies the CRM timezone before the SLA reads any clock.
+    if (function_exists('crm_config')) {
+        crm_config();
+    }
+
+    return new DateTimeZone(date_default_timezone_get());
+}
+
+function crm_sla_access_user_from_lead(array $lead): array
+{
+    return [
+        'role' => (string) ($lead['assigned_user_role'] ?? ''),
+        'access_schedule_enabled' => (int) ($lead['assigned_access_schedule_enabled'] ?? 1),
+        'access_start_time' => (string) ($lead['assigned_access_start_time'] ?? '09:00:00'),
+        'access_end_time' => (string) ($lead['assigned_access_end_time'] ?? '18:00:00'),
+        'access_saturday_enabled' => (int) ($lead['assigned_access_saturday_enabled'] ?? 1),
+        'access_sunday_enabled' => (int) ($lead['assigned_access_sunday_enabled'] ?? 1),
+    ];
+}
+
+function crm_sla_access_window_seconds(DateTimeImmutable $from, DateTimeImmutable $to, array $user): int
+{
+    if ($to <= $from) {
+        return 0;
+    }
+
+    if ((string) ($user['role'] ?? '') !== 'vendedor' || !crm_user_access_schedule_enabled($user)) {
+        return $to->getTimestamp() - $from->getTimestamp();
+    }
+
+    $start = crm_normalize_user_access_time((string) ($user['access_start_time'] ?? ''), '09:00:00');
+    $end = crm_normalize_user_access_time((string) ($user['access_end_time'] ?? ''), '18:00:00');
+
+    // Match the login rule: an invalid/equal interval is treated as unrestricted
+    // so a malformed user setting cannot freeze the SLA forever.
+    if ($start >= $end) {
+        return $to->getTimestamp() - $from->getTimestamp();
+    }
+
+    [$startHour, $startMinute, $startSecond] = array_map('intval', explode(':', $start));
+    [$endHour, $endMinute, $endSecond] = array_map('intval', explode(':', $end));
+    $total = 0;
+    $day = $from->setTime(0, 0, 0);
+    $lastDay = $to->setTime(0, 0, 0);
+
+    while ($day <= $lastDay) {
+        $weekday = (int) $day->format('N');
+
+        if (crm_user_access_day_enabled($user, $weekday)) {
+            $windowStart = $day->setTime($startHour, $startMinute, $startSecond);
+            $windowEnd = $day->setTime($endHour, $endMinute, $endSecond);
+            $intersectionStart = $from > $windowStart ? $from : $windowStart;
+            $intersectionEnd = $to < $windowEnd ? $to : $windowEnd;
+
+            if ($intersectionEnd > $intersectionStart) {
+                $total += $intersectionEnd->getTimestamp() - $intersectionStart->getTimestamp();
+            }
+        }
+
+        $day = $day->modify('+1 day');
+    }
+
+    return $total;
+}
+
+function crm_sla_lead_activity_datetime(array $lead, DateTimeZone $timezone): ?DateTimeImmutable
+{
+    $value = trim((string) (($lead['last_activity_at'] ?? '') ?: ($lead['updated_at'] ?? '') ?: ($lead['created_at'] ?? '')));
+
+    if ($value === '') {
+        return null;
+    }
+
+    try {
+        return new DateTimeImmutable($value, $timezone);
+    } catch (Throwable $error) {
+        return null;
+    }
+}
+
+function crm_sla_lead_is_overdue(array $lead, int $inactivityMinutes, DateTimeImmutable $now): bool
+{
+    $activityAt = crm_sla_lead_activity_datetime($lead, $now->getTimezone());
+
+    if (!$activityAt) {
+        return false;
+    }
+
+    $elapsedSeconds = crm_sla_access_window_seconds(
+        $activityAt,
+        $now,
+        crm_sla_access_user_from_lead($lead)
+    );
+
+    return $elapsedSeconds >= ($inactivityMinutes * 60);
+}
+
 function crm_read_sla_overdue_leads(int $limit = 50): array
 {
     $settings = crm_sales_distribution_settings();
@@ -2870,8 +2970,11 @@ function crm_read_sla_overdue_leads(int $limit = 50): array
     }
 
     $placeholders = [];
+    $now = new DateTimeImmutable('now', crm_sla_timezone());
     $params = [
-        'cutoff' => date('Y-m-d H:i:s', time() - ((int) $settings['sla_inactivity_minutes'] * 60)),
+        // Wall-clock cutoff is only a candidate filter. The final decision
+        // below uses the seller's available access windows when enabled.
+        'cutoff' => $now->modify('-' . (int) $settings['sla_inactivity_minutes'] . ' minutes')->format('Y-m-d H:i:s'),
     ];
 
     foreach ($statuses as $index => $status) {
@@ -2880,19 +2983,47 @@ function crm_read_sla_overdue_leads(int $limit = 50): array
         $params[$key] = $status;
     }
 
-    $stmt = crm_db()->prepare(
-        'SELECT leads.*, crm_users.name AS assigned_user_name, crm_users.username AS assigned_username
+    $sql =
+        'SELECT leads.*, crm_users.name AS assigned_user_name, crm_users.username AS assigned_username,
+                crm_users.role AS assigned_user_role,
+                crm_users.access_schedule_enabled AS assigned_access_schedule_enabled,
+                crm_users.access_start_time AS assigned_access_start_time,
+                crm_users.access_end_time AS assigned_access_end_time,
+                crm_users.access_saturday_enabled AS assigned_access_saturday_enabled,
+                crm_users.access_sunday_enabled AS assigned_access_sunday_enabled
         FROM leads
         LEFT JOIN crm_users ON crm_users.id = leads.assigned_user_id
         WHERE leads.assigned_user_id IS NOT NULL
           AND COALESCE(leads.last_activity_at, leads.updated_at, leads.created_at) <= :cutoff
           AND leads.status IN (' . implode(', ', $placeholders) . ')
-        ORDER BY COALESCE(leads.last_activity_at, leads.updated_at, leads.created_at) ASC
-        LIMIT ' . max(1, $limit)
-    );
+        ORDER BY COALESCE(leads.last_activity_at, leads.updated_at, leads.created_at) ASC';
+
+    if (!$settings['sla_respect_access_schedule']) {
+        $sql .= ' LIMIT ' . max(1, $limit);
+    }
+
+    $stmt = crm_db()->prepare($sql);
     $stmt->execute($params);
 
-    return $stmt->fetchAll();
+    $candidates = $stmt->fetchAll();
+
+    if (!$settings['sla_respect_access_schedule']) {
+        return array_slice($candidates, 0, max(1, $limit));
+    }
+
+    $overdue = [];
+
+    foreach ($candidates as $lead) {
+        if (crm_sla_lead_is_overdue($lead, (int) $settings['sla_inactivity_minutes'], $now)) {
+            $overdue[] = $lead;
+
+            if (count($overdue) >= max(1, $limit)) {
+                break;
+            }
+        }
+    }
+
+    return $overdue;
 }
 
 function crm_process_sla_reassignments(int $limit = 50): array

@@ -69,6 +69,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $settings['sales_sla_action'] = in_array((string) ($_POST['sales_sla_action'] ?? 'rotation'), ['rotation', 'manager_review'], true)
             ? (string) $_POST['sales_sla_action']
             : 'rotation';
+        $settings['sales_sla_respect_access_schedule'] = (($_POST['sales_sla_respect_access_schedule'] ?? '') === '1');
         $settings['sales_sla_statuses'] = crm_normalize_sales_sla_statuses($_POST['sales_sla_statuses'] ?? []);
         crm_write_settings($settings);
 
@@ -92,7 +93,7 @@ $overdueLeads = crm_read_sla_overdue_leads(20);
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Comercial | CRM</title>
-    <link rel="stylesheet" href="./assets/crm.css?v=20260813-weekend-access-v1" />
+    <link rel="stylesheet" href="./assets/crm.css?v=20260817-sla-access-pause-v1" />
   </head>
   <body class="settings-page commercial-page">
     <div class="app-shell">
@@ -270,7 +271,7 @@ $overdueLeads = crm_read_sla_overdue_leads(20);
                         <span>Permitir acesso no domingo</span>
                       </label>
                     </div>
-                    <p class="commercial-help">Aplicado somente ao perfil Vendedor. Nos dias permitidos, o acesso segue o horário definido acima.</p>
+                    <p class="commercial-help">Aplicado somente ao perfil Vendedor. Nos dias permitidos, o acesso segue o horário definido acima. Com a pausa do SLA ativa, esse mesmo calendário controla quando a inatividade pode ser cobrada.</p>
                   </div>
                   <button class="integration-save" type="submit">
                     <span aria-hidden="true">✓</span>
@@ -373,7 +374,7 @@ $overdueLeads = crm_read_sla_overdue_leads(20);
                                 <span>Permitir acesso no domingo</span>
                               </label>
                             </div>
-                            <p class="commercial-help">Aplicado somente ao perfil Vendedor. Nos dias permitidos, o acesso segue o horário definido acima.</p>
+                            <p class="commercial-help">Aplicado somente ao perfil Vendedor. Nos dias permitidos, o acesso segue o horário definido acima. Com a pausa do SLA ativa, esse mesmo calendário controla quando a inatividade pode ser cobrada.</p>
                           </div>
                           <button class="integration-save" type="submit">
                             <span aria-hidden="true">✓</span>
@@ -435,6 +436,11 @@ $overdueLeads = crm_read_sla_overdue_leads(20);
                     Tempo sem atividade
                     <input type="number" name="sales_sla_inactivity_minutes" value="<?= (int) $salesDistributionSettings['sla_inactivity_minutes'] ?>" min="15" max="10080" step="15" />
                   </label>
+                  <label class="checkbox-field field-wide">
+                    <input type="checkbox" name="sales_sla_respect_access_schedule" value="1" <?= $salesDistributionSettings['sla_respect_access_schedule'] ? 'checked' : '' ?> />
+                    <span>Pausar redistribuição fora do horário do vendedor</span>
+                  </label>
+                  <p class="commercial-help field-wide">Quando ativado, o tempo sem atividade só conta durante o horário em que o vendedor pode acessar o CRM. De segunda a sexta, considera a faixa definida no usuário; sábado e domingo só contam se estiverem liberados para ele.</p>
                   <label>
                     Ao vencer
                     <select name="sales_sla_action">

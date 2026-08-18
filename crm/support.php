@@ -15,6 +15,7 @@ $supportSections = [
             ['Editar usuário', 'Atualiza nome, usuário, e-mail, perfil, senha, participação na roleta e peso de distribuição.'],
             ['Excluir usuário', 'Remove o acesso e deixa os leads desse usuário sem vendedor para o admin reorganizar.'],
             ['Usuário ativo', 'Define se o acesso pode entrar no CRM. Usuário inativo não recebe leads e não consegue operar.'],
+            ['Horário do vendedor', 'Bloqueia o login fora da faixa configurada e define, para o SLA, quando aquele vendedor pode ser cobrado por um lead parado.'],
         ],
     ],
     [
@@ -43,6 +44,7 @@ $supportSections = [
         'items' => [
             ['Redistribuir lead sem atividade', 'Liga a regra que tira o lead parado de um vendedor e envia para outra pessoa ou para revisão.'],
             ['Tempo sem atividade', 'Define quanto tempo o lead pode ficar sem movimentação no kanban antes de acionar a regra.'],
+            ['Pausar fora do horário do vendedor', 'Faz o cronômetro do SLA contar somente as horas em que o vendedor pode acessar o CRM, incluindo as permissões individuais de sábado e domingo.'],
             ['Ao vencer', 'Escolhe se o lead volta para a roleta ou se fica para revisão do gestor.'],
             ['Aplicar SLA em', 'Seleciona em quais etapas do kanban a regra vale, evitando redistribuir leads em fases que não precisam de cobrança.'],
             ['Verificar leads parados agora', 'Executa a checagem manual do SLA sem esperar a rotina automática.'],
@@ -55,6 +57,7 @@ $implementationSteps = [
     'Ativar somente quem deve receber lead novo na roleta.',
     'Definir o peso de cada vendedor conforme capacidade ou senioridade.',
     'Configurar o tempo de SLA considerando o padrão de atendimento da mmdesign.',
+    'Manter ativada a pausa do SLA fora do horário de acesso dos vendedores.',
     'Selecionar as etapas do kanban onde falta de movimento deve gerar redistribuição.',
     'Criar um lead de teste, validar atribuição, conversa e restrição de acesso por vendedor.',
 ];
