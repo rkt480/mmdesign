@@ -4812,6 +4812,19 @@ textarea:focus {
   border-radius: 7px;
 }
 
+.whatsapp-crm-page button.wa-message-quote {
+  width: 100%;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  appearance: none;
+}
+
+.whatsapp-crm-page button.wa-message-quote:hover {
+  background: #e2e8f0;
+}
+
 .whatsapp-crm-page .wa-message-quote-copy {
   display: grid;
   align-content: center;
@@ -4860,6 +4873,17 @@ textarea:focus {
   background: #d1fae5;
   font-size: 1.1rem;
   font-weight: 850;
+}
+
+.whatsapp-crm-page .wa-message.is-quote-target {
+  outline: 3px solid rgba(15, 118, 110, 0.3);
+  outline-offset: 3px;
+  animation: wa-quote-target-pulse 1.8s ease-out;
+}
+
+@keyframes wa-quote-target-pulse {
+  0%, 35% { box-shadow: 0 0 0 5px rgba(15, 118, 110, 0.2), 0 10px 24px rgba(48, 63, 91, 0.08); }
+  100% { box-shadow: 0 10px 24px rgba(48, 63, 91, 0.08); }
 }
 
 .whatsapp-crm-page .wa-message-media {

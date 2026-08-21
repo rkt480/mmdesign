@@ -31,8 +31,9 @@
         <?php
           $messageMediaType = is_array($message['media'] ?? null) ? (string) ($message['media']['type'] ?? '') : '';
           $messageMediaType = in_array($messageMediaType, ['image', 'sticker', 'audio', 'video', 'document'], true) ? $messageMediaType : 'file';
+          $messageDomId = whatsapp_page_message_dom_id($message);
         ?>
-        <article class="wa-message wa-message-<?= htmlspecialchars((string) $message['direction']) ?>">
+        <article<?= $messageDomId !== '' ? ' id="' . htmlspecialchars($messageDomId, ENT_QUOTES, 'UTF-8') . '"' : '' ?> class="wa-message wa-message-<?= htmlspecialchars((string) $message['direction']) ?>">
           <?php if (is_array($message['reply_to'] ?? null)): ?>
             <?= whatsapp_page_quoted_message_markup($message['reply_to']) ?>
           <?php endif; ?>

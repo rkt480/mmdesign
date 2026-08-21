@@ -345,6 +345,17 @@ function whatsapp_page_message_id_candidates(array $message): array
     return $ids;
 }
 
+function whatsapp_page_message_dom_id(array $message): string
+{
+    $ids = whatsapp_page_message_id_candidates($message);
+
+    if ($ids === []) {
+        return '';
+    }
+
+    return 'wa-message-' . substr(hash('sha256', strtolower($ids[0])), 0, 20);
+}
+
 function whatsapp_page_reply_context_label(array $message): string
 {
     return (string) ($message['direction'] ?? '') === 'outgoing' ? 'Você' : 'Cliente';
@@ -378,7 +389,7 @@ function whatsapp_page_attach_reply_contexts(array &$messages): void
         }
     }
 
-    foreach ($messages as &$message) {
+    foreach ($messages as $messageIndex => &$message) {
         $replyContext = is_array($message['reply_context'] ?? null) ? $message['reply_context'] : [];
         $messageMedia = is_array($message['media'] ?? null) ? $message['media'] : [];
 
@@ -395,6 +406,48 @@ function whatsapp_page_attach_reply_contexts(array &$messages): void
 
         if ($replyId !== '' && isset($messagesById[$replyId])) {
             $quoted = $messagesById[$replyId];
+        }
+
+        if (!is_array($quoted)) {
+            $replyType = strtolower(trim((string) ($replyContext['type'] ?? '')));
+            $replyText = strtolower(trim((string) ($replyContext['text'] ?? '')));
+            $fallbackCandidates = [];
+
+            for ($candidateIndex = $messageIndex - 1; $candidateIndex >= 0; $candidateIndex--) {
+                $candidate = $messages[$candidateIndex] ?? [];
+
+                if (!is_array($candidate) || ($candidate['direction'] ?? '') !== 'outgoing') {
+                    continue;
+                }
+
+                $candidateMedia = is_array($candidate['media'] ?? null) ? $candidate['media'] : [];
+                $candidateType = strtolower(trim((string) ($candidateMedia['type'] ?? '')));
+                $candidateText = strtolower(trim((string) ($candidate['text'] ?? '')));
+                $textMatches = $replyText !== ''
+                    && ($candidateText === $replyText
+                        || str_contains($candidateText, $replyText)
+                        || str_contains($replyText, $candidateText));
+                $typeMatches = $replyType !== '' && $candidateType === $replyType;
+
+                if ($candidateType === '' && $candidateText !== '') {
+                    $candidateType = whatsapp_page_infer_media_type_from_text($candidateText);
+                    $typeMatches = $replyType !== '' && $candidateType === $replyType;
+                }
+
+                if ($textMatches || $typeMatches) {
+                    $quoted = $candidate;
+                    break;
+                }
+
+                $fallbackCandidates[] = $candidate;
+            }
+
+            // Some provider payloads expose a quoted ID that differs from the
+            // ID saved in the CRM. If there is only one possible outgoing
+            // message before the reply, it is still safe and useful to link it.
+            if (!is_array($quoted) && count($fallbackCandidates) === 1) {
+                $quoted = $fallbackCandidates[0];
+            }
         }
 
         if (!is_array($quoted)) {
@@ -422,6 +475,12 @@ function whatsapp_page_attach_reply_contexts(array &$messages): void
             'media' => is_array($quoted['media'] ?? null) ? $quoted['media'] : [],
             'preview' => whatsapp_page_reply_context_preview($quoted),
         ];
+
+        $quotedDomId = whatsapp_page_message_dom_id($quoted);
+
+        if ($quotedDomId !== '') {
+            $message['reply_to']['target_id'] = $quotedDomId;
+        }
     }
     unset($message);
 }
@@ -465,10 +524,17 @@ function whatsapp_page_quoted_message_markup(array $replyTo): string
         $mediaMarkup = '<span class="wa-message-quote-icon" aria-hidden="true">' . $mediaIcon . '</span>';
     }
 
-    return '<div class="wa-message-quote" aria-label="Resposta à mensagem de ' . $safeAuthor . '">'
+    $targetId = trim((string) ($replyTo['target_id'] ?? ''));
+    $safeTargetId = htmlspecialchars($targetId, ENT_QUOTES, 'UTF-8');
+    $quoteTag = $targetId !== ''
+        ? '<button class="wa-message-quote is-clickable" type="button" data-wa-quote-target="' . $safeTargetId . '" aria-label="Ir até a mensagem de ' . $safeAuthor . '" title="Ir até a mensagem original">'
+        : '<div class="wa-message-quote" aria-label="Resposta à mensagem de ' . $safeAuthor . '">';
+    $quoteClose = $targetId !== '' ? '</button>' : '</div>';
+
+    return $quoteTag
         . $mediaMarkup
         . '<span class="wa-message-quote-copy"><strong>' . $safeAuthor . '</strong><span>' . $safePreview . '</span></span>'
-        . '</div>';
+        . $quoteClose;
 }
 
 function whatsapp_page_message_provider(string $providerLabel, string $fallback = 'pilot_status'): string
@@ -1275,7 +1341,7 @@ if ($isWaConversationFragment) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
     <meta name="csrf-token" content="<?= htmlspecialchars($csrfToken) ?>" />
     <title>WhatsApp | MM Design</title>
-    <link rel="stylesheet" href="./assets/crm.css?v=20260816-whatsapp-performance-v1" />
+    <link rel="stylesheet" href="./assets/crm.css?v=20260821-reply-context-v2" />
   </head>
   <body class="whatsapp-page whatsapp-crm-page" data-wa-initial-view="<?= is_array($activeLead) ? 'thread' : 'inbox' ?>" data-wa-mobile-view="<?= is_array($activeLead) ? 'thread' : 'inbox' ?>" data-wa-active-lead-id="<?= htmlspecialchars((string) ($activeLead['id'] ?? '')) ?>" data-wa-incoming-signature="<?= htmlspecialchars(is_array($activeLead) ? crm_whatsapp_incoming_signature($activeLead) : '') ?>" data-wa-lead-feed-version="<?= htmlspecialchars($leadFeedVersion) ?>">
     <main class="wa-web-shell" aria-label="Atendimento WhatsApp do CRM">
@@ -1438,8 +1504,9 @@ if ($isWaConversationFragment) {
               <?php
                 $messageMediaType = is_array($message['media'] ?? null) ? (string) ($message['media']['type'] ?? '') : '';
                 $messageMediaType = in_array($messageMediaType, ['image', 'sticker', 'audio', 'video', 'document'], true) ? $messageMediaType : 'file';
+                $messageDomId = whatsapp_page_message_dom_id($message);
               ?>
-              <article class="wa-message wa-message-<?= htmlspecialchars((string) $message['direction']) ?>">
+              <article<?= $messageDomId !== '' ? ' id="' . htmlspecialchars($messageDomId, ENT_QUOTES, 'UTF-8') . '"' : '' ?> class="wa-message wa-message-<?= htmlspecialchars((string) $message['direction']) ?>">
                 <?php if (is_array($message['reply_to'] ?? null)): ?>
                   <?= whatsapp_page_quoted_message_markup($message['reply_to']) ?>
                 <?php endif; ?>
@@ -3177,6 +3244,22 @@ if ($isWaConversationFragment) {
       };
 
       document.addEventListener("click", (event) => {
+        const quote = event.target.closest?.("[data-wa-quote-target]");
+
+        if (quote) {
+          event.preventDefault();
+          const target = document.getElementById(quote.dataset.waQuoteTarget || "");
+
+          if (target) {
+            target.scrollIntoView({ behavior: "smooth", block: "center" });
+            target.classList.remove("is-quote-target");
+            window.requestAnimationFrame(() => target.classList.add("is-quote-target"));
+            window.setTimeout(() => target.classList.remove("is-quote-target"), 1900);
+          }
+
+          return;
+        }
+
         const link = event.target.closest?.("a[data-wa-chat]");
 
         if (!link || event.defaultPrevented || event.button !== 0
