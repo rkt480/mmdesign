@@ -493,17 +493,36 @@ function meta_whatsapp_validate_webhook_signature(string $body): bool
 
 function meta_whatsapp_message_text(array $message, bool $appOriginated = false): string
 {
-    $type = strtolower(trim((string) ($message['type'] ?? '')));
+    $rawType = strtolower(trim((string) ($message['type'] ?? $message['messageType'] ?? $message['message_type'] ?? '')));
+    $type = match ($rawType) {
+        'conversation', 'extendedtextmessage', 'textmessage' => 'text',
+        'imagemessage' => 'image',
+        'videomessage' => 'video',
+        'audiomessage' => 'audio',
+        'documentmessage' => 'document',
+        'stickermessage' => 'sticker',
+        default => $rawType,
+    };
     $text = '';
 
     if ($type === 'text') {
-        $text = trim((string) ($message['text']['body'] ?? ''));
+        $text = trim((string) (
+            $message['text']['body']
+            ?? $message['conversation']
+            ?? $message['extendedTextMessage']['text']
+            ?? $message['message']['text']['body']
+            ?? $message['message']['conversation']
+            ?? $message['message']['extendedTextMessage']['text']
+            ?? ''
+        ));
     } elseif (isset($message['button']['text'])) {
         $text = trim((string) $message['button']['text']);
     } elseif (isset($message['interactive']['button_reply']['title'])) {
         $text = trim((string) $message['interactive']['button_reply']['title']);
     } elseif (isset($message['interactive']['list_reply']['title'])) {
         $text = trim((string) $message['interactive']['list_reply']['title']);
+    } elseif (isset($message[$rawType]['caption'])) {
+        $text = trim((string) $message[$rawType]['caption']);
     } elseif (isset($message[$type]['caption'])) {
         $text = trim((string) $message[$type]['caption']);
     }
@@ -535,22 +554,40 @@ function meta_whatsapp_message_text(array $message, bool $appOriginated = false)
  */
 function meta_whatsapp_normalize_reply_context(mixed $context): array
 {
+    if (is_string($context)) {
+        $decoded = json_decode(trim($context), true);
+        $context = is_array($decoded) ? $decoded : null;
+    }
+
     if (!is_array($context)) {
         return [];
     }
 
     $quotedMessage = [];
+    $quotedText = '';
 
-    foreach (['quotedMessage', 'quoted_message', 'quoted', 'message'] as $key) {
-        if (is_array($context[$key] ?? null)) {
-            $quotedMessage = $context[$key];
+    foreach (['quotedMessage', 'quoted_message', 'quotedMsg', 'quoted_msg', 'quotedMessageInfo', 'quoted_message_info', 'quoted', 'replyToMessage', 'reply_to_message', 'message'] as $key) {
+        $candidate = $context[$key] ?? null;
+
+        if (is_string($candidate)) {
+            $decoded = json_decode(trim($candidate), true);
+            $candidate = is_array($decoded) ? $decoded : $candidate;
+        }
+
+        if (is_array($candidate)) {
+            $quotedMessage = $candidate;
+            break;
+        }
+
+        if (is_scalar($candidate) && trim((string) $candidate) !== '') {
+            $quotedText = trim((string) $candidate);
             break;
         }
     }
 
     $id = '';
 
-    foreach (['id', 'stanzaId', 'stanza_id', 'quotedMessageId', 'quoted_message_id', 'messageId', 'message_id'] as $key) {
+    foreach (['quotedMessageId', 'quoted_message_id', 'quotedMsgId', 'quoted_msg_id', 'quotedId', 'quoted_id', 'replyToMessageId', 'reply_to_message_id', 'replyToId', 'reply_to_id', 'stanzaId', 'stanza_id', 'stanzaID', 'messageId', 'message_id', 'id'] as $key) {
         if (is_scalar($context[$key] ?? null) && trim((string) $context[$key]) !== '') {
             $id = trim((string) $context[$key]);
             break;
@@ -558,10 +595,19 @@ function meta_whatsapp_normalize_reply_context(mixed $context): array
     }
 
     if ($id === '' && $quotedMessage !== []) {
-        foreach (['id', 'messageId', 'message_id'] as $key) {
+        foreach (['id', 'messageId', 'message_id', 'stanzaId', 'stanza_id'] as $key) {
             if (is_scalar($quotedMessage[$key] ?? null) && trim((string) $quotedMessage[$key]) !== '') {
                 $id = trim((string) $quotedMessage[$key]);
                 break;
+            }
+        }
+
+        if ($id === '' && is_array($quotedMessage['key'] ?? null)) {
+            foreach (['id', 'messageId', 'message_id'] as $key) {
+                if (is_scalar($quotedMessage['key'][$key] ?? null) && trim((string) $quotedMessage['key'][$key]) !== '') {
+                    $id = trim((string) $quotedMessage['key'][$key]);
+                    break;
+                }
             }
         }
     }
@@ -570,10 +616,22 @@ function meta_whatsapp_normalize_reply_context(mixed $context): array
         $quotedMessage['type']
         ?? $quotedMessage['messageType']
         ?? $quotedMessage['message_type']
+        ?? $context['quotedMessageType']
+        ?? $context['quoted_message_type']
         ?? $context['type']
         ?? $context['messageType']
         ?? ''
     )));
+
+    $type = match ($type) {
+        'conversation', 'extendedtextmessage', 'textmessage' => 'text',
+        'imagemessage' => 'image',
+        'videomessage' => 'video',
+        'audiomessage' => 'audio',
+        'documentmessage' => 'document',
+        'stickermessage' => 'sticker',
+        default => $type,
+    };
 
     if ($type === '' && $quotedMessage !== []) {
         foreach ([
@@ -593,16 +651,20 @@ function meta_whatsapp_normalize_reply_context(mixed $context): array
         }
     }
 
-    $text = '';
+    if ($type === '' && $quotedText !== '') {
+        $type = 'text';
+    }
 
-    foreach ([
+    $text = $quotedText;
+
+    foreach ($text === '' ? [
         ['text', 'body'],
         ['conversation'],
         ['body'],
         ['caption'],
         ['content', 'text'],
         ['content', 'body'],
-    ] as $path) {
+    ] : [] as $path) {
         $value = $quotedMessage !== [] ? $quotedMessage : $context;
 
         foreach ($path as $segment) {
@@ -624,9 +686,10 @@ function meta_whatsapp_normalize_reply_context(mixed $context): array
         $text = meta_whatsapp_message_text($quotedMessage);
     }
 
-    $quotedMedia = $type !== '' && is_array($quotedMessage[$type] ?? null)
-        ? $quotedMessage[$type]
-        : ($type !== '' && is_array($quotedMessage[$type . 'Message'] ?? null) ? $quotedMessage[$type . 'Message'] : []);
+    $quotedContainer = $quotedMessage !== [] ? $quotedMessage : $context;
+    $quotedMedia = $type !== '' && is_array($quotedContainer[$type] ?? null)
+        ? $quotedContainer[$type]
+        : ($type !== '' && is_array($quotedContainer[$type . 'Message'] ?? null) ? $quotedContainer[$type . 'Message'] : []);
 
     if ($text === '' && $quotedMedia !== []) {
         $text = trim((string) ($quotedMedia['caption'] ?? $quotedMedia['body'] ?? ''));
@@ -635,8 +698,8 @@ function meta_whatsapp_normalize_reply_context(mixed $context): array
     $mediaUrl = '';
 
     foreach (['url', 'link', 'mediaUrl', 'media_url'] as $key) {
-        if (is_scalar($quotedMessage[$key] ?? null) && trim((string) $quotedMessage[$key]) !== '') {
-            $mediaUrl = trim((string) $quotedMessage[$key]);
+        if (is_scalar($quotedContainer[$key] ?? null) && trim((string) $quotedContainer[$key]) !== '') {
+            $mediaUrl = trim((string) $quotedContainer[$key]);
             break;
         }
     }
@@ -678,15 +741,27 @@ function meta_whatsapp_extract_reply_context(array $message): array
             return [];
         }
 
-        foreach (['context', 'contextInfo', 'context_info', 'quotedMessage', 'quoted_message', 'quoted'] as $key) {
-            if (!is_array($value[$key] ?? null)) {
+        foreach (['context', 'contextInfo', 'context_info', 'messageContextInfo', 'message_context_info', 'quotedMessage', 'quoted_message', 'quotedMsg', 'quoted_msg', 'quotedMessageInfo', 'quoted_message_info', 'quoted', 'replyTo', 'reply_to', 'replyToMessage', 'reply_to_message'] as $key) {
+            $candidate = $value[$key] ?? null;
+
+            if (!is_array($candidate) && !is_string($candidate)) {
                 continue;
             }
 
-            $context = meta_whatsapp_normalize_reply_context($value[$key]);
+            $context = meta_whatsapp_normalize_reply_context($candidate);
 
             if ($context !== []) {
                 return $context;
+            }
+        }
+
+        foreach (['quotedMessageId', 'quoted_message_id', 'quotedMsgId', 'quoted_msg_id', 'quotedId', 'quoted_id', 'replyToMessageId', 'reply_to_message_id', 'replyToId', 'reply_to_id', 'stanzaId', 'stanza_id', 'stanzaID'] as $key) {
+            if (is_scalar($value[$key] ?? null) && trim((string) $value[$key]) !== '') {
+                $context = meta_whatsapp_normalize_reply_context($value);
+
+                if ($context !== []) {
+                    return $context;
+                }
             }
         }
 
@@ -805,12 +880,36 @@ function meta_whatsapp_extract_coexistence_outgoing_messages(array $payload): ar
                     continue;
                 }
 
+                $messageId = '';
+
+                foreach (['id', 'messageId', 'message_id'] as $key) {
+                    if (is_scalar($message[$key] ?? null) && trim((string) $message[$key]) !== '') {
+                        $messageId = trim((string) $message[$key]);
+                        break;
+                    }
+                }
+
+                if ($messageId === '' && is_array($message['key'] ?? null)) {
+                    $messageId = trim((string) ($message['key']['id'] ?? ''));
+                }
+
+                $messageType = strtolower(trim((string) ($message['type'] ?? $message['messageType'] ?? $message['message_type'] ?? '')));
+                $messageType = match ($messageType) {
+                    'conversation', 'extendedtextmessage', 'textmessage' => 'text',
+                    'imagemessage' => 'image',
+                    'videomessage' => 'video',
+                    'audiomessage' => 'audio',
+                    'documentmessage' => 'document',
+                    'stickermessage' => 'sticker',
+                    default => $messageType,
+                };
+
                 $messages[] = [
-                    'id' => trim((string) ($message['id'] ?? '')),
+                    'id' => $messageId,
                     'number' => $number,
                     'name' => (string) ($contacts[$number] ?? ''),
                     'text' => $text,
-                    'type' => strtolower(trim((string) ($message['type'] ?? ''))),
+                    'type' => $messageType,
                     'timestamp' => trim((string) ($message['timestamp'] ?? '')),
                     'reply_context' => meta_whatsapp_extract_reply_context($message),
                     'source' => 'whatsapp_business_app',

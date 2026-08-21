@@ -896,6 +896,67 @@ function pilot_status_first_payload_value(array $payload, array $paths): string
     return '';
 }
 
+function pilot_status_normalize_message_type(string $type): string
+{
+    $type = strtolower(trim($type));
+
+    return match ($type) {
+        'conversation', 'extendedtextmessage', 'textmessage', 'text' => 'text',
+        'imagemessage', 'image' => 'image',
+        'videomessage', 'video' => 'video',
+        'audiomessage', 'audio', 'ptt' => 'audio',
+        'documentmessage', 'document' => 'document',
+        'stickermessage', 'sticker' => 'sticker',
+        default => $type,
+    };
+}
+
+function pilot_status_extract_message_type(array $payload): string
+{
+    $type = pilot_status_first_payload_value($payload, [
+        ['messageType'],
+        ['message_type'],
+        ['message', 'messageType'],
+        ['message', 'message_type'],
+        ['data', 'messageType'],
+        ['data', 'message_type'],
+        ['data', 'message', 'messageType'],
+        ['data', 'message', 'message_type'],
+        ['type'],
+        ['message', 'type'],
+        ['data', 'type'],
+        ['data', 'message', 'type'],
+    ]);
+
+    $normalized = pilot_status_normalize_message_type($type);
+
+    if (in_array($normalized, ['text', 'image', 'audio', 'video', 'document', 'sticker'], true)) {
+        return $normalized;
+    }
+
+    foreach ([
+        ['message'],
+        ['data', 'message'],
+        ['payload', 'message'],
+        ['content'],
+        ['data', 'content'],
+    ] as $path) {
+        $container = pilot_status_read_path($payload, $path);
+
+        if (!is_array($container)) {
+            continue;
+        }
+
+        foreach (['conversation', 'extendedTextMessage', 'text', 'imageMessage', 'videoMessage', 'audioMessage', 'documentMessage', 'stickerMessage', 'image', 'video', 'audio', 'document', 'sticker'] as $key) {
+            if (array_key_exists($key, $container)) {
+                return pilot_status_normalize_message_type($key);
+            }
+        }
+    }
+
+    return $normalized;
+}
+
 function pilot_status_normalize_phone_candidate(string $phone): string
 {
     $phone = preg_replace('/@.+$/', '', trim($phone)) ?? '';
@@ -991,6 +1052,11 @@ function pilot_status_extract_text(array $payload): string
         ['text', 'body'],
         ['text'],
         ['body'],
+        ['conversation'],
+        ['extendedTextMessage', 'text'],
+        ['imageMessage', 'caption'],
+        ['videoMessage', 'caption'],
+        ['documentMessage', 'caption'],
         ['message'],
         ['content'],
         ['message', 'text', 'body'],
@@ -998,41 +1064,74 @@ function pilot_status_extract_text(array $payload): string
         ['message', 'body'],
         ['message', 'content'],
         ['message', 'conversation'],
+        ['message', 'extendedTextMessage', 'text'],
+        ['message', 'imageMessage', 'caption'],
+        ['message', 'videoMessage', 'caption'],
+        ['message', 'documentMessage', 'caption'],
+        ['message', 'image', 'caption'],
+        ['message', 'video', 'caption'],
+        ['message', 'document', 'caption'],
         ['content', 'text'],
         ['content', 'body'],
+        ['content', 'conversation'],
+        ['content', 'extendedTextMessage', 'text'],
+        ['content', 'imageMessage', 'caption'],
+        ['content', 'videoMessage', 'caption'],
         ['data', 'text', 'body'],
         ['data', 'text'],
         ['data', 'body'],
+        ['data', 'conversation'],
+        ['data', 'extendedTextMessage', 'text'],
+        ['data', 'imageMessage', 'caption'],
+        ['data', 'videoMessage', 'caption'],
         ['data', 'message'],
         ['data', 'content'],
         ['data', 'content', 'text'],
         ['data', 'content', 'body'],
+        ['data', 'content', 'conversation'],
+        ['data', 'content', 'extendedTextMessage', 'text'],
+        ['data', 'content', 'imageMessage', 'caption'],
+        ['data', 'content', 'videoMessage', 'caption'],
         ['data', 'message', 'text', 'body'],
         ['data', 'message', 'text'],
         ['data', 'message', 'body'],
         ['data', 'message', 'content'],
         ['data', 'message', 'conversation'],
+        ['data', 'message', 'extendedTextMessage', 'text'],
+        ['data', 'message', 'imageMessage', 'caption'],
+        ['data', 'message', 'videoMessage', 'caption'],
         ['payload', 'text', 'body'],
         ['payload', 'text'],
         ['payload', 'body'],
+        ['payload', 'conversation'],
+        ['payload', 'extendedTextMessage', 'text'],
+        ['payload', 'imageMessage', 'caption'],
+        ['payload', 'videoMessage', 'caption'],
         ['payload', 'message', 'text', 'body'],
         ['payload', 'message', 'text'],
         ['payload', 'message', 'body'],
+        ['payload', 'message', 'conversation'],
+        ['payload', 'message', 'extendedTextMessage', 'text'],
+        ['payload', 'message', 'imageMessage', 'caption'],
+        ['payload', 'message', 'videoMessage', 'caption'],
     ]);
 }
 
 function pilot_status_extract_incoming_media(array $payload): array
 {
-    $type = strtolower(pilot_status_first_payload_value($payload, [
-        ['mediaType'],
-        ['media_type'],
-        ['type'],
-        ['media', 'type'],
-        ['data', 'mediaType'],
-        ['data', 'media_type'],
-        ['data', 'type'],
-        ['data', 'media', 'type'],
-    ]));
+    $type = pilot_status_extract_message_type($payload);
+
+    if (!in_array($type, ['image', 'audio', 'video', 'document', 'sticker'], true)) {
+        $type = strtolower(pilot_status_first_payload_value($payload, [
+            ['mediaType'],
+            ['media_type'],
+            ['media', 'type'],
+            ['data', 'mediaType'],
+            ['data', 'media_type'],
+            ['data', 'media', 'type'],
+        ]));
+        $type = pilot_status_normalize_message_type($type);
+    }
 
     if (!in_array($type, ['image', 'audio', 'video', 'document', 'sticker'], true)) {
         $type = '';
@@ -1047,6 +1146,14 @@ function pilot_status_extract_incoming_media(array $payload): array
         ['data', 'media', 'url'],
         ['message', 'mediaLink'],
         ['message', 'media', 'url'],
+        ['message', 'imageMessage', 'url'],
+        ['message', 'videoMessage', 'url'],
+        ['message', 'audioMessage', 'url'],
+        ['message', 'documentMessage', 'url'],
+        ['data', 'message', 'imageMessage', 'url'],
+        ['data', 'message', 'videoMessage', 'url'],
+        ['data', 'message', 'audioMessage', 'url'],
+        ['data', 'message', 'documentMessage', 'url'],
     ];
 
     // Pilot Status sends the native Meta envelope when all events are
@@ -1058,6 +1165,9 @@ function pilot_status_extract_incoming_media(array $payload): array
         $urlPaths[] = [$type, 'url'];
         $urlPaths[] = ['data', $type, 'url'];
         $urlPaths[] = ['message', $type, 'url'];
+        $urlPaths[] = ['message', $type . 'Message', 'url'];
+        $urlPaths[] = ['data', 'message', $type, 'url'];
+        $urlPaths[] = ['data', 'message', $type . 'Message', 'url'];
         $nativeUrl = pilot_status_first_payload_value($payload, [[$type, 'url']]);
     }
 
@@ -1084,9 +1194,17 @@ function pilot_status_extract_incoming_media(array $payload): array
     if ($type !== '') {
         $mimePaths[] = [$type, 'mime_type'];
         $mimePaths[] = [$type, 'mimeType'];
+        $mimePaths[] = ['message', $type . 'Message', 'mimetype'];
+        $mimePaths[] = ['message', $type . 'Message', 'mimeType'];
+        $mimePaths[] = ['data', 'message', $type . 'Message', 'mimetype'];
+        $mimePaths[] = ['data', 'message', $type . 'Message', 'mimeType'];
         $captionPaths[] = [$type, 'caption'];
         $filenamePaths[] = [$type, 'filename'];
+        $captionPaths[] = ['message', $type . 'Message', 'caption'];
+        $captionPaths[] = ['data', 'message', $type . 'Message', 'caption'];
         $mediaIdPaths[] = [$type, 'id'];
+        $mediaIdPaths[] = ['message', $type . 'Message', 'id'];
+        $mediaIdPaths[] = ['data', 'message', $type . 'Message', 'id'];
     }
 
     $temporaryUrl = $nativeUrl !== '' && $url === $nativeUrl;
@@ -1301,13 +1419,14 @@ function pilot_status_extract_single_incoming_message(array $payload): array
     }
 
     return [
-        'id' => pilot_status_first_payload_value($payload, [['id'], ['messageId'], ['message_id'], ['message', 'id'], ['data', 'id'], ['data', 'messageId'], ['data', 'message', 'id']]),
-        'timestamp' => pilot_status_first_payload_value($payload, [['timestamp'], ['message', 'timestamp'], ['data', 'timestamp'], ['data', 'message', 'timestamp']]),
+        'id' => pilot_status_first_payload_value($payload, [['id'], ['messageId'], ['message_id'], ['key', 'id'], ['message', 'id'], ['data', 'id'], ['data', 'messageId'], ['data', 'message_id'], ['data', 'key', 'id'], ['data', 'message', 'id'], ['payload', 'id'], ['payload', 'key', 'id'], ['payload', 'message', 'id']]),
+        'timestamp' => pilot_status_first_payload_value($payload, [['timestamp'], ['messageTimestamp'], ['message_timestamp'], ['message', 'timestamp'], ['data', 'timestamp'], ['data', 'messageTimestamp'], ['data', 'message_timestamp'], ['data', 'message', 'timestamp'], ['data', 'message', 'messageTimestamp']]),
         'raw_number' => $phone['raw'],
         'number' => $phone['number'],
         'from_number' => $fromNumber,
         'to_number' => $toNumber,
         'text' => pilot_status_extract_text($payload),
+        'type' => pilot_status_extract_message_type($payload),
         'media' => pilot_status_extract_incoming_media($payload),
         'reply_context' => meta_whatsapp_extract_reply_context($payload),
         'name' => pilot_status_extract_name($payload),
@@ -1555,7 +1674,7 @@ function pilot_status_extract_outgoing_messages(array $payload): array
             continue;
         }
 
-        $type = strtolower(trim((string) ($item['type'] ?? '')));
+        $type = pilot_status_normalize_message_type((string) ($incoming['type'] ?? pilot_status_extract_message_type($item)));
         $text = trim((string) ($incoming['text'] ?? ''));
 
         if ($text === '') {
@@ -1574,6 +1693,7 @@ function pilot_status_extract_outgoing_messages(array $payload): array
         }
 
         $incoming['number'] = $number;
+        $incoming['text'] = $text;
         $incoming['from_me'] = true;
         $incoming['source'] = 'whatsapp_business_app';
         $incoming['historical'] = (bool) ($item['_historical'] ?? false);
