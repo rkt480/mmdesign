@@ -2108,6 +2108,53 @@ function crm_update_lead_profile_picture(string $id, string $url): bool
     return $stmt->rowCount() > 0;
 }
 
+function crm_update_lead_attribution(string $id, array $attribution): bool
+{
+    $lead = crm_find_lead($id);
+
+    if ($lead === null) {
+        return false;
+    }
+
+    $fields = [];
+    $params = [
+        'id' => $id,
+        'updated_at' => date('Y-m-d H:i:s'),
+    ];
+
+    $attributionFields = [
+        'utm_source' => ['pilot_status', ''],
+        'utm_medium' => ['whatsapp', ''],
+        'utm_campaign' => ['mensagem_recebida', ''],
+        'utm_content' => [''],
+    ];
+
+    foreach ($attributionFields as $field => $replaceableValues) {
+        $value = trim((string) ($attribution[$field] ?? ''));
+        $current = trim((string) ($lead[$field] ?? ''));
+
+        if ($value === '' || !in_array($current, $replaceableValues, true)) {
+            continue;
+        }
+
+        $fields[] = $field . ' = :' . $field;
+        $params[$field] = $value;
+    }
+
+    if ($fields === []) {
+        return false;
+    }
+
+    $fields[] = 'updated_at = :updated_at';
+    [$accessSql, $accessParams] = crm_lead_access_sql('leads');
+    $stmt = crm_db()->prepare(
+        'UPDATE leads SET ' . implode(', ', $fields) . ' WHERE id = :id' . $accessSql
+    );
+    $stmt->execute($params + $accessParams);
+
+    return $stmt->rowCount() > 0;
+}
+
 function crm_update_lead(string $id, array $updates): bool
 {
     $lead = crm_find_lead($id);

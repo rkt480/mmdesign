@@ -240,6 +240,112 @@ function pilot_status_api_request(string $endpoint, string $method = 'GET', ?arr
     return ['ok' => true, 'response' => is_array($decoded) ? $decoded : $body];
 }
 
+function pilot_status_extract_referral_names(array $response): array
+{
+    $rows = $response['referrals'] ?? [];
+
+    if (!is_array($rows)) {
+        return [];
+    }
+
+    foreach ($rows as $row) {
+        if (!is_array($row)) {
+            continue;
+        }
+
+        $referral = is_array($row['referral'] ?? null) ? $row['referral'] : $row;
+
+        if (
+            isset($referral['sourceId'])
+            || isset($referral['source_id'])
+            || isset($referral['adName'])
+            || isset($referral['campaignName'])
+        ) {
+            return [
+                'source_id' => trim((string) ($referral['sourceId'] ?? $referral['source_id'] ?? '')),
+                'source_type' => strtolower(trim((string) ($referral['sourceType'] ?? $referral['source_type'] ?? ''))),
+                'ad_name' => trim((string) ($referral['adName'] ?? $referral['ad_name'] ?? '')),
+                'adset_name' => trim((string) ($referral['adsetName'] ?? $referral['adset_name'] ?? '')),
+                'campaign_name' => trim((string) ($referral['campaignName'] ?? $referral['campaign_name'] ?? '')),
+                'names_resolved_at' => trim((string) ($referral['namesResolvedAt'] ?? $referral['names_resolved_at'] ?? '')),
+            ];
+        }
+    }
+
+    return [];
+}
+
+function pilot_status_resolve_referral_attribution(array $attribution): array
+{
+    $sourceId = trim((string) ($attribution['referral_source_id'] ?? ''));
+    $sourceType = strtolower(trim((string) ($attribution['referral_source_type'] ?? '')));
+
+    if ($sourceId === '' || !in_array($sourceType, ['ad', 'post'], true)) {
+        return $attribution;
+    }
+
+    if (!pilot_status_is_configured()) {
+        pilot_status_log('Consulta de atribuição ignorada: API key do Pilot Status não configurada.', [
+            'source_id' => $sourceId,
+            'source_type' => $sourceType,
+        ]);
+        return $attribution;
+    }
+
+    $result = pilot_status_api_request(
+        '/referrals',
+        'GET',
+        [
+            'sourceType' => $sourceType,
+            'sourceId' => $sourceId,
+            'page' => 1,
+            'pageSize' => 1,
+        ],
+        8
+    );
+
+    if (($result['ok'] ?? false) !== true || !is_array($result['response'] ?? null)) {
+        pilot_status_log('Não foi possível consultar a atribuição do anúncio.', [
+            'source_id' => $sourceId,
+            'source_type' => $sourceType,
+            'error' => (string) ($result['error'] ?? 'Resposta inválida.'),
+        ]);
+        return $attribution;
+    }
+
+    $referral = pilot_status_extract_referral_names($result['response']);
+    $adName = trim((string) ($referral['ad_name'] ?? ''));
+    $adsetName = trim((string) ($referral['adset_name'] ?? ''));
+    $campaignName = trim((string) ($referral['campaign_name'] ?? ''));
+
+    if ($adName === '' && $adsetName === '' && $campaignName === '') {
+        pilot_status_log('Atribuição encontrada, mas os nomes ainda não foram resolvidos.', [
+            'source_id' => $sourceId,
+            'source_type' => $sourceType,
+            'names_resolved_at' => (string) ($referral['names_resolved_at'] ?? ''),
+        ]);
+        return $attribution;
+    }
+
+    if ((string) ($attribution['utm_source'] ?? '') === '') {
+        $attribution['utm_source'] = 'metaads';
+    }
+
+    if ($adsetName !== '' && (string) ($attribution['utm_medium'] ?? '') === '') {
+        $attribution['utm_medium'] = $adsetName;
+    }
+
+    if ($campaignName !== '' && (string) ($attribution['utm_campaign'] ?? '') === '') {
+        $attribution['utm_campaign'] = $campaignName;
+    }
+
+    if ($adName !== '' && (string) ($attribution['utm_content'] ?? '') === '') {
+        $attribution['utm_content'] = $adName;
+    }
+
+    return $attribution;
+}
+
 function pilot_status_request(string $endpoint, array $payload, int $timeout = 20): array
 {
     return pilot_status_api_request($endpoint, 'POST', $payload, $timeout);

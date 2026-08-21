@@ -185,6 +185,19 @@ foreach ($incomingMessages as $incoming) {
         ? $incoming['attribution']
         : crm_attribution_empty();
 
+    // Click-to-WhatsApp delivers the ad ID in the referral object. Resolve
+    // the readable ad/set/campaign names through Pilot Status before creating
+    // the lead, while keeping the webhook resilient if the async resolution
+    // is still pending or the API is temporarily unavailable.
+    try {
+        $attribution = pilot_status_resolve_referral_attribution($attribution);
+    } catch (Throwable $error) {
+        pilot_status_log('Erro ao resolver a atribuição do anúncio.', [
+            'source_id' => (string) ($attribution['referral_source_id'] ?? ''),
+            'error' => $error->getMessage(),
+        ]);
+    }
+
     $leadPayload = [
         'name' => $name,
         'whatsapp' => $whatsapp,
@@ -210,6 +223,14 @@ foreach ($incomingMessages as $incoming) {
         $leadResult = crm_create_lead_once($leadPayload);
         $lead = $leadResult['lead'];
         $followupAutomation = ['stopped' => false, 'cancelled' => 0];
+
+        if (($leadResult['created'] ?? false) === false) {
+            $attributionUpdated = crm_update_lead_attribution((string) $lead['id'], $attribution);
+
+            if ($attributionUpdated) {
+                $lead = crm_find_lead((string) $lead['id']) ?? $lead;
+            }
+        }
 
         if ($profilePictureUrl !== '' && $profilePictureUrl !== (string) ($lead['profile_picture_url'] ?? '')) {
             crm_update_lead_profile_picture((string) $lead['id'], $profilePictureUrl);
