@@ -297,6 +297,38 @@ function whatsapp_page_infer_media_type_from_text(string $text): string
     };
 }
 
+function whatsapp_page_normalize_media_type(string $type): string
+{
+    return match (strtolower(trim($type))) {
+        'imagemessage' => 'image',
+        'audiomessage', 'ptt' => 'audio',
+        'videomessage' => 'video',
+        'documentmessage' => 'document',
+        'stickermessage' => 'sticker',
+        'conversation', 'extendedtextmessage', 'textmessage' => 'text',
+        default => strtolower(trim($type)),
+    };
+}
+
+function whatsapp_page_message_id_variants(string $messageId): array
+{
+    $messageId = strtolower(trim($messageId));
+
+    if ($messageId === '') {
+        return [];
+    }
+
+    $variants = [$messageId];
+
+    if (str_starts_with($messageId, 'wamid.')) {
+        $variants[] = substr($messageId, 6);
+    } else {
+        $variants[] = 'wamid.' . $messageId;
+    }
+
+    return array_values(array_unique(array_filter($variants, static fn(string $value): bool => $value !== '')));
+}
+
 function whatsapp_page_extract_reply_context_from_text(string &$text): array
 {
     if (preg_match('/(?:^|\R)\[crm_reply\]([^\r\n]+)\s*$/u', $text, $match) !== 1) {
@@ -364,19 +396,36 @@ function whatsapp_page_reply_context_label(array $message): string
 function whatsapp_page_reply_context_preview(array $message): string
 {
     $media = is_array($message['media'] ?? null) ? $message['media'] : [];
+    $mediaType = whatsapp_page_normalize_media_type((string) ($media['type'] ?? ''));
     $text = trim((string) ($message['text'] ?? ''));
 
     if ($text !== '' && !in_array($text, ['Imagem enviada', 'Áudio enviado', 'Vídeo enviado', 'Documento enviado', 'Sticker enviado'], true)) {
         return whatsapp_page_short_text($text, 105);
     }
 
+    if ($mediaType === 'text' && $text === '') {
+        return 'Mensagem de texto enviada';
+    }
+
     if ($media !== []) {
+        if ($mediaType !== '' && $mediaType !== (string) ($media['type'] ?? '')) {
+            $media['type'] = $mediaType;
+        }
+
         return (string) ($message['direction'] ?? '') === 'outgoing'
             ? whatsapp_page_sent_media_label($media)
             : whatsapp_page_media_label($media);
     }
 
-    return $text !== '' ? whatsapp_page_short_text($text, 105) : 'Mensagem enviada';
+    return match ($mediaType) {
+        'text' => 'Mensagem de texto enviada',
+        'image' => 'Imagem enviada',
+        'audio' => 'Áudio enviado',
+        'video' => 'Vídeo enviado',
+        'document' => 'Documento enviado',
+        'sticker' => 'Sticker enviado',
+        default => $text !== '' ? whatsapp_page_short_text($text, 105) : 'Mensagem enviada',
+    };
 }
 
 function whatsapp_page_attach_reply_contexts(array &$messages): void
@@ -385,7 +434,9 @@ function whatsapp_page_attach_reply_contexts(array &$messages): void
 
     foreach ($messages as $message) {
         foreach (whatsapp_page_message_id_candidates($message) as $messageId) {
-            $messagesById[strtolower($messageId)] = $message;
+            foreach (whatsapp_page_message_id_variants($messageId) as $messageIdVariant) {
+                $messagesById[$messageIdVariant] = $message;
+            }
         }
     }
 
@@ -402,16 +453,19 @@ function whatsapp_page_attach_reply_contexts(array &$messages): void
         }
 
         $quoted = null;
-        $replyId = strtolower(trim((string) ($replyContext['id'] ?? '')));
+        $replyId = trim((string) ($replyContext['id'] ?? ''));
 
-        if ($replyId !== '' && isset($messagesById[$replyId])) {
-            $quoted = $messagesById[$replyId];
+        foreach (whatsapp_page_message_id_variants($replyId) as $replyIdVariant) {
+            if (isset($messagesById[$replyIdVariant])) {
+                $quoted = $messagesById[$replyIdVariant];
+                break;
+            }
         }
 
         if (!is_array($quoted)) {
-            $replyType = strtolower(trim((string) ($replyContext['type'] ?? '')));
+            $replyType = whatsapp_page_normalize_media_type((string) ($replyContext['type'] ?? ''));
             $replyText = strtolower(trim((string) ($replyContext['text'] ?? '')));
-            $fallbackCandidates = [];
+            $nearestOutgoing = null;
 
             for ($candidateIndex = $messageIndex - 1; $candidateIndex >= 0; $candidateIndex--) {
                 $candidate = $messages[$candidateIndex] ?? [];
@@ -420,10 +474,14 @@ function whatsapp_page_attach_reply_contexts(array &$messages): void
                     continue;
                 }
 
+                if (!is_array($nearestOutgoing)) {
+                    $nearestOutgoing = $candidate;
+                }
+
                 $candidateMedia = is_array($candidate['media'] ?? null) ? $candidate['media'] : [];
-                $candidateType = strtolower(trim((string) ($candidateMedia['type'] ?? '')));
+                $candidateType = whatsapp_page_normalize_media_type((string) ($candidateMedia['type'] ?? ''));
                 $candidateText = strtolower(trim((string) ($candidate['text'] ?? '')));
-                $textMatches = $replyText !== ''
+                $textMatches = $replyText !== '' && $candidateText !== ''
                     && ($candidateText === $replyText
                         || str_contains($candidateText, $replyText)
                         || str_contains($replyText, $candidateText));
@@ -439,19 +497,18 @@ function whatsapp_page_attach_reply_contexts(array &$messages): void
                     break;
                 }
 
-                $fallbackCandidates[] = $candidate;
             }
 
             // Some provider payloads expose a quoted ID that differs from the
-            // ID saved in the CRM. If there is only one possible outgoing
-            // message before the reply, it is still safe and useful to link it.
-            if (!is_array($quoted) && count($fallbackCandidates) === 1) {
-                $quoted = $fallbackCandidates[0];
+            // ID saved in the CRM. The nearest outgoing message is the best
+            // available match when the provider omits the quoted snapshot.
+            if (!is_array($quoted) && is_array($nearestOutgoing)) {
+                $quoted = $nearestOutgoing;
             }
         }
 
         if (!is_array($quoted)) {
-            $fallbackMediaType = strtolower(trim((string) ($replyContext['type'] ?? '')));
+            $fallbackMediaType = whatsapp_page_normalize_media_type((string) ($replyContext['type'] ?? ''));
             $fallbackMedia = [];
 
             if ($fallbackMediaType !== '') {
@@ -488,7 +545,7 @@ function whatsapp_page_attach_reply_contexts(array &$messages): void
 function whatsapp_page_quoted_message_markup(array $replyTo): string
 {
     $media = is_array($replyTo['media'] ?? null) ? $replyTo['media'] : [];
-    $mediaType = strtolower(trim((string) ($media['type'] ?? '')));
+    $mediaType = whatsapp_page_normalize_media_type((string) ($media['type'] ?? ''));
     $mediaUrl = whatsapp_page_media_url((string) ($media['url'] ?? ''));
     $preview = trim((string) ($replyTo['text'] ?? ''));
 
