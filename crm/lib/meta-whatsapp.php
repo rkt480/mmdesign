@@ -527,6 +527,188 @@ function meta_whatsapp_message_text(array $message, bool $appOriginated = false)
 }
 
 /**
+ * Normalizes the WhatsApp reply context carried by an incoming message.
+ * WhatsApp normally sends only the ID of the quoted message, while some
+ * providers also include a copy of its text or media type.
+ *
+ * @return array<string, string>
+ */
+function meta_whatsapp_normalize_reply_context(mixed $context): array
+{
+    if (!is_array($context)) {
+        return [];
+    }
+
+    $quotedMessage = [];
+
+    foreach (['quotedMessage', 'quoted_message', 'quoted', 'message'] as $key) {
+        if (is_array($context[$key] ?? null)) {
+            $quotedMessage = $context[$key];
+            break;
+        }
+    }
+
+    $id = '';
+
+    foreach (['id', 'stanzaId', 'stanza_id', 'quotedMessageId', 'quoted_message_id', 'messageId', 'message_id'] as $key) {
+        if (is_scalar($context[$key] ?? null) && trim((string) $context[$key]) !== '') {
+            $id = trim((string) $context[$key]);
+            break;
+        }
+    }
+
+    if ($id === '' && $quotedMessage !== []) {
+        foreach (['id', 'messageId', 'message_id'] as $key) {
+            if (is_scalar($quotedMessage[$key] ?? null) && trim((string) $quotedMessage[$key]) !== '') {
+                $id = trim((string) $quotedMessage[$key]);
+                break;
+            }
+        }
+    }
+
+    $type = strtolower(trim((string) (
+        $quotedMessage['type']
+        ?? $quotedMessage['messageType']
+        ?? $quotedMessage['message_type']
+        ?? $context['type']
+        ?? $context['messageType']
+        ?? ''
+    )));
+
+    if ($type === '' && $quotedMessage !== []) {
+        foreach ([
+            'image' => ['image', 'imageMessage'],
+            'video' => ['video', 'videoMessage'],
+            'audio' => ['audio', 'audioMessage'],
+            'document' => ['document', 'documentMessage'],
+            'sticker' => ['sticker', 'stickerMessage'],
+            'text' => ['text', 'conversation'],
+        ] as $mediaType => $keys) {
+            foreach ($keys as $key) {
+                if (array_key_exists($key, $quotedMessage)) {
+                    $type = $mediaType;
+                    break 2;
+                }
+            }
+        }
+    }
+
+    $text = '';
+
+    foreach ([
+        ['text', 'body'],
+        ['conversation'],
+        ['body'],
+        ['caption'],
+        ['content', 'text'],
+        ['content', 'body'],
+    ] as $path) {
+        $value = $quotedMessage !== [] ? $quotedMessage : $context;
+
+        foreach ($path as $segment) {
+            if (!is_array($value) || !array_key_exists($segment, $value)) {
+                $value = null;
+                break;
+            }
+
+            $value = $value[$segment];
+        }
+
+        if (is_scalar($value) && trim((string) $value) !== '') {
+            $text = trim((string) $value);
+            break;
+        }
+    }
+
+    if ($text === '' && $quotedMessage !== []) {
+        $text = meta_whatsapp_message_text($quotedMessage);
+    }
+
+    $quotedMedia = $type !== '' && is_array($quotedMessage[$type] ?? null)
+        ? $quotedMessage[$type]
+        : ($type !== '' && is_array($quotedMessage[$type . 'Message'] ?? null) ? $quotedMessage[$type . 'Message'] : []);
+
+    if ($text === '' && $quotedMedia !== []) {
+        $text = trim((string) ($quotedMedia['caption'] ?? $quotedMedia['body'] ?? ''));
+    }
+
+    $mediaUrl = '';
+
+    foreach (['url', 'link', 'mediaUrl', 'media_url'] as $key) {
+        if (is_scalar($quotedMessage[$key] ?? null) && trim((string) $quotedMessage[$key]) !== '') {
+            $mediaUrl = trim((string) $quotedMessage[$key]);
+            break;
+        }
+    }
+
+    if ($mediaUrl === '' && $quotedMedia !== []) {
+        foreach (['url', 'link', 'mediaUrl', 'media_url'] as $key) {
+            if (is_scalar($quotedMedia[$key] ?? null) && trim((string) $quotedMedia[$key]) !== '') {
+                $mediaUrl = trim((string) $quotedMedia[$key]);
+                break;
+            }
+        }
+    }
+
+    $result = [];
+
+    if ($id !== '') {
+        $result['id'] = $id;
+    }
+
+    if ($text !== '') {
+        $result['text'] = $text;
+    }
+
+    if ($type !== '') {
+        $result['type'] = $type;
+    }
+
+    if ($mediaUrl !== '') {
+        $result['url'] = $mediaUrl;
+    }
+
+    return $result;
+}
+
+function meta_whatsapp_extract_reply_context(array $message): array
+{
+    $find = static function (mixed $value, int $depth = 0) use (&$find): array {
+        if ($depth > 7 || !is_array($value)) {
+            return [];
+        }
+
+        foreach (['context', 'contextInfo', 'context_info', 'quotedMessage', 'quoted_message', 'quoted'] as $key) {
+            if (!is_array($value[$key] ?? null)) {
+                continue;
+            }
+
+            $context = meta_whatsapp_normalize_reply_context($value[$key]);
+
+            if ($context !== []) {
+                return $context;
+            }
+        }
+
+        foreach ($value as $child) {
+            if (!is_array($child)) {
+                continue;
+            }
+
+            $context = $find($child, $depth + 1);
+
+            if ($context !== []) {
+                return $context;
+            }
+        }
+
+        return [];
+    };
+
+    return $find($message);
+}
+
+/**
  * Extracts the messages mirrored by WhatsApp Coexistence when the business
  * sends them from the WhatsApp Business App. These arrive in a different
  * webhook field from customer messages, with `from` set to the business
@@ -630,6 +812,7 @@ function meta_whatsapp_extract_coexistence_outgoing_messages(array $payload): ar
                     'text' => $text,
                     'type' => strtolower(trim((string) ($message['type'] ?? ''))),
                     'timestamp' => trim((string) ($message['timestamp'] ?? '')),
+                    'reply_context' => meta_whatsapp_extract_reply_context($message),
                     'source' => 'whatsapp_business_app',
                     'historical' => $field === 'history',
                 ];
@@ -704,6 +887,7 @@ function meta_whatsapp_extract_incoming_messages(array $payload): array
                     'text' => $text,
                     'type' => (string) ($message['type'] ?? ''),
                     'timestamp' => (string) ($message['timestamp'] ?? ''),
+                    'reply_context' => meta_whatsapp_extract_reply_context($message),
                     'attribution' => crm_extract_marketing_attribution($message),
                 ];
             }

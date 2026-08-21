@@ -142,6 +142,7 @@ foreach ($incomingMessages as $incoming) {
     $mediaUrl = trim((string) ($media['url'] ?? ''));
     $incomingMessageId = trim((string) ($incoming['id'] ?? ''));
     $incomingMediaId = trim((string) ($media['id'] ?? ''));
+    $replyContext = is_array($incoming['reply_context'] ?? null) ? $incoming['reply_context'] : [];
     $name = trim((string) ($incoming['name'] ?? ''));
     $profilePictureUrl = crm_normalize_profile_picture_url((string) ($incoming['profile_picture_url'] ?? ''));
 
@@ -245,6 +246,10 @@ foreach ($incomingMessages as $incoming) {
                 $media['crm_message_id'] = $incomingMessageId;
             }
 
+            if ($replyContext !== []) {
+                $media['reply_context'] = $replyContext;
+            }
+
             $mediaJson = json_encode($media, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
             if (is_string($mediaJson) && $mediaJson !== '') {
@@ -264,9 +269,11 @@ foreach ($incomingMessages as $incoming) {
             }
         } elseif (($leadResult['created'] ?? false) === false && $message !== '') {
             $followupAutomation = crm_stop_followup_after_incoming_reply((string) $lead['id']);
+            $incomingNote = 'Mensagem recebida pela Pilot Status em ' . date('d/m/Y H:i:s') . ":\n" . $message;
+            $incomingNote .= crm_whatsapp_reply_context_note($replyContext);
             crm_append_lead_note(
                 (string) $lead['id'],
-                'Mensagem recebida pela Pilot Status em ' . date('d/m/Y H:i:s') . ":\n" . $message
+                $incomingNote
             );
             crm_notify_lead_reply_push(
                 $lead,

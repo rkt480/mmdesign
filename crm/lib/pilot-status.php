@@ -1309,6 +1309,7 @@ function pilot_status_extract_single_incoming_message(array $payload): array
         'to_number' => $toNumber,
         'text' => pilot_status_extract_text($payload),
         'media' => pilot_status_extract_incoming_media($payload),
+        'reply_context' => meta_whatsapp_extract_reply_context($payload),
         'name' => pilot_status_extract_name($payload),
         'profile_picture_url' => pilot_status_extract_profile_picture_url($payload),
         'attribution' => crm_extract_marketing_attribution($payload),
