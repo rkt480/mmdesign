@@ -85,13 +85,29 @@ $closedThisMonth = array_values(array_filter($closedLeads, static function (arra
 }));
 $closedThisMonthValue = array_sum(array_map(static fn(array $lead): float => dashboard_pipeline_value($lead), $closedThisMonth));
 $contactDurations = [];
+$contactTimeZone = crm_sla_timezone();
 
 foreach ($leads as $lead) {
-    $createdAt = strtotime((string) ($lead['created_at'] ?? ''));
-    $firstContactAt = strtotime((string) ($lead['first_contact_at'] ?? ''));
+    $createdAtValue = trim((string) (($lead['assigned_at'] ?? '') ?: ($lead['created_at'] ?? '')));
+    $firstContactValue = trim((string) ($lead['first_contact_at'] ?? ''));
 
-    if ($createdAt !== false && $firstContactAt !== false && $firstContactAt >= $createdAt) {
-        $contactDurations[] = $firstContactAt - $createdAt;
+    if ($createdAtValue === '' || $firstContactValue === '') {
+        continue;
+    }
+
+    try {
+        $createdAt = new DateTimeImmutable($createdAtValue, $contactTimeZone);
+        $firstContactAt = new DateTimeImmutable($firstContactValue, $contactTimeZone);
+    } catch (Throwable $error) {
+        continue;
+    }
+
+    if ($firstContactAt >= $createdAt) {
+        $contactDurations[] = crm_sla_access_window_seconds(
+            $createdAt,
+            $firstContactAt,
+            crm_sla_access_user_from_lead($lead)
+        );
     }
 }
 
@@ -257,7 +273,7 @@ arsort($lostReasons);
               <small><?= htmlspecialchars(dashboard_currency($closedThisMonthValue)) ?></small>
             </article>
             <article>
-              <span>Tempo 1º contato</span>
+              <span>Tempo 1º contato útil</span>
               <strong><?= htmlspecialchars($averageFirstContactLabel) ?></strong>
             </article>
           </section>

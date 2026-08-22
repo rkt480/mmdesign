@@ -1558,7 +1558,13 @@ function crm_read_leads(): array
 {
     [$accessSql, $accessParams] = crm_lead_access_sql('leads');
     $stmt = crm_db()->prepare(
-        'SELECT leads.*, crm_users.name AS assigned_user_name, crm_users.username AS assigned_username
+        'SELECT leads.*, crm_users.name AS assigned_user_name, crm_users.username AS assigned_username,
+                crm_users.role AS assigned_user_role,
+                crm_users.access_schedule_enabled AS assigned_access_schedule_enabled,
+                crm_users.access_start_time AS assigned_access_start_time,
+                crm_users.access_end_time AS assigned_access_end_time,
+                crm_users.access_saturday_enabled AS assigned_access_saturday_enabled,
+                crm_users.access_sunday_enabled AS assigned_access_sunday_enabled
         FROM leads
         LEFT JOIN crm_users ON crm_users.id = leads.assigned_user_id
         WHERE 1 = 1' . $accessSql . '
