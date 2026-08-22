@@ -212,6 +212,9 @@ function whatsapp_page_avatar_markup(array $lead, string $modifier = ''): string
 
 function whatsapp_page_clean_sent_message_text(string $text): string
 {
+    // Follow-up metadata is useful in the CRM note, but it must never appear
+    // in the customer-facing conversation bubble.
+    $text = preg_replace('/^Follow-up\s*·[^\r\n]*\R?/imu', '', $text) ?? $text;
     $text = preg_replace('/\R?Status inicial: aceito pela Pilot Status; aguardando confirmação de entrega\.\R?/iu', "\n", $text) ?? $text;
     $text = preg_replace('/\R?Status: aceito pela API\.\R?/iu', "\n", $text) ?? $text;
     $text = preg_replace('/\R?Pilot Status ID:\s*[^\r\n]+/iu', '', $text) ?? $text;

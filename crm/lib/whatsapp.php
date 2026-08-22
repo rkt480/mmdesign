@@ -365,8 +365,8 @@ function crm_record_followup_template_send(array $queueItem, array $template, ar
         $renderContext
     );
     $seller = crm_whatsapp_followup_seller_name($queueItem);
-    $note = 'Mensagem enviada via ' . $providerLabel . ' em ' . date('d/m/Y H:i:s') . ":\n"
-        . 'Follow-up · template "' . (string) ($template['name'] ?? 'sem nome') . '" · vendedor: ' . $seller . "\n"
+    $note = 'Template "' . (string) ($template['name'] ?? 'sem nome') . '" enviado via ' . $providerLabel . ' em ' . date('d/m/Y H:i:s') . ":\n"
+        . 'Follow-up · vendedor: ' . $seller . "\n"
         . $renderedBody;
     $sentMessageId = crm_whatsapp_response_message_id($result);
 
