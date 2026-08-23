@@ -417,7 +417,7 @@ button {
 
 .dashboard-filter-form {
   display: grid;
-  grid-template-columns: minmax(210px, 260px) auto auto;
+  grid-template-columns: minmax(210px, 260px) minmax(140px, 1fr) minmax(140px, 1fr) auto auto;
   gap: 10px;
   align-items: end;
 }
@@ -427,12 +427,13 @@ button {
 }
 
 .dashboard-filter-form label {
-  min-width: 210px;
+  min-width: 0;
   color: #334155;
   font-size: 0.78rem;
   font-weight: 900;
 }
 
+.dashboard-filter-form input,
 .dashboard-filter-form select,
 .dashboard-filter-form button,
 .dashboard-filter-form .secondary-action {
@@ -2210,11 +2211,7 @@ textarea:focus {
 
   .dashboard-filter-form {
     width: 100%;
-    grid-template-columns: minmax(0, 1fr) auto auto;
-  }
-
-  .dashboard-filter-form label {
-    min-width: 0;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) auto auto;
   }
 
   .push-onboarding {
