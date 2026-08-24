@@ -1110,16 +1110,11 @@ function pilot_status_send_media(
         'mediaType' => $mediaType,
     ];
 
-    // Documents (including large MP4 files intentionally sent as documents)
-    // need to retain their original name when Pilot Status forwards them to
-    // WhatsApp. Without it, some provider versions accept the request but
-    // drop the attachment while processing the message asynchronously.
-    if ($mediaType === 'document' && trim($fileName) !== '') {
-        $payload['fileName'] = trim($fileName);
-    }
-
     if ($mediaType !== 'audio' && trim($caption) !== '') {
-        $payload['caption'] = trim($caption);
+        // The current Pilot Status messages contract uses `text` for the
+        // optional media caption. Keep the payload aligned with its SDK,
+        // which does not expose a separate `caption` field.
+        $payload['text'] = trim($caption);
     }
 
     $result = pilot_status_request('/messages/send', $payload, 60);

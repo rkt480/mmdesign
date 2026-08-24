@@ -2475,6 +2475,9 @@ if ($isWaConversationFragment) {
         let recorder = null;
         let recorderStream = null;
         let compatibleAudioRecorder = null;
+        let videoRecorder = null;
+        let videoRecorderStream = null;
+        let videoRecordingMimeType = '';
         let recordingStartedAt = 0;
         let recordingTimer = null;
         let discardCurrentRecording = false;
@@ -2746,7 +2749,17 @@ if ($isWaConversationFragment) {
           recordingTime.textContent = `${minutes}:${seconds}`;
         };
 
-        const setRecordingMode = (recording) => {
+        const setVideoRecordButton = (recording) => {
+          if (!videoRecordButton) return;
+
+          videoRecordButton.innerHTML = recording
+            ? '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2" /></svg>'
+            : '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="6.5" width="12" height="11" rx="2" /><path d="m15.5 10 5-2.5v9l-5-2.5" /></svg>';
+          videoRecordButton.title = recording ? "Parar gravação de vídeo" : "Gravar vídeo";
+          videoRecordButton.setAttribute("aria-label", videoRecordButton.title);
+        };
+
+        const setRecordingMode = (recording, keepVideoRecordButton = false) => {
           if (recording) {
             discardCurrentRecording = false;
             recordingStartedAt = Date.now();
@@ -2754,7 +2767,7 @@ if ($isWaConversationFragment) {
             recordingPreview.hidden = false;
             messageInput.hidden = true;
             attachButton.hidden = true;
-            if (videoRecordButton) videoRecordButton.hidden = true;
+            if (videoRecordButton) videoRecordButton.hidden = !keepVideoRecordButton;
             emojiButton.hidden = true;
             sendButton.hidden = true;
 
@@ -2779,6 +2792,7 @@ if ($isWaConversationFragment) {
           messageInput.hidden = false;
           attachButton.hidden = false;
           if (videoRecordButton) videoRecordButton.hidden = false;
+          setVideoRecordButton(false);
           emojiButton.hidden = false;
         };
 
@@ -2791,10 +2805,13 @@ if ($isWaConversationFragment) {
         };
 
         const syncComposerAction = () => {
-          const isRecording = recorder?.state === "recording" || compatibleAudioRecorder?.state === "recording";
+          const isVideoRecording = videoRecorder?.state === "recording";
+          const isRecording = isVideoRecording
+            || recorder?.state === "recording"
+            || compatibleAudioRecorder?.state === "recording";
 
           if (isRecording) {
-            recordButton.hidden = false;
+            recordButton.hidden = isVideoRecording;
             sendButton.hidden = true;
             return;
           }
@@ -2867,8 +2884,97 @@ if ($isWaConversationFragment) {
           syncComposerAction();
         };
 
+        const startVideoRecording = async () => {
+          if (!navigator.mediaDevices?.getUserMedia || typeof window.MediaRecorder !== "function") {
+            videoInput?.click();
+            return;
+          }
+
+          const recordingTypes = [
+            { mimeType: "video/mp4;codecs=avc1.42E01E,mp4a.40.2", fileType: "video/mp4", extension: "mp4" },
+            { mimeType: "video/mp4", fileType: "video/mp4", extension: "mp4" },
+            { mimeType: "video/webm;codecs=vp8,opus", fileType: "video/webm", extension: "webm" },
+            { mimeType: "video/webm", fileType: "video/webm", extension: "webm" },
+          ];
+          const recordingType = recordingTypes.find((candidate) => {
+            try {
+              return typeof MediaRecorder.isTypeSupported !== "function"
+                || MediaRecorder.isTypeSupported(candidate.mimeType);
+            } catch (error) {
+              return false;
+            }
+          });
+
+          if (!recordingType) {
+            videoInput?.click();
+            return;
+          }
+
+          try {
+            videoRecorderStream = await navigator.mediaDevices.getUserMedia({
+              video: { facingMode: { ideal: "environment" } },
+              audio: true,
+            });
+            videoRecordingMimeType = recordingType.mimeType;
+            const chunks = [];
+            videoRecorder = new MediaRecorder(videoRecorderStream, {
+              mimeType: recordingType.mimeType,
+              videoBitsPerSecond: 2500000,
+              audioBitsPerSecond: 128000,
+            });
+            videoRecorder.addEventListener("dataavailable", (event) => {
+              if (event.data.size > 0) chunks.push(event.data);
+            });
+            videoRecorder.addEventListener("stop", () => {
+              const wasDiscarded = discardCurrentRecording;
+              const actualMimeType = (videoRecorder?.mimeType || videoRecordingMimeType || recordingType.fileType).split(";")[0];
+              const extension = actualMimeType === "video/mp4" ? "mp4" : recordingType.extension;
+              const file = new File(chunks, `video-whatsapp.${extension}`, { type: actualMimeType });
+
+              if (!wasDiscarded) {
+                const transfer = new DataTransfer();
+                transfer.items.add(file);
+                mediaInput.files = transfer.files;
+                renderMediaPreview(file);
+              } else {
+                mediaInput.value = "";
+                setRecordingMode(false);
+              }
+
+              videoRecorderStream?.getTracks().forEach((track) => track.stop());
+              videoRecorderStream = null;
+              videoRecorder = null;
+              videoRecordingMimeType = "";
+              setRecordingMode(false);
+              setVideoRecordButton(false);
+              recordingDiscardButton.disabled = false;
+              syncComposerAction();
+            });
+            videoRecorder.start(1000);
+            setRecordingMode(true, true);
+            setVideoRecordButton(true);
+            syncComposerAction();
+          } catch (error) {
+            videoRecorderStream?.getTracks().forEach((track) => track.stop());
+            videoRecorderStream = null;
+            videoRecorder = null;
+            videoRecordingMimeType = "";
+            setRecordingMode(false);
+            setVideoRecordButton(false);
+            syncComposerAction();
+            window.alert("Não foi possível acessar a câmera. Selecione ou grave o vídeo pela captura nativa.");
+          }
+        };
+
         attachButton?.addEventListener("click", () => mediaInput?.click());
-        videoRecordButton?.addEventListener("click", () => videoInput?.click());
+        videoRecordButton?.addEventListener("click", () => {
+          if (videoRecorder?.state === "recording") {
+            videoRecorder.stop();
+            return;
+          }
+
+          startVideoRecording();
+        });
         emojiButton?.addEventListener("click", () => {
           emojiMenu.hidden = !emojiMenu.hidden;
         });
@@ -2911,12 +3017,19 @@ if ($isWaConversationFragment) {
         syncComposerAction();
 
         recordingDiscardButton?.addEventListener("click", async () => {
-          if (compatibleAudioRecorder?.state !== "recording" && (!recorder || recorder.state !== "recording")) {
+          if (videoRecorder?.state !== "recording"
+            && compatibleAudioRecorder?.state !== "recording"
+            && (!recorder || recorder.state !== "recording")) {
             return;
           }
 
           discardCurrentRecording = true;
           recordingDiscardButton.disabled = true;
+
+          if (videoRecorder?.state === "recording") {
+            videoRecorder.stop();
+            return;
+          }
 
           if (compatibleAudioRecorder?.state === "recording") {
             try {
