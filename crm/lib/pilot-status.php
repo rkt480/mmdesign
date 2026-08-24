@@ -1028,6 +1028,20 @@ function pilot_status_media_data_uri(string $filePath, string $mimeType): array
     ];
 }
 
+function pilot_status_document_transport_mime(string $mimeType, string $mediaType): string
+{
+    $normalizedMimeType = pilot_status_normalize_media_mime_type($mimeType);
+
+    // Meta accepts video MIME types in the video message path, but not as the
+    // MIME of a document message. Keep the original filename for WhatsApp,
+    // while transporting video containers as a generic downloadable file.
+    if ($mediaType === 'document' && str_starts_with($normalizedMimeType, 'video/')) {
+        return 'application/octet-stream';
+    }
+
+    return $normalizedMimeType ?: 'application/octet-stream';
+}
+
 function pilot_status_send_media(
     string $number,
     string $filePath,
@@ -1056,6 +1070,9 @@ function pilot_status_send_media(
         return ['ok' => false, 'error' => 'Não foi possível ler o arquivo de mídia.'];
     }
 
+    $originalMimeType = pilot_status_normalize_media_mime_type($mimeType);
+    $transportMimeType = pilot_status_document_transport_mime($mimeType, $mediaType);
+    $isVideoDocument = $mediaType === 'document' && str_starts_with($originalMimeType, 'video/');
     $useInlineDocument = $mediaType === 'document' && $fileSize <= 16 * 1024 * 1024;
     $published = ['ok' => true, 'url' => ''];
     $mediaReference = '';
@@ -1065,7 +1082,7 @@ function pilot_status_send_media(
         // Avoid making Pilot Status fetch small documents from the CRM host.
         // This is especially useful on shared hosting, where the public URL
         // can be behind a redirect, firewall rule, or private DNS route.
-        $encodedMedia = pilot_status_media_data_uri($filePath, $mimeType);
+        $encodedMedia = pilot_status_media_data_uri($filePath, $transportMimeType);
 
         if (($encodedMedia['ok'] ?? false) !== true) {
             return $encodedMedia;
@@ -1075,7 +1092,10 @@ function pilot_status_send_media(
         $transport = 'inline_base64';
     } else {
         pilot_status_cleanup_public_media();
-        $published = pilot_status_publish_media($filePath, $mimeType, $fileName);
+        // Use .bin for video documents so the web server also returns the
+        // generic document MIME. The original extension remains in fileName.
+        $publishedFileName = $isVideoDocument ? '' : $fileName;
+        $published = pilot_status_publish_media($filePath, $transportMimeType, $publishedFileName);
 
         if (($published['ok'] ?? false) !== true) {
             return $published;
@@ -1107,7 +1127,8 @@ function pilot_status_send_media(
     pilot_status_log('Mídia enviada para processamento na Pilot Status.', [
         'destination' => $to,
         'media_type' => $mediaType,
-        'mime_type' => pilot_status_normalize_media_mime_type($mimeType),
+        'mime_type' => $originalMimeType,
+        'transport_mime_type' => $transportMimeType,
         'file_size' => $fileSize,
         'transport' => $transport,
         'media_url' => (string) ($published['url'] ?? ''),

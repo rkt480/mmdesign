@@ -1574,6 +1574,10 @@ if ($isWaConversationFragment) {
             </div>
           </header>
 
+          <?php if ((string) ($activeLead['whatsapp_status'] ?? '') === 'falhou' && trim((string) ($activeLead['whatsapp_error'] ?? '')) !== ''): ?>
+            <div class="wa-toast">Falha confirmada pelo WhatsApp: <?= htmlspecialchars((string) $activeLead['whatsapp_error']) ?></div>
+          <?php endif; ?>
+
           <div class="wa-message-surface">
             <div class="wa-day-chip">Histórico do CRM</div>
 
