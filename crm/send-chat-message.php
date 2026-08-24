@@ -40,7 +40,7 @@ $media = $_FILES['media'] ?? null;
 $hasMedia = is_array($media) && (int) ($media['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE;
 
 if ($message === '' && !$hasMedia) {
-    header('Location: ' . $redirect . '&send_error=' . rawurlencode('Digite uma mensagem ou selecione uma imagem/áudio.'));
+    header('Location: ' . $redirect . '&send_error=' . rawurlencode('Digite uma mensagem ou selecione uma imagem, áudio, vídeo ou documento.'));
     exit;
 }
 
@@ -95,7 +95,8 @@ if ($hasMedia) {
     $fileName = preg_replace('/[^A-Za-z0-9._-]+/', '_', basename((string) ($media['name'] ?? ''))) ?? '';
     $fileName = trim($fileName, '._-') ?: 'documento';
     $imageTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
-    $audioTypes = ['audio/aac', 'audio/amr', 'audio/m4a', 'audio/x-m4a', 'audio/mp4', 'audio/mpeg', 'audio/ogg', 'audio/opus', 'audio/webm', 'video/webm', 'audio/wav', 'audio/x-wav'];
+    $audioTypes = ['audio/aac', 'audio/amr', 'audio/m4a', 'audio/x-m4a', 'audio/mp4', 'audio/mpeg', 'audio/ogg', 'audio/opus', 'audio/webm', 'audio/wav', 'audio/x-wav'];
+    $videoTypes = ['video/mp4', 'video/3gpp', 'video/quicktime', 'video/webm'];
     $audioMimeByExtension = [
         'aac' => 'audio/aac',
         'amr' => 'audio/amr',
@@ -105,6 +106,14 @@ if ($hasMedia) {
         'opus' => 'audio/opus',
         'wav' => 'audio/wav',
         'webm' => 'audio/webm',
+    ];
+    $videoMimeByExtension = [
+        'mp4' => 'video/mp4',
+        'm4v' => 'video/mp4',
+        '3gp' => 'video/3gpp',
+        '3g2' => 'video/3gpp',
+        'mov' => 'video/quicktime',
+        'webm' => 'video/webm',
     ];
     $documentTypes = [
         'application/pdf',
@@ -124,20 +133,28 @@ if ($hasMedia) {
     // Accept this only for a known audio extension and a matching upload MIME.
     $uploadMimeType = strtolower(trim(explode(';', (string) ($media['type'] ?? ''))[0]));
     $extension = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
-    $isBrowserAudioUpload = str_starts_with($uploadMimeType, 'audio/') || $uploadMimeType === 'video/webm';
+    $isBrowserAudioUpload = str_starts_with($uploadMimeType, 'audio/')
+        || ($uploadMimeType === 'video/webm' && str_starts_with(strtolower(pathinfo($fileName, PATHINFO_FILENAME)), 'audio-whatsapp'));
+    $isBrowserVideoUpload = str_starts_with($uploadMimeType, 'video/');
 
     if (!in_array($mimeType, $audioTypes, true) && $isBrowserAudioUpload && isset($audioMimeByExtension[$extension])) {
         $mimeType = $audioMimeByExtension[$extension];
+    }
+
+    if (!in_array($mimeType, $videoTypes, true) && $isBrowserVideoUpload && isset($videoMimeByExtension[$extension])) {
+        $mimeType = $videoMimeByExtension[$extension];
     }
 
     if (in_array($mimeType, $imageTypes, true)) {
         $mediaType = 'image';
     } elseif (in_array($mimeType, $audioTypes, true)) {
         $mediaType = 'audio';
+    } elseif (in_array($mimeType, $videoTypes, true)) {
+        $mediaType = 'video';
     } elseif (in_array($mimeType, $documentTypes, true)) {
         $mediaType = 'document';
     } else {
-        header('Location: ' . $redirect . '&send_error=' . rawurlencode('Envie uma imagem, áudio ou documento compatível, como PDF, DOCX, XLSX, TXT ou CSV.'));
+        header('Location: ' . $redirect . '&send_error=' . rawurlencode('Envie uma imagem, áudio, vídeo ou documento compatível, como MP4, MOV, PDF, DOCX, XLSX, TXT ou CSV.'));
         exit;
     }
 

@@ -1607,9 +1607,15 @@ if ($isWaConversationFragment) {
 
             <form class="wa-composer <?= $wa24hOpen ? '' : 'is-locked' ?>" method="post" action="send-chat-message.php" enctype="multipart/form-data" data-wa-composer <?= $wa24hOpen ? '' : 'aria-disabled="true"' ?> <?= $wa24hOpen ? '' : 'hidden' ?>>
             <div class="wa-composer-tools">
-              <button class="wa-tool-button" type="button" title="Anexar imagem, áudio ou documento" data-wa-attach aria-label="Anexar imagem, áudio ou documento">
+              <button class="wa-tool-button" type="button" title="Anexar imagem, áudio, vídeo ou documento" data-wa-attach aria-label="Anexar imagem, áudio, vídeo ou documento">
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                   <path d="M12 5v14M5 12h14" />
+                </svg>
+              </button>
+              <button class="wa-tool-button" type="button" title="Gravar vídeo" data-wa-video-record aria-label="Gravar vídeo">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <rect x="3.5" y="6.5" width="12" height="11" rx="2" />
+                  <path d="m15.5 10 5-2.5v9l-5-2.5" />
                 </svg>
               </button>
               <button class="wa-tool-button" type="button" title="Inserir emoji" data-wa-emoji aria-label="Inserir emoji">
@@ -1626,7 +1632,8 @@ if ($isWaConversationFragment) {
                 <button type="button" data-wa-emoji-value="❤️">❤️</button>
                 <button type="button" data-wa-emoji-value="🙏">🙏</button>
               </div>
-              <input class="wa-media-input" type="file" name="media" accept="image/jpeg,image/png,image/webp,image/gif,audio/*,application/pdf,application/msword,application/rtf,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,text/plain,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt" data-wa-media hidden />
+              <input class="wa-media-input" type="file" name="media" accept="image/jpeg,image/png,image/webp,image/gif,audio/*,video/mp4,video/3gpp,video/quicktime,video/webm,application/pdf,application/msword,application/rtf,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,text/plain,.mp4,.m4v,.3gp,.3g2,.mov,.webm,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt" data-wa-media hidden />
+              <input class="wa-video-input" type="file" accept="video/*,.mp4,.m4v,.3gp,.3g2,.mov,.webm" capture="environment" data-wa-video-media hidden />
             </div>
             <input type="hidden" name="_csrf_token" value="<?= htmlspecialchars($csrfToken) ?>" />
             <input type="hidden" name="lead_id" value="<?= htmlspecialchars((string) ($activeLead['id'] ?? '')) ?>" />
@@ -2424,10 +2431,12 @@ if ($isWaConversationFragment) {
       const bindWaComposer = (root = document) => {
       root.querySelectorAll(".wa-composer").forEach((form) => {
         const attachButton = form.querySelector("[data-wa-attach]");
+        const videoRecordButton = form.querySelector("[data-wa-video-record]");
         const emojiButton = form.querySelector("[data-wa-emoji]");
         const emojiMenu = form.querySelector("[data-wa-emoji-menu]");
         const recordButton = form.querySelector("[data-wa-record]");
         const mediaInput = form.querySelector("[data-wa-media]");
+        const videoInput = form.querySelector("[data-wa-video-media]");
         const preview = form.querySelector("[data-wa-preview]");
         const recordingPreview = form.querySelector("[data-wa-recording-preview]");
         const recordingTime = form.querySelector("[data-wa-recording-time]");
@@ -2718,6 +2727,7 @@ if ($isWaConversationFragment) {
             recordingPreview.hidden = false;
             messageInput.hidden = true;
             attachButton.hidden = true;
+            if (videoRecordButton) videoRecordButton.hidden = true;
             emojiButton.hidden = true;
             sendButton.hidden = true;
 
@@ -2741,6 +2751,7 @@ if ($isWaConversationFragment) {
           recordingPreview.hidden = true;
           messageInput.hidden = false;
           attachButton.hidden = false;
+          if (videoRecordButton) videoRecordButton.hidden = false;
           emojiButton.hidden = false;
         };
 
@@ -2785,14 +2796,19 @@ if ($isWaConversationFragment) {
           previewUrl = URL.createObjectURL(file);
           const isImage = file.type.startsWith("image/");
           const isAudio = file.type.startsWith("audio/");
+          const isVideo = file.type.startsWith("video/");
           const label = document.createElement("span");
-          label.textContent = isImage ? "Imagem selecionada" : (isAudio ? "Áudio selecionado" : "Documento selecionado");
+          label.textContent = isImage
+            ? "Imagem selecionada"
+            : (isAudio ? "Áudio selecionado" : (isVideo ? "Vídeo selecionado" : "Documento selecionado"));
           preview.appendChild(label);
 
-          if (isImage || isAudio) {
-            const media = document.createElement(isImage ? "img" : "audio");
+          if (isImage || isAudio || isVideo) {
+            const media = document.createElement(isImage ? "img" : (isAudio ? "audio" : "video"));
             media.src = previewUrl;
-            media.controls = isAudio;
+            media.controls = !isImage;
+            media.muted = isVideo;
+            media.playsInline = isVideo;
             media.alt = file.name;
             preview.appendChild(media);
           } else {
@@ -2814,6 +2830,7 @@ if ($isWaConversationFragment) {
         };
 
         attachButton?.addEventListener("click", () => mediaInput?.click());
+        videoRecordButton?.addEventListener("click", () => videoInput?.click());
         emojiButton?.addEventListener("click", () => {
           emojiMenu.hidden = !emojiMenu.hidden;
         });
@@ -2830,6 +2847,19 @@ if ($isWaConversationFragment) {
           });
         });
         mediaInput?.addEventListener("change", () => renderMediaPreview(mediaInput.files?.[0] || null));
+        videoInput?.addEventListener("change", () => {
+          const file = videoInput.files?.[0] || null;
+
+          if (!file) {
+            return;
+          }
+
+          const transfer = new DataTransfer();
+          transfer.items.add(file);
+          mediaInput.files = transfer.files;
+          videoInput.value = "";
+          renderMediaPreview(file);
+        });
         messageInput?.addEventListener("input", syncComposerAction);
         messageInput?.addEventListener("focus", () => {
           syncWaVisualViewport();
@@ -2903,7 +2933,7 @@ if ($isWaConversationFragment) {
           }
 
           if (!navigator.mediaDevices?.getUserMedia || (!window.MediaRecorder && !window.OpusMediaRecorder)) {
-            window.alert("Seu navegador não permite gravar áudio. Selecione um arquivo de áudio.");
+            window.alert("Seu navegador não permite gravar áudio. Selecione um arquivo de áudio ou vídeo.");
             return;
           }
 
@@ -2990,7 +3020,7 @@ if ($isWaConversationFragment) {
         form.addEventListener("submit", (event) => {
           if (!messageInput.value.trim() && !mediaInput.files?.length) {
             event.preventDefault();
-            window.alert("Digite uma mensagem ou selecione uma imagem/áudio.");
+            window.alert("Digite uma mensagem ou selecione uma imagem, áudio, vídeo ou documento.");
             return;
           }
 

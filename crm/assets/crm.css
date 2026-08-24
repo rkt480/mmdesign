@@ -3607,6 +3607,14 @@ textarea:focus {
   height: 34px;
 }
 
+.wa-media-preview video {
+  width: min(180px, 45%);
+  max-height: 96px;
+  object-fit: contain;
+  border-radius: 8px;
+  background: #0f172a;
+}
+
 .wa-media-remove {
   min-width: auto !important;
   min-height: auto !important;
@@ -4996,7 +5004,7 @@ textarea:focus {
 
 .whatsapp-crm-page .wa-composer {
   display: grid;
-  grid-template-columns: 44px minmax(0, 1fr) auto;
+  grid-template-columns: 140px minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
   padding: 14px 18px;
@@ -5467,7 +5475,7 @@ textarea:focus {
 
 @media (max-width: 560px) {
   .whatsapp-crm-page .wa-composer {
-    grid-template-columns: 88px minmax(0, 1fr) 40px 40px;
+    grid-template-columns: 132px minmax(0, 1fr) 40px 40px;
     gap: 6px;
     padding: 8px 10px;
   }
@@ -6391,7 +6399,7 @@ textarea:focus {
     width: 100%;
     max-width: 100%;
     min-width: 0;
-    grid-template-columns: 40px minmax(0, 1fr) 40px 40px;
+    grid-template-columns: 132px minmax(0, 1fr) 40px 40px;
     gap: 6px;
     padding: 8px 10px;
   }
@@ -6532,6 +6540,7 @@ textarea:focus {
   }
 
   .whatsapp-crm-page .wa-composer {
+    grid-template-columns: 108px minmax(0, 1fr) 36px 36px;
     gap: 4px;
     padding-inline: 8px;
   }

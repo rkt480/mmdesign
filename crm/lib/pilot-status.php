@@ -807,7 +807,7 @@ function pilot_status_media_extension(string $mimeType, string $fileName): strin
     // browser-provided filename, so the web server and the remote fetcher
     // agree on the MIME type.
     if (in_array($mimeType, ['audio/mp4', 'audio/m4a', 'audio/x-m4a'], true)) {
-        return 'mp4';
+        return 'm4a';
     }
 
     if (in_array($mimeType, ['audio/ogg', 'audio/opus'], true)) {
@@ -825,10 +825,14 @@ function pilot_status_media_extension(string $mimeType, string $fileName): strin
         'image/png' => 'png',
         'image/webp' => 'webp',
         'image/gif' => 'gif',
+        'video/mp4' => 'mp4',
+        'video/3gpp' => '3gp',
+        'video/quicktime' => 'mov',
+        'video/webm' => 'webm',
         'audio/ogg' => 'ogg',
-        'audio/webm', 'video/webm' => 'webm',
+        'audio/webm' => 'webm',
         'audio/mpeg' => 'mp3',
-        'audio/mp4', 'audio/m4a', 'audio/x-m4a' => 'mp4',
+        'audio/mp4', 'audio/m4a', 'audio/x-m4a' => 'm4a',
         'audio/wav', 'audio/x-wav' => 'wav',
         'application/pdf' => 'pdf',
         'application/msword' => 'doc',
@@ -910,7 +914,7 @@ function pilot_status_send_media(
         return ['ok' => false, 'error' => 'WhatsApp inválido.'];
     }
 
-    if (!in_array($mediaType, ['image', 'audio', 'document'], true)) {
+    if (!in_array($mediaType, ['image', 'audio', 'video', 'document'], true)) {
         return ['ok' => false, 'error' => 'Tipo de mídia não suportado.'];
     }
 
