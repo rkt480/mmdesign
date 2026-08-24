@@ -288,6 +288,29 @@ function whatsapp_page_message_id_from_text(string $text): string
     return trim((string) $match[1]);
 }
 
+function whatsapp_page_delivery_label(array $lead, string $messageId, string $block = ''): string
+{
+    $notes = (string) ($lead['notes'] ?? '');
+    $messageId = trim($messageId);
+
+    if ($messageId !== '') {
+        foreach ([
+            'message.failed' => 'Falhou',
+            'message.read' => 'Lida',
+            'message.delivered' => 'Entregue',
+            'message.sent' => 'Enviada',
+        ] as $event => $label) {
+            if (str_contains($notes, 'Pilot Status evento: ' . $event . ' | ID: ' . $messageId)) {
+                return $label;
+            }
+        }
+    }
+
+    return str_contains($block, 'Status inicial: aceito pela Pilot Status; aguardando confirmação de entrega.')
+        ? 'Aguardando'
+        : 'Enviada';
+}
+
 function whatsapp_page_infer_media_type_from_text(string $text): string
 {
     return match (true) {
@@ -913,7 +936,7 @@ function whatsapp_page_messages_for_lead(array $lead): array
                         'at' => whatsapp_page_parse_br_datetime((string) $match[2]),
                         'text' => $caption !== '' ? $caption : whatsapp_page_sent_media_label($media),
                         'media' => $media,
-                        'label' => 'Enviada',
+                        'label' => whatsapp_page_delivery_label($lead, $blockMessageId, $block),
                         'message_id' => $blockMessageId !== ''
                             ? $blockMessageId
                             : trim((string) ($media['crm_message_id'] ?? ($media['message_id'] ?? ''))),
@@ -930,7 +953,7 @@ function whatsapp_page_messages_for_lead(array $lead): array
                     'provider' => whatsapp_page_message_provider($sentProviderLabel),
                     'at' => whatsapp_page_parse_br_datetime((string) $match[2]),
                     'text' => $sentText,
-                    'label' => 'Enviada',
+                    'label' => whatsapp_page_delivery_label($lead, $blockMessageId, $block),
                     'message_id' => $blockMessageId,
                 ];
 
