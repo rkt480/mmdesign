@@ -155,6 +155,65 @@ function pilot_status_log(string $message, array $context = []): void
     @file_put_contents($dir . '/pilot-status.log', $line . PHP_EOL, FILE_APPEND | LOCK_EX);
 }
 
+function pilot_status_format_api_error(mixed $decoded, string $body): string
+{
+    if (!is_array($decoded)) {
+        return trim(is_scalar($decoded) ? (string) $decoded : $body);
+    }
+
+    $parts = [];
+
+    foreach (['error', 'message', 'errorMessage', 'reason', 'detail'] as $key) {
+        if (!array_key_exists($key, $decoded)) {
+            continue;
+        }
+
+        $value = $decoded[$key];
+
+        if (is_scalar($value) && trim((string) $value) !== '') {
+            $parts[] = trim((string) $value);
+        } elseif (is_array($value) && $value !== []) {
+            $encoded = json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+            if (is_string($encoded) && $encoded !== '') {
+                $parts[] = $key . ': ' . $encoded;
+            }
+        }
+    }
+
+    foreach (['issues', 'errors', 'details', 'validationErrors', 'validation_errors'] as $key) {
+        if (!array_key_exists($key, $decoded) || !is_array($decoded[$key]) || $decoded[$key] === []) {
+            continue;
+        }
+
+        $encoded = json_encode($decoded[$key], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+        if (is_string($encoded) && $encoded !== '') {
+            $parts[] = $key . ': ' . $encoded;
+        }
+    }
+
+    if ($parts !== []) {
+        $uniqueParts = array_values(array_unique($parts));
+        $joinedParts = implode(' | ', $uniqueParts);
+        $genericError = in_array(strtolower($joinedParts), ['validation error', 'bad request', 'request validation failed'], true);
+
+        if ($genericError) {
+            $fullResponse = json_encode($decoded, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+            if (is_string($fullResponse) && $fullResponse !== '' && $fullResponse !== $joinedParts) {
+                return $joinedParts . ' | resposta completa: ' . substr($fullResponse, 0, 1200);
+            }
+        }
+
+        return $joinedParts;
+    }
+
+    $encoded = json_encode($decoded, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+    return is_string($encoded) && $encoded !== '' ? $encoded : trim($body);
+}
+
 function pilot_status_api_request(string $endpoint, string $method = 'GET', ?array $payload = null, int $timeout = 20): array
 {
     $settings = pilot_status_settings();
@@ -213,9 +272,7 @@ function pilot_status_api_request(string $endpoint, string $method = 'GET', ?arr
             'response' => $decoded,
         ]);
 
-        $rawError = is_array($decoded) && isset($decoded['error']) && is_scalar($decoded['error'])
-            ? (string) $decoded['error']
-            : (is_scalar($decoded) ? (string) $decoded : $body);
+        $rawError = pilot_status_format_api_error($decoded, $body);
 
         if (
             str_contains($rawError, '2388293')
@@ -1013,21 +1070,6 @@ function pilot_status_publish_media(string $filePath, string $mimeType, string $
     return ['ok' => true, 'url' => rtrim($baseUrl, '/') . '/' . rawurlencode($storedName)];
 }
 
-function pilot_status_media_data_uri(string $filePath, string $mimeType): array
-{
-    $contents = @file_get_contents($filePath);
-
-    if (!is_string($contents) || $contents === '') {
-        return ['ok' => false, 'error' => 'Não foi possível preparar a mídia para envio.'];
-    }
-
-    return [
-        'ok' => true,
-        'media' => 'data:' . (pilot_status_normalize_media_mime_type($mimeType) ?: 'application/octet-stream')
-            . ';base64,' . base64_encode($contents),
-    ];
-}
-
 function pilot_status_document_transport_mime(string $mimeType, string $mediaType): string
 {
     $normalizedMimeType = pilot_status_normalize_media_mime_type($mimeType);
@@ -1073,36 +1115,21 @@ function pilot_status_send_media(
     $originalMimeType = pilot_status_normalize_media_mime_type($mimeType);
     $transportMimeType = pilot_status_document_transport_mime($mimeType, $mediaType);
     $isVideoDocument = $mediaType === 'document' && str_starts_with($originalMimeType, 'video/');
-    $useInlineDocument = $mediaType === 'document' && $fileSize <= 16 * 1024 * 1024;
     $published = ['ok' => true, 'url' => ''];
-    $mediaReference = '';
     $transport = 'public_url';
 
-    if ($useInlineDocument) {
-        // Avoid making Pilot Status fetch small documents from the CRM host.
-        // This is especially useful on shared hosting, where the public URL
-        // can be behind a redirect, firewall rule, or private DNS route.
-        $encodedMedia = pilot_status_media_data_uri($filePath, $transportMimeType);
+    pilot_status_cleanup_public_media();
+    // Pilot Status expects media as a URL. Use .bin for video documents so
+    // the web server also returns the generic document MIME. The original
+    // extension remains local to the CRM history.
+    $publishedFileName = $isVideoDocument ? '' : $fileName;
+    $published = pilot_status_publish_media($filePath, $transportMimeType, $publishedFileName);
 
-        if (($encodedMedia['ok'] ?? false) !== true) {
-            return $encodedMedia;
-        }
-
-        $mediaReference = (string) ($encodedMedia['media'] ?? '');
-        $transport = 'inline_base64';
-    } else {
-        pilot_status_cleanup_public_media();
-        // Use .bin for video documents so the web server also returns the
-        // generic document MIME. The original extension remains in fileName.
-        $publishedFileName = $isVideoDocument ? '' : $fileName;
-        $published = pilot_status_publish_media($filePath, $transportMimeType, $publishedFileName);
-
-        if (($published['ok'] ?? false) !== true) {
-            return $published;
-        }
-
-        $mediaReference = (string) ($published['url'] ?? '');
+    if (($published['ok'] ?? false) !== true) {
+        return $published;
     }
+
+    $mediaReference = (string) ($published['url'] ?? '');
 
     $payload = [
         'destinationNumber' => $to,
@@ -1128,6 +1155,7 @@ function pilot_status_send_media(
         'transport' => $transport,
         'media_url' => (string) ($published['url'] ?? ''),
         'file_name' => trim($fileName),
+        'payload' => $payload,
         'accepted' => ($result['ok'] ?? false) === true,
         'response' => $result['response'] ?? null,
         'error' => $result['error'] ?? null,
