@@ -1138,10 +1138,11 @@ function pilot_status_send_media(
     ];
 
     if ($mediaType !== 'audio' && trim($caption) !== '') {
-        // The current Pilot Status messages contract uses `text` for the
-        // optional media caption. Keep the payload aligned with its SDK,
-        // which does not expose a separate `caption` field.
-        $payload['text'] = trim($caption);
+        // A direct-media request must not include `text`: Pilot Status then
+        // interprets it as a free-form message and rejects media/mediaType.
+        // Its direct-media contract uses `caption` for image, video and
+        // document descriptions.
+        $payload['caption'] = trim($caption);
     }
 
     $result = pilot_status_request('/messages/send', $payload, 60);
