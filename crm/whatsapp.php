@@ -1401,7 +1401,7 @@ if ($isWaConversationFragment) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
     <meta name="csrf-token" content="<?= htmlspecialchars($csrfToken) ?>" />
     <title>WhatsApp | MM Design</title>
-    <link rel="stylesheet" href="./assets/crm.css?v=20260824-video-preview-v1" />
+    <link rel="stylesheet" href="./assets/crm.css?v=20260824-video-preview-v3" />
   </head>
   <body class="whatsapp-page whatsapp-crm-page" data-wa-initial-view="<?= is_array($activeLead) ? 'thread' : 'inbox' ?>" data-wa-mobile-view="<?= is_array($activeLead) ? 'thread' : 'inbox' ?>" data-wa-active-lead-id="<?= htmlspecialchars((string) ($activeLead['id'] ?? '')) ?>" data-wa-incoming-signature="<?= htmlspecialchars(is_array($activeLead) ? crm_whatsapp_incoming_signature($activeLead) : '') ?>" data-wa-lead-feed-version="<?= htmlspecialchars($leadFeedVersion) ?>">
     <main class="wa-web-shell" aria-label="Atendimento WhatsApp do CRM">
@@ -1632,8 +1632,8 @@ if ($isWaConversationFragment) {
                 <button type="button" data-wa-emoji-value="❤️">❤️</button>
                 <button type="button" data-wa-emoji-value="🙏">🙏</button>
               </div>
-              <input class="wa-media-input" type="file" name="media" accept="image/jpeg,image/png,image/webp,image/gif,audio/*,video/mp4,video/3gpp,video/quicktime,video/webm,application/pdf,application/msword,application/rtf,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,text/plain,.mp4,.m4v,.3gp,.3g2,.mov,.webm,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt" data-wa-media hidden />
-              <input class="wa-video-input" type="file" accept="video/*,.mp4,.m4v,.3gp,.3g2,.mov,.webm" capture="environment" data-wa-video-media hidden />
+              <input class="wa-media-input" type="file" name="media" accept="image/jpeg,image/png,image/webp,image/gif,audio/*,video/*,application/pdf,application/msword,application/rtf,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,text/plain,.mp4,.m4v,.3gp,.3g2,.mov,.webm,.mkv,.avi,.wmv,.flv,.mpeg,.mpg,.ogv,.m2ts,.mts,.ts,.vob,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt" data-wa-media hidden />
+              <input class="wa-video-input" type="file" accept="video/*,.mp4,.m4v,.3gp,.3g2,.mov,.webm,.mkv,.avi,.wmv,.flv,.mpeg,.mpg,.ogv,.m2ts,.mts,.ts,.vob" capture="environment" data-wa-video-media hidden />
             </div>
             <input type="hidden" name="_csrf_token" value="<?= htmlspecialchars($csrfToken) ?>" />
             <input type="hidden" name="lead_id" value="<?= htmlspecialchars((string) ($activeLead['id'] ?? '')) ?>" />
@@ -2794,16 +2794,26 @@ if ($isWaConversationFragment) {
           }
 
           previewUrl = URL.createObjectURL(file);
+          const extension = String(file.name || "").split(".").pop().toLowerCase();
+          const supportedVideoExtensions = new Set(["mp4", "m4v", "3gp"]);
+          const documentVideoExtensions = new Set(["3g2", "avi", "flv", "m2ts", "mkv", "mov", "mpe", "mpeg", "mpg", "mts", "ogv", "ts", "vob", "webm", "wmv"]);
           const isImage = file.type.startsWith("image/");
           const isAudio = file.type.startsWith("audio/");
-          const isVideo = file.type.startsWith("video/");
+          const isVideo = file.type.startsWith("video/") || documentVideoExtensions.has(extension) || supportedVideoExtensions.has(extension);
+          const exceedsVideoMessageLimit = file.size > 16 * 1024 * 1024;
+          const isVideoDocument = isVideo && (documentVideoExtensions.has(extension) || exceedsVideoMessageLimit || (!supportedVideoExtensions.has(extension) && !["video/mp4", "video/3gpp"].includes(file.type)));
           const label = document.createElement("span");
           label.textContent = isImage
             ? "Imagem selecionada"
-            : (isAudio ? "Áudio selecionado" : (isVideo ? "Vídeo selecionado" : "Documento selecionado"));
+            : (isAudio
+              ? "Áudio selecionado"
+              : (isVideoDocument
+                ? (exceedsVideoMessageLimit ? "Vídeo grande será enviado como documento" : "Vídeo será enviado como documento")
+                : (isVideo ? "Vídeo selecionado" : "Documento selecionado")));
+          label.title = label.textContent;
           preview.appendChild(label);
 
-          if (isImage || isAudio || isVideo) {
+          if (isImage || isAudio || (isVideo && !isVideoDocument)) {
             const media = document.createElement(isImage ? "img" : (isAudio ? "audio" : "video"));
             media.src = previewUrl;
             media.controls = !isImage;
@@ -2814,6 +2824,7 @@ if ($isWaConversationFragment) {
           } else {
             const fileName = document.createElement("strong");
             fileName.textContent = file.name;
+            fileName.title = file.name;
             preview.appendChild(fileName);
           }
 

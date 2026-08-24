@@ -99,8 +99,8 @@
             <button type="button" data-wa-emoji-value="❤️">❤️</button>
             <button type="button" data-wa-emoji-value="🙏">🙏</button>
           </div>
-          <input class="wa-media-input" type="file" name="media" accept="image/jpeg,image/png,image/webp,image/gif,audio/*,video/mp4,video/3gpp,video/quicktime,video/webm,application/pdf,application/msword,application/rtf,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,text/plain,.mp4,.m4v,.3gp,.3g2,.mov,.webm,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt" data-wa-media hidden />
-          <input class="wa-video-input" type="file" accept="video/*,.mp4,.m4v,.3gp,.3g2,.mov,.webm" capture="environment" data-wa-video-media hidden />
+          <input class="wa-media-input" type="file" name="media" accept="image/jpeg,image/png,image/webp,image/gif,audio/*,video/*,application/pdf,application/msword,application/rtf,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,text/plain,.mp4,.m4v,.3gp,.3g2,.mov,.webm,.mkv,.avi,.wmv,.flv,.mpeg,.mpg,.ogv,.m2ts,.mts,.ts,.vob,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt" data-wa-media hidden />
+          <input class="wa-video-input" type="file" accept="video/*,.mp4,.m4v,.3gp,.3g2,.mov,.webm,.mkv,.avi,.wmv,.flv,.mpeg,.mpg,.ogv,.m2ts,.mts,.ts,.vob" capture="environment" data-wa-video-media hidden />
         </div>
         <input type="hidden" name="_csrf_token" value="<?= htmlspecialchars($csrfToken) ?>" />
         <input type="hidden" name="lead_id" value="<?= htmlspecialchars((string) ($activeLead['id'] ?? '')) ?>" />

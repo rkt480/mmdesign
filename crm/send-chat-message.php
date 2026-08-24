@@ -73,6 +73,11 @@ $fileName = '';
 if ($hasMedia) {
     $uploadError = (int) ($media['error'] ?? UPLOAD_ERR_NO_FILE);
 
+    if (in_array($uploadError, [UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE], true)) {
+        header('Location: ' . $redirect . '&send_error=' . rawurlencode('A Hostinger recusou o arquivo por exceder o limite de upload do servidor. Aumente upload_max_filesize e post_max_size para permitir vídeos maiores como documento.'));
+        exit;
+    }
+
     if ($uploadError !== UPLOAD_ERR_OK || !is_uploaded_file((string) ($media['tmp_name'] ?? ''))) {
         header('Location: ' . $redirect . '&send_error=' . rawurlencode('Não foi possível ler o arquivo selecionado.'));
         exit;
@@ -80,7 +85,7 @@ if ($hasMedia) {
 
     $fileSize = (int) ($media['size'] ?? 0);
 
-    if ($fileSize < 1 || $fileSize > 16 * 1024 * 1024) {
+    if ($fileSize < 1) {
         header('Location: ' . $redirect . '&send_error=' . rawurlencode('O arquivo deve ter entre 1 byte e 16 MB.'));
         exit;
     }
@@ -96,7 +101,27 @@ if ($hasMedia) {
     $fileName = trim($fileName, '._-') ?: 'documento';
     $imageTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
     $audioTypes = ['audio/aac', 'audio/amr', 'audio/m4a', 'audio/x-m4a', 'audio/mp4', 'audio/mpeg', 'audio/ogg', 'audio/opus', 'audio/webm', 'audio/wav', 'audio/x-wav'];
-    $videoTypes = ['video/mp4', 'video/3gpp', 'video/quicktime', 'video/webm'];
+    // Keep the native video message path limited to formats supported by the
+    // WhatsApp provider. Other video containers are still accepted, but are
+    // sent as documents so the file is not silently discarded downstream.
+    $videoTypes = ['video/mp4', 'video/3gpp'];
+    $videoDocumentExtensions = [
+        '3g2',
+        'avi',
+        'flv',
+        'm2ts',
+        'mkv',
+        'mov',
+        'mpe',
+        'mpeg',
+        'mpg',
+        'mts',
+        'ogv',
+        'ts',
+        'vob',
+        'webm',
+        'wmv',
+    ];
     $audioMimeByExtension = [
         'aac' => 'audio/aac',
         'amr' => 'audio/amr',
@@ -114,6 +139,18 @@ if ($hasMedia) {
         '3g2' => 'video/3gpp',
         'mov' => 'video/quicktime',
         'webm' => 'video/webm',
+        'avi' => 'video/x-msvideo',
+        'flv' => 'video/x-flv',
+        'm2ts' => 'video/mp2t',
+        'mkv' => 'video/x-matroska',
+        'mpe' => 'video/mpeg',
+        'mpeg' => 'video/mpeg',
+        'mpg' => 'video/mpeg',
+        'mts' => 'video/mp2t',
+        'ogv' => 'video/ogg',
+        'ts' => 'video/mp2t',
+        'vob' => 'video/mpeg',
+        'wmv' => 'video/x-ms-wmv',
     ];
     $documentTypes = [
         'application/pdf',
@@ -141,21 +178,44 @@ if ($hasMedia) {
         $mimeType = $audioMimeByExtension[$extension];
     }
 
-    if (!in_array($mimeType, $videoTypes, true) && $isBrowserVideoUpload && isset($videoMimeByExtension[$extension])) {
+    if (
+        !in_array($mimeType, $videoTypes, true)
+        && isset($videoMimeByExtension[$extension])
+        && ($isBrowserVideoUpload || in_array($extension, $videoDocumentExtensions, true))
+    ) {
         $mimeType = $videoMimeByExtension[$extension];
     }
+
+    $isVideoDocument = in_array($extension, $videoDocumentExtensions, true);
 
     if (in_array($mimeType, $imageTypes, true)) {
         $mediaType = 'image';
     } elseif (in_array($mimeType, $audioTypes, true)) {
         $mediaType = 'audio';
-    } elseif (in_array($mimeType, $videoTypes, true)) {
+    } elseif (in_array($mimeType, $videoTypes, true) && !$isVideoDocument) {
         $mediaType = 'video';
+    } elseif ($isVideoDocument || str_starts_with($mimeType, 'video/')) {
+        $mediaType = 'document';
     } elseif (in_array($mimeType, $documentTypes, true)) {
         $mediaType = 'document';
     } else {
-        header('Location: ' . $redirect . '&send_error=' . rawurlencode('Envie uma imagem, áudio, vídeo ou documento compatível, como MP4, MOV, PDF, DOCX, XLSX, TXT ou CSV.'));
+        header('Location: ' . $redirect . '&send_error=' . rawurlencode('Envie uma imagem, áudio, vídeo MP4/3GP ou documento compatível. Vídeos MOV, WebM, MKV e outros formatos serão enviados como documento.'));
         exit;
+    }
+
+    $isVideoFile = $mediaType === 'video'
+        || $isVideoDocument
+        || str_starts_with($mimeType, 'video/');
+    $maxFileSize = $isVideoFile ? 100 * 1024 * 1024 : 16 * 1024 * 1024;
+
+    if ($fileSize > $maxFileSize) {
+        $limitLabel = $isVideoFile ? '100 MB' : '16 MB';
+        header('Location: ' . $redirect . '&send_error=' . rawurlencode('O arquivo excede o limite de ' . $limitLabel . '. Vídeos acima de 16 MB devem ser enviados como documento.'));
+        exit;
+    }
+
+    if ($mediaType === 'video' && $fileSize > 16 * 1024 * 1024) {
+        $mediaType = 'document';
     }
 
     $mediaPath = (string) $media['tmp_name'];

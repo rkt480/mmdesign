@@ -586,7 +586,27 @@ function pilot_status_public_media_directory(): string
 
 function pilot_status_public_crm_base_url(): string
 {
-    $host = trim((string) ($_SERVER['HTTP_HOST'] ?? ''));
+    // Pilot Status needs to download the media itself. Prefer the canonical
+    // public URL configured for the deployment instead of using the current
+    // request host, which may be localhost or a private LAN address.
+    $config = function_exists('crm_config') ? crm_config() : [];
+    $configuredBaseUrl = trim((string) ($config['app_url'] ?? ''));
+
+    $configuredParts = $configuredBaseUrl !== '' ? parse_url($configuredBaseUrl) : false;
+
+    if (
+        is_array($configuredParts)
+        && in_array(strtolower((string) ($configuredParts['scheme'] ?? '')), ['http', 'https'], true)
+        && trim((string) ($configuredParts['host'] ?? '')) !== ''
+    ) {
+        return rtrim($configuredBaseUrl, '/');
+    }
+
+    $host = trim((string) ($_SERVER['HTTP_X_FORWARDED_HOST'] ?? $_SERVER['HTTP_HOST'] ?? ''));
+
+    if (str_contains($host, ',')) {
+        $host = trim(explode(',', $host, 2)[0]);
+    }
 
     if ($host === '') {
         return '';
@@ -605,6 +625,25 @@ function pilot_status_public_crm_base_url(): string
     }
 
     return $scheme . '://' . $host . $scriptDirectory;
+}
+
+function pilot_status_media_url_is_public(string $baseUrl): bool
+{
+    $parts = parse_url($baseUrl);
+    $host = strtolower(trim((string) ($parts['host'] ?? '')));
+
+    if ($host === '' || in_array($host, ['localhost', '127.0.0.1', '::1'], true)) {
+        return false;
+    }
+
+    if (str_ends_with($host, '.local') || str_ends_with($host, '.test')) {
+        return false;
+    }
+
+    $ip = filter_var($host, FILTER_VALIDATE_IP);
+
+    return $ip === false
+        || filter_var($host, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) !== false;
 }
 
 function pilot_status_public_media_base_url(): string
@@ -881,6 +920,13 @@ function pilot_status_publish_media(string $filePath, string $mimeType, string $
         return ['ok' => false, 'error' => 'Não foi possível gerar uma URL pública para o arquivo.'];
     }
 
+    if (!pilot_status_media_url_is_public($baseUrl)) {
+        return [
+            'ok' => false,
+            'error' => 'A mídia não pode ser enviada enquanto o CRM estiver usando localhost ou um endereço interno. Configure MMDESIGN_APP_URL com a URL pública do CRM (por exemplo, https://seudominio.com/crm).',
+        ];
+    }
+
     $directory = pilot_status_public_media_directory();
 
     if (!is_dir($directory) && !@mkdir($directory, 0755, true) && !is_dir($directory)) {
@@ -945,7 +991,19 @@ function pilot_status_send_media(
         $payload['caption'] = trim($caption);
     }
 
-    return pilot_status_request('/messages/send', $payload, 60);
+    $result = pilot_status_request('/messages/send', $payload, 60);
+
+    pilot_status_log('Mídia enviada para processamento na Pilot Status.', [
+        'destination' => $to,
+        'media_type' => $mediaType,
+        'mime_type' => pilot_status_normalize_media_mime_type($mimeType),
+        'file_size' => $fileSize,
+        'accepted' => ($result['ok'] ?? false) === true,
+        'response' => $result['response'] ?? null,
+        'error' => $result['error'] ?? null,
+    ]);
+
+    return $result;
 }
 
 function pilot_status_render_custom_message(string $message, array $lead): string

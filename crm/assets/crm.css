@@ -3608,11 +3608,11 @@ textarea:focus {
 }
 
 .whatsapp-crm-page .wa-media-preview video {
-  flex: 0 0 112px;
-  width: 112px !important;
-  height: 63px !important;
-  max-width: 112px !important;
-  max-height: 63px !important;
+  flex: 0 0 96px;
+  width: 96px !important;
+  height: 54px !important;
+  max-width: 96px !important;
+  max-height: 54px !important;
   object-fit: contain;
   border-radius: 8px;
   background: #0f172a;
@@ -5460,10 +5460,28 @@ textarea:focus {
 }
 
 .whatsapp-crm-page .wa-media-preview {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
   padding: 6px 10px;
   color: #475569;
   background: #f8fafc;
   border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.whatsapp-crm-page .wa-media-preview > span,
+.whatsapp-crm-page .wa-media-preview > strong {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.whatsapp-crm-page .wa-media-preview .wa-media-remove {
+  flex: 0 0 auto;
+  margin-left: 0;
 }
 
 .whatsapp-crm-page .wa-recording-preview {
