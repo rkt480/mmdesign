@@ -2559,6 +2559,21 @@ if ($isWaConversationFragment) {
         let recordingStartedAt = 0;
         let recordingTimer = null;
         let discardCurrentRecording = false;
+        const emojiMenuParent = emojiMenu?.parentNode || null;
+        const emojiMenuNextSibling = emojiMenu?.nextSibling || null;
+
+        const restoreEmojiMenu = () => {
+          if (!emojiMenu || !emojiMenuParent) {
+            return;
+          }
+
+          if (emojiMenuNextSibling?.parentNode === emojiMenuParent) {
+            emojiMenuParent.insertBefore(emojiMenu, emojiMenuNextSibling);
+            return;
+          }
+
+          emojiMenuParent.appendChild(emojiMenu);
+        };
 
         const positionEmojiMenu = () => {
           if (!emojiButton || !emojiMenu || emojiMenu.hidden) {
@@ -2586,15 +2601,17 @@ if ($isWaConversationFragment) {
             return;
           }
 
-          emojiMenu.hidden = !open;
-
           if (open) {
+            document.body.appendChild(emojiMenu);
+            emojiMenu.hidden = false;
             positionEmojiMenu();
             window.requestAnimationFrame(positionEmojiMenu);
           } else {
+            emojiMenu.hidden = true;
             emojiMenu.style.removeProperty("left");
             emojiMenu.style.removeProperty("top");
             emojiMenu.style.removeProperty("bottom");
+            restoreEmojiMenu();
           }
         };
 
