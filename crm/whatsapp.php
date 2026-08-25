@@ -2560,6 +2560,15 @@ if ($isWaConversationFragment) {
         let recordingTimer = null;
         let discardCurrentRecording = false;
 
+        const setEmojiMenuVisibility = (open) => {
+          if (!emojiMenu) {
+            return;
+          }
+
+          emojiMenu.hidden = !open;
+          form.closest(".wa-thread-bottom")?.classList.toggle("wa-emoji-open", open);
+        };
+
         const concatAudioBytes = (parts) => {
           const length = parts.reduce((total, part) => total + part.length, 0);
           const output = new Uint8Array(length);
@@ -3061,7 +3070,7 @@ if ($isWaConversationFragment) {
           startVideoRecording();
         });
         emojiButton?.addEventListener("click", () => {
-          emojiMenu.hidden = !emojiMenu.hidden;
+          setEmojiMenuVisibility(emojiMenu.hidden);
         });
         emojiMenu?.querySelectorAll("[data-wa-emoji-value]").forEach((button) => {
           button.addEventListener("click", () => {
@@ -3071,7 +3080,7 @@ if ($isWaConversationFragment) {
             messageInput.value = messageInput.value.slice(0, start) + emoji + messageInput.value.slice(end);
             messageInput.focus();
             messageInput.selectionStart = messageInput.selectionEnd = start + emoji.length;
-            emojiMenu.hidden = true;
+            setEmojiMenuVisibility(false);
             syncComposerAction();
           });
         });

@@ -5519,6 +5519,10 @@ textarea:focus {
   border-top: 1px solid rgba(148, 163, 184, 0.18);
 }
 
+.whatsapp-crm-page .wa-thread-bottom.wa-emoji-open {
+  overflow: visible !important;
+}
+
 .whatsapp-crm-page .wa-window-banner {
   display: flex;
   align-items: center;
