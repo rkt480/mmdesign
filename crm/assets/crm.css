@@ -3467,14 +3467,6 @@ textarea:focus {
   font-size: 1.15rem;
 }
 
-.wa-media-input {
-  position: absolute !important;
-  width: 1px !important;
-  height: 1px !important;
-  opacity: 0 !important;
-  pointer-events: none !important;
-}
-
 .wa-composer-main {
   display: grid;
   min-width: 0;
