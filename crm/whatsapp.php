@@ -2560,13 +2560,42 @@ if ($isWaConversationFragment) {
         let recordingTimer = null;
         let discardCurrentRecording = false;
 
+        const positionEmojiMenu = () => {
+          if (!emojiButton || !emojiMenu || emojiMenu.hidden) {
+            return;
+          }
+
+          const buttonRect = emojiButton.getBoundingClientRect();
+          const menuRect = emojiMenu.getBoundingClientRect();
+          const margin = 8;
+          const maxLeft = Math.max(margin, window.innerWidth - menuRect.width - margin);
+          const preferredTop = buttonRect.top - menuRect.height - 6;
+          const fallbackTop = buttonRect.bottom + 6;
+          const maxTop = Math.max(margin, window.innerHeight - menuRect.height - margin);
+          const top = preferredTop >= margin
+            ? preferredTop
+            : Math.min(fallbackTop, maxTop);
+
+          emojiMenu.style.left = `${Math.min(Math.max(margin, buttonRect.left), maxLeft)}px`;
+          emojiMenu.style.top = `${Math.min(Math.max(margin, top), maxTop)}px`;
+          emojiMenu.style.bottom = "auto";
+        };
+
         const setEmojiMenuVisibility = (open) => {
           if (!emojiMenu) {
             return;
           }
 
           emojiMenu.hidden = !open;
-          form.closest(".wa-thread-bottom")?.classList.toggle("wa-emoji-open", open);
+
+          if (open) {
+            positionEmojiMenu();
+            window.requestAnimationFrame(positionEmojiMenu);
+          } else {
+            emojiMenu.style.removeProperty("left");
+            emojiMenu.style.removeProperty("top");
+            emojiMenu.style.removeProperty("bottom");
+          }
         };
 
         const concatAudioBytes = (parts) => {
