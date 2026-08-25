@@ -19,7 +19,7 @@
     </header>
 
     <?php if ((string) ($activeLead['whatsapp_status'] ?? '') === 'falhou' && trim((string) ($activeLead['whatsapp_error'] ?? '')) !== ''): ?>
-      <div class="wa-toast">Falha confirmada pelo WhatsApp: <?= htmlspecialchars((string) $activeLead['whatsapp_error']) ?></div>
+      <div class="wa-toast"><?= htmlspecialchars(whatsapp_page_friendly_failure_message((string) $activeLead['whatsapp_error'])) ?></div>
     <?php endif; ?>
 
     <div class="wa-message-surface">

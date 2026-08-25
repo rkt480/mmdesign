@@ -119,6 +119,30 @@ function whatsapp_page_time_label(string $date): string
     return date('d/m H:i', $timestamp);
 }
 
+function whatsapp_page_friendly_failure_message(string $error): string
+{
+    $normalized = strtolower(trim($error));
+
+    if (
+        str_contains($normalized, '131053')
+        || str_contains($normalized, 'media upload error')
+        || str_contains($normalized, 'videocodec=hevc')
+        || str_contains($normalized, 'hevc')
+    ) {
+        return 'Falha ao enviar o vídeo. O formato ou codec não é compatível com o WhatsApp.';
+    }
+
+    if (
+        str_contains($normalized, '16 mb')
+        || str_contains($normalized, '16mb')
+        || str_contains($normalized, 'media file size too big')
+    ) {
+        return 'Falha ao enviar o vídeo. O tamanho máximo permitido é 16 MB.';
+    }
+
+    return 'Falha ao enviar a mensagem. Tente novamente.';
+}
+
 function whatsapp_page_short_text(string $text, int $limit = 92): string
 {
     $text = trim(preg_replace('/\s+/', ' ', $text) ?? $text);
@@ -982,8 +1006,7 @@ function whatsapp_page_messages_for_lead(array $lead): array
             }
 
             if (preg_match('/^Falha ao enviar via (.+?) em ([0-9]{2}\/[0-9]{2}\/[0-9]{4} [0-9]{2}:[0-9]{2}(?::[0-9]{2})?):\R(.+)$/su', $block, $match) === 1) {
-                $displayFailureText = preg_replace('/\bPilot Status\b|\bMeta Cloud API\b/iu', 'WhatsApp', $block) ?? $block;
-                $displayFailureText = preg_replace('/Falha ao enviar via WhatsApp/iu', 'Falha ao enviar mensagem', $displayFailureText) ?? $displayFailureText;
+                $displayFailureText = whatsapp_page_friendly_failure_message($block);
                 $messages[] = [
                     'direction' => 'note',
                     'provider' => whatsapp_page_message_provider((string) $match[1]),
@@ -1575,7 +1598,7 @@ if ($isWaConversationFragment) {
           </header>
 
           <?php if ((string) ($activeLead['whatsapp_status'] ?? '') === 'falhou' && trim((string) ($activeLead['whatsapp_error'] ?? '')) !== ''): ?>
-            <div class="wa-toast">Falha confirmada pelo WhatsApp: <?= htmlspecialchars((string) $activeLead['whatsapp_error']) ?></div>
+            <div class="wa-toast"><?= htmlspecialchars(whatsapp_page_friendly_failure_message((string) $activeLead['whatsapp_error'])) ?></div>
           <?php endif; ?>
 
           <div class="wa-message-surface">
