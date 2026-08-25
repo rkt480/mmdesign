@@ -5341,6 +5341,7 @@ textarea:focus {
 
 .whatsapp-crm-page .wa-composer-tools {
   position: relative;
+  z-index: 2;
   justify-content: center;
   gap: 0;
 }
@@ -5372,7 +5373,8 @@ textarea:focus {
 
 .whatsapp-crm-page .wa-emoji-menu {
   position: absolute;
-  bottom: 50px;
+  z-index: 50;
+  bottom: calc(100% + 6px);
   left: 0;
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -6548,7 +6550,7 @@ textarea:focus {
   }
 
   .whatsapp-crm-page .wa-emoji-menu {
-    bottom: 50px;
+    bottom: calc(100% + 6px);
     left: 0;
   }
 }
