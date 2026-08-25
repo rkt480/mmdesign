@@ -1639,12 +1639,6 @@ if ($isWaConversationFragment) {
                   <path d="M12 5v14M5 12h14" />
                 </svg>
               </button>
-              <button class="wa-tool-button" type="button" title="Gravar vídeo" data-wa-video-record aria-label="Gravar vídeo">
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <rect x="3.5" y="6.5" width="12" height="11" rx="2" />
-                  <path d="m15.5 10 5-2.5v9l-5-2.5" />
-                </svg>
-              </button>
               <button class="wa-tool-button" type="button" title="Inserir emoji" data-wa-emoji aria-label="Inserir emoji">
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                   <circle cx="12" cy="12" r="8.5" />
