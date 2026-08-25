@@ -195,23 +195,6 @@ function crm_push_save_subscription(int $userId, array $subscription, string $us
         'created_at' => $now,
         'updated_at' => $now,
     ]);
-
-    // O mesmo navegador pode deixar inscrições antigas após reinstalar ou
-    // atualizar o PWA. Mantemos apenas a inscrição atual daquele navegador
-    // para evitar alertas repetidos no mesmo dispositivo.
-    if (trim($userAgent) !== '') {
-        $cleanup = $db->prepare(
-            'DELETE FROM crm_push_subscriptions
-             WHERE user_id = :user_id
-               AND user_agent = :user_agent
-               AND endpoint_hash <> :endpoint_hash'
-        );
-        $cleanup->execute([
-            'user_id' => $userId,
-            'user_agent' => substr(trim($userAgent), 0, 500),
-            'endpoint_hash' => $normalized['endpoint_hash'],
-        ]);
-    }
 }
 
 function crm_push_delete_subscription(int $userId, string $endpoint): void
@@ -489,6 +472,16 @@ function crm_push_claim_notification_event(string $eventKey): bool
     return $stmt->rowCount() > 0;
 }
 
+function crm_push_release_notification_event(string $eventKey): void
+{
+    $stmt = crm_push_db()->prepare(
+        'DELETE FROM crm_push_notification_events WHERE event_hash = :event_hash'
+    );
+    $stmt->execute([
+        'event_hash' => hash('sha256', $eventKey),
+    ]);
+}
+
 function crm_push_send_to_user(int $userId, array $notification): array
 {
     $subscriptions = crm_push_user_subscriptions($userId);
@@ -579,12 +572,19 @@ function crm_push_notify_lead_reply(array $lead, string $message = '', string $m
         ? intdiv($messageTime, 60)
         : intdiv(time(), 60);
 
-    if ($normalizedMessage !== '') {
-        $eventKey = 'lead-reply|' . (string) ($lead['id'] ?? '') . '|' . $normalizedMessage . '|'
+    $leadId = (string) ($lead['id'] ?? '');
+
+    if (trim($messageId) !== '') {
+        // O ID do provedor identifica a mensagem com precisão e evita perder
+        // duas mensagens iguais recebidas no mesmo minuto.
+        $eventKey = 'lead-reply-id|' . $leadId . '|' . trim($messageId);
+    } elseif ($normalizedMessage !== '') {
+        $eventKey = 'lead-reply|' . $leadId . '|' . $normalizedMessage . '|'
             . $messageTimeBucket;
     } else {
-        $eventKey = 'lead-reply-media|' . (string) ($lead['id'] ?? '') . '|'
-            . ($messageId !== '' ? $messageId : intdiv(time(), 60));
+        // Sem ID, restringimos a deduplicação de eventos muito próximos. O
+        // fallback anterior agrupava toda mídia do mesmo lead por um minuto.
+        $eventKey = 'lead-reply-media|' . $leadId . '|' . time();
     }
 
     if (!crm_push_claim_notification_event($eventKey)) {
@@ -597,16 +597,23 @@ function crm_push_notify_lead_reply(array $lead, string $message = '', string $m
         $preview = rtrim(substr($preview, 0, 117)) . '...';
     }
 
-    $leadId = (string) ($lead['id'] ?? '');
-
-    return crm_push_send_to_user($userId, [
+    $result = crm_push_send_to_user($userId, [
         'event' => 'lead-reply',
         'title' => 'Nova resposta do lead',
         'body' => $name . ': ' . $preview,
         'url' => './whatsapp.php?lead=' . rawurlencode($leadId),
-        'tag' => 'lead-reply-' . ($leadId !== '' ? $leadId : uniqid('', true)),
+        'tag' => 'lead-reply-' . substr(hash('sha256', $eventKey), 0, 24),
+        'renotify' => true,
         'icon' => './assets/icon-192.png',
         'badge' => './assets/icon-192.png',
         'lead_id' => $leadId,
     ]);
+
+    // Não bloqueia uma nova tentativa caso o push service esteja indisponível
+    // ou a inscrição tenha expirado neste momento.
+    if (($result['ok'] ?? false) !== true) {
+        crm_push_release_notification_event($eventKey);
+    }
+
+    return $result;
 }

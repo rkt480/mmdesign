@@ -2403,10 +2403,71 @@ if ($isWaConversationFragment) {
       // atualização da conversa usa a escuta de evento abaixo, que funciona
       // mesmo quando as notificações do navegador não estão habilitadas.
       if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("./sw.js?v=20260813-lazy-lead-details-v1", {
+        const waPushCsrfToken = document.querySelector("meta[name='csrf-token']")?.content || "";
+
+        const syncWaPushSubscription = async (subscriptionOverride = null) => {
+          if (!waPushCsrfToken || !window.isSecureContext || !("PushManager" in window)) {
+            return;
+          }
+
+          const permission = window.Notification?.permission || "default";
+
+          if (permission !== "granted") {
+            return;
+          }
+
+          const registration = await navigator.serviceWorker.ready;
+          const subscription = subscriptionOverride || await registration.pushManager.getSubscription();
+          const json = typeof subscription?.toJSON === "function"
+            ? subscription.toJSON()
+            : subscription;
+
+          if (!json?.endpoint || !json?.keys) {
+            return;
+          }
+
+          const response = await fetch("./api/push.php?action=subscribe", {
+            method: "POST",
+            headers: {
+              Accept: "application/json",
+              "Content-Type": "application/json",
+              "X-CSRF-Token": waPushCsrfToken,
+            },
+            body: JSON.stringify({ endpoint: json.endpoint, keys: json.keys }),
+            cache: "no-store",
+          });
+
+          if (!response.ok) {
+            throw new Error("Não foi possível sincronizar as notificações.");
+          }
+        };
+
+        navigator.serviceWorker.addEventListener("message", (event) => {
+          if (event.data?.type !== "crm-push-subscription-changed") {
+            return;
+          }
+
+          syncWaPushSubscription(event.data.subscription).catch(() => {});
+        });
+
+        window.addEventListener("online", () => {
+          syncWaPushSubscription().catch(() => {});
+        });
+
+        document.addEventListener("visibilitychange", () => {
+          if (document.visibilityState === "visible") {
+            syncWaPushSubscription().catch(() => {});
+          }
+        });
+
+        window.setInterval(() => {
+          syncWaPushSubscription().catch(() => {});
+        }, 5 * 60 * 1000);
+
+        navigator.serviceWorker.register("./sw.js?v=20260824-push-reliability-v1", {
           scope: "./",
           updateViaCache: "none",
-        }).catch(() => {});
+        }).then(() => syncWaPushSubscription()).catch(() => {});
       }
 
       let waIncomingListenerGeneration = 0;
@@ -2839,8 +2900,8 @@ if ($isWaConversationFragment) {
 
           previewUrl = URL.createObjectURL(file);
           const extension = String(file.name || "").split(".").pop().toLowerCase();
-          const supportedVideoExtensions = new Set(["mp4", "m4v", "3gp"]);
-          const documentVideoExtensions = new Set(["3g2", "avi", "flv", "m2ts", "mkv", "mov", "mpe", "mpeg", "mpg", "mts", "ogv", "ts", "vob", "webm", "wmv"]);
+          const supportedVideoExtensions = new Set(["mp4", "m4v", "3gp", "mov"]);
+          const documentVideoExtensions = new Set(["avi", "flv", "m2ts", "mkv", "mpe", "mpeg", "mpg", "mts", "ogv", "ts", "vob", "webm", "wmv"]);
           const isImage = file.type.startsWith("image/");
           const isAudio = file.type.startsWith("audio/");
           const isVideo = file.type.startsWith("video/") || documentVideoExtensions.has(extension) || supportedVideoExtensions.has(extension);
@@ -2851,9 +2912,11 @@ if ($isWaConversationFragment) {
             ? "Imagem selecionada"
             : (isAudio
               ? "Áudio selecionado"
-              : (isVideoDocument
-                ? (exceedsVideoMessageLimit ? "Vídeo grande será enviado como documento" : "Vídeo será enviado como documento")
-                : (isVideo ? "Vídeo selecionado" : "Documento selecionado")));
+              : (exceedsVideoMessageLimit
+                ? "Vídeo excede o limite de 16 MB"
+                : (isVideoDocument
+                  ? "Vídeo será enviado como documento"
+                  : (isVideo ? "Vídeo selecionado" : "Documento selecionado"))));
           label.title = label.textContent;
           preview.appendChild(label);
 

@@ -104,14 +104,13 @@ if ($hasMedia) {
     // Keep the native video message path limited to formats supported by the
     // WhatsApp provider. Other video containers are still accepted, but are
     // sent as documents so the file is not silently discarded downstream.
-    $videoTypes = ['video/mp4', 'video/3gpp'];
+    $videoTypes = ['video/mp4', 'video/3gpp', 'video/quicktime'];
     $videoDocumentExtensions = [
         '3g2',
         'avi',
         'flv',
         'm2ts',
         'mkv',
-        'mov',
         'mpe',
         'mpeg',
         'mpg',
@@ -199,23 +198,22 @@ if ($hasMedia) {
     } elseif (in_array($mimeType, $documentTypes, true)) {
         $mediaType = 'document';
     } else {
-        header('Location: ' . $redirect . '&send_error=' . rawurlencode('Envie uma imagem, áudio, vídeo MP4/3GP ou documento compatível. Vídeos MOV, WebM, MKV e outros formatos serão enviados como documento.'));
+        header('Location: ' . $redirect . '&send_error=' . rawurlencode('Envie uma imagem, áudio, vídeo MP4/3GP/MOV ou documento compatível. O Pilot Status converte vídeos MOV para MP4 automaticamente.'));
         exit;
     }
 
     $isVideoFile = $mediaType === 'video'
         || $isVideoDocument
         || str_starts_with($mimeType, 'video/');
-    $maxFileSize = $isVideoFile ? 100 * 1024 * 1024 : 16 * 1024 * 1024;
+    $maxFileSize = $isVideoFile ? 16 * 1024 * 1024 : 100 * 1024 * 1024;
 
     if ($fileSize > $maxFileSize) {
-        $limitLabel = $isVideoFile ? '100 MB' : '16 MB';
-        header('Location: ' . $redirect . '&send_error=' . rawurlencode('O arquivo excede o limite de ' . $limitLabel . '. Vídeos acima de 16 MB devem ser enviados como documento.'));
+        $limitLabel = $isVideoFile ? '16 MB' : '100 MB';
+        $message = $isVideoFile
+            ? 'O vídeo excede o limite de 16 MB do WhatsApp. Reduza a duração ou a qualidade do vídeo e tente novamente.'
+            : 'O arquivo excede o limite de ' . $limitLabel . '.';
+        header('Location: ' . $redirect . '&send_error=' . rawurlencode($message));
         exit;
-    }
-
-    if ($mediaType === 'video' && $fileSize > 16 * 1024 * 1024) {
-        $mediaType = 'document';
     }
 
     $mediaPath = (string) $media['tmp_name'];

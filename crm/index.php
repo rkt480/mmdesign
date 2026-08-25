@@ -540,7 +540,7 @@ foreach ($filteredLeads as $lead) {
     </main>
       </div>
     </div>
-    <script src="./assets/crm.js?v=20260821-auto-followup-v1"></script>
+    <script src="./assets/crm.js?v=20260824-push-reliability-v1"></script>
     <script src="./assets/crm-navigation.js?v=20260812-fast-navigation-v3"></script>
   </body>
 </html>

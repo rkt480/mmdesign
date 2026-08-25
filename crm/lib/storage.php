@@ -1980,11 +1980,16 @@ function crm_notify_created_lead_push(array $lead): void
     }
 }
 
-function crm_notify_lead_reply_push(array $lead, string $message = ''): void
+function crm_notify_lead_reply_push(
+    array $lead,
+    string $message = '',
+    string $messageId = '',
+    string $messageTimestamp = ''
+): void
 {
     try {
         require_once __DIR__ . '/push.php';
-        $result = crm_push_notify_lead_reply($lead, $message);
+        $result = crm_push_notify_lead_reply($lead, $message, $messageId, $messageTimestamp);
 
         if (($result['ok'] ?? false) !== true && ($result['skipped'] ?? false) !== true) {
             error_log('Erro ao enviar push de resposta do Lead ' . (string) ($lead['id'] ?? '') . ': ' . json_encode($result, JSON_UNESCAPED_UNICODE));
