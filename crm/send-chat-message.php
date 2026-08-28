@@ -270,6 +270,22 @@ if (($result['ok'] ?? false) === true) {
         ($hasMedia ? 'Mídia enviada via ' : 'Mensagem enviada via ') . $providerLabel . ' em ' . date('d/m/Y H:i:s') . ":\n" . $sentDescription
     );
     crm_update_whatsapp_status($leadId, $pilotStatusQueued ? 'aguardando' : 'enviado');
+
+    if ((string) ($lead['first_contact_at'] ?? '') === '') {
+        crm_record_lead_timeline_event(
+            $leadId,
+            'first_contact',
+            'Atendimento iniciado',
+            'Primeiro contato enviado pelo WhatsApp.'
+        );
+    }
+
+    crm_record_lead_timeline_event(
+        $leadId,
+        $hasMedia ? 'whatsapp_media_sent' : 'whatsapp_message_sent',
+        $hasMedia ? 'Mídia enviada pelo WhatsApp' : 'Mensagem enviada pelo WhatsApp',
+        'Envio realizado via ' . $providerLabel . '.'
+    );
     header('Location: ' . $redirect . '&sent=1');
     exit;
 }
@@ -278,6 +294,12 @@ $error = 'Falha ao enviar via ' . $providerLabel . ': ' . (string) ($result['err
 crm_append_lead_note(
     $leadId,
     'Falha ao enviar via ' . $providerLabel . ' em ' . date('d/m/Y H:i:s') . ":\n" . $error
+);
+crm_record_lead_timeline_event(
+    $leadId,
+    'whatsapp_message_failed',
+    'Falha ao enviar mensagem pelo WhatsApp',
+    'Tentativa via ' . $providerLabel . '. ' . $error
 );
 
 header('Location: ' . $redirect . '&send_error=' . rawurlencode($error));
