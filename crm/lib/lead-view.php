@@ -23,6 +23,67 @@ function lead_origin_summary(array $lead): string
     return 'Direto ou sem UTM';
 }
 
+function lead_origin_channel_label(array $lead): string
+{
+    $source = trim((string) ($lead['utm_source'] ?? ''));
+
+    if ($source === '') {
+        $referrer = trim((string) ($lead['referrer'] ?? ''));
+
+        if ($referrer !== '') {
+            $host = parse_url($referrer, PHP_URL_HOST);
+            return is_string($host) && $host !== '' ? $host : 'Site externo';
+        }
+
+        return 'Direto ou sem UTM';
+    }
+
+    $normalized = function_exists('mb_strtolower')
+        ? mb_strtolower($source, 'UTF-8')
+        : strtolower($source);
+    $labels = [
+        'metaads' => 'Meta Ads',
+        'meta_ads' => 'Meta Ads',
+        'facebook' => 'Facebook',
+        'instagram' => 'Instagram',
+        'googleads' => 'Google Ads',
+        'google_ads' => 'Google Ads',
+        'google' => 'Google',
+        'pilot_status' => 'WhatsApp',
+        'meta_whatsapp_cloud' => 'WhatsApp',
+        'whatsapp' => 'WhatsApp',
+    ];
+
+    return $labels[$normalized] ?? $source;
+}
+
+function lead_origin_ad_name(array $lead): string
+{
+    return trim((string) ($lead['utm_content'] ?? ''));
+}
+
+function lead_origin_campaign_name(array $lead): string
+{
+    return trim((string) ($lead['utm_campaign'] ?? ''));
+}
+
+function lead_sales_origin_summary(array $lead): string
+{
+    $channel = lead_origin_channel_label($lead);
+    $adName = lead_origin_ad_name($lead);
+    $campaignName = lead_origin_campaign_name($lead);
+
+    if ($adName !== '') {
+        return $channel . ' — ' . $adName;
+    }
+
+    if ($campaignName !== '') {
+        return $channel . ' — Campanha: ' . $campaignName;
+    }
+
+    return $channel;
+}
+
 function lead_whatsapp_status_label(array $lead): string
 {
     $status = (string) ($lead['whatsapp_status'] ?? '');

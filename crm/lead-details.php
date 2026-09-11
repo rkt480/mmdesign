@@ -55,6 +55,16 @@ $visibleLeadTags = $visibleLeadTags ?? lead_visible_tags($lead, $leadTags);
           <button type="submit">Salvar contato</button>
         </form>
         <dl class="lead-details">
+          <div class="field-wide">
+            <dt>Origem do lead</dt>
+            <dd><?= htmlspecialchars(lead_sales_origin_summary($lead)) ?></dd>
+          </div>
+          <?php if (lead_origin_campaign_name($lead) !== '' && lead_origin_ad_name($lead) !== ''): ?>
+            <div class="field-wide">
+              <dt>Campanha</dt>
+              <dd><?= htmlspecialchars(lead_origin_campaign_name($lead)) ?></dd>
+            </div>
+          <?php endif; ?>
           <div>
             <dt>CPF</dt>
             <dd><?= htmlspecialchars(crm_format_cpf((string) ($lead['cpf'] ?? '')) ?: 'Não informado') ?></dd>
