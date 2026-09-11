@@ -55,6 +55,25 @@ CREATE TABLE IF NOT EXISTS publi_ai_crm.leads (
   DEFAULT CHARSET=utf8mb4
   COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS publi_ai_crm.pilot_status_attribution_queue (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  lead_id VARCHAR(32) NOT NULL,
+  source_id VARCHAR(255) NOT NULL,
+  source_type VARCHAR(20) NOT NULL,
+  attempts TINYINT UNSIGNED NOT NULL DEFAULT 0,
+  next_attempt_at DATETIME NOT NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'pending',
+  last_error TEXT NULL,
+  resolved_at DATETIME NULL,
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL,
+  UNIQUE KEY uq_pilot_status_attribution_source (lead_id, source_type, source_id),
+  INDEX idx_pilot_status_attribution_due (status, next_attempt_at),
+  INDEX idx_pilot_status_attribution_lead (lead_id)
+) ENGINE=InnoDB
+  DEFAULT CHARSET=utf8mb4
+  COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS publi_ai_crm.crm_settings (
   setting_key VARCHAR(120) PRIMARY KEY,
   setting_value LONGTEXT NOT NULL,

@@ -47,7 +47,7 @@ function crm_db(): PDO
 
 function crm_schema_version(): string
 {
-    return '20260828.1';
+    return '20260911.1';
 }
 
 function crm_schema_version_is_current(PDO $pdo): bool
@@ -329,11 +329,35 @@ function crm_ensure_crm_schema(PDO $pdo): void
         crm_ensure_flexible_lead_status($pdo);
     }
 
+    crm_ensure_pilot_status_attribution_queue($pdo);
+
     if (crm_table_exists($pdo, 'followup_steps')) {
         crm_ensure_followup_step_columns($pdo);
     }
 
     $checked = true;
+}
+
+function crm_ensure_pilot_status_attribution_queue(PDO $pdo): void
+{
+    $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS pilot_status_attribution_queue (
+            id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            lead_id VARCHAR(32) NOT NULL,
+            source_id VARCHAR(255) NOT NULL,
+            source_type VARCHAR(20) NOT NULL,
+            attempts TINYINT UNSIGNED NOT NULL DEFAULT 0,
+            next_attempt_at DATETIME NOT NULL,
+            status VARCHAR(20) NOT NULL DEFAULT "pending",
+            last_error TEXT NULL,
+            resolved_at DATETIME NULL,
+            created_at DATETIME NOT NULL,
+            updated_at DATETIME NOT NULL,
+            UNIQUE KEY uq_pilot_status_attribution_source (lead_id, source_type, source_id),
+            INDEX idx_pilot_status_attribution_due (status, next_attempt_at),
+            INDEX idx_pilot_status_attribution_lead (lead_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
+    );
 }
 
 function crm_ensure_followup_step_columns(PDO $pdo): void
@@ -2388,6 +2412,88 @@ function crm_update_lead_profile_picture(string $id, string $url): bool
         'profile_picture_url' => $url,
         'updated_at' => date('Y-m-d H:i:s'),
     ] + $accessParams);
+
+    return $stmt->rowCount() > 0;
+}
+
+function crm_enqueue_pilot_status_attribution(string $leadId, string $sourceId, string $sourceType): bool
+{
+    $leadId = trim($leadId);
+    $sourceId = trim($sourceId);
+    $sourceType = strtolower(trim($sourceType));
+
+    if ($leadId === '' || $sourceId === '' || !in_array($sourceType, ['ad', 'post'], true)) {
+        return false;
+    }
+
+    $now = date('Y-m-d H:i:s');
+    $stmt = crm_db()->prepare(
+        'INSERT IGNORE INTO pilot_status_attribution_queue
+        (lead_id, source_id, source_type, attempts, next_attempt_at, status, last_error, resolved_at, created_at, updated_at)
+        VALUES
+        (:lead_id, :source_id, :source_type, 0, :next_attempt_at, "pending", NULL, NULL, :created_at, :updated_at)'
+    );
+    $stmt->execute([
+        'lead_id' => $leadId,
+        'source_id' => substr($sourceId, 0, 255),
+        'source_type' => $sourceType,
+        'next_attempt_at' => $now,
+        'created_at' => $now,
+        'updated_at' => $now,
+    ]);
+
+    return $stmt->rowCount() > 0;
+}
+
+/**
+ * @return list<array<string, mixed>>
+ */
+function crm_read_due_pilot_status_attributions(int $limit = 20): array
+{
+    $limit = max(1, min(100, $limit));
+    $stmt = crm_db()->query(
+        'SELECT id, lead_id, source_id, source_type, attempts, next_attempt_at, status, last_error
+         FROM pilot_status_attribution_queue
+         WHERE status = "pending"
+           AND next_attempt_at <= NOW()
+         ORDER BY next_attempt_at ASC, id ASC
+         LIMIT ' . $limit
+    );
+
+    return $stmt->fetchAll();
+}
+
+function crm_update_pilot_status_attribution_job(
+    int $id,
+    string $status,
+    int $attempts,
+    string $nextAttemptAt,
+    ?string $error = null
+): bool {
+    if ($id <= 0 || !in_array($status, ['pending', 'resolved', 'exhausted', 'failed'], true)) {
+        return false;
+    }
+
+    $resolvedAt = $status === 'resolved' ? date('Y-m-d H:i:s') : null;
+    $stmt = crm_db()->prepare(
+        'UPDATE pilot_status_attribution_queue
+         SET attempts = :attempts,
+             next_attempt_at = :next_attempt_at,
+             status = :status,
+             last_error = :last_error,
+             resolved_at = :resolved_at,
+             updated_at = :updated_at
+         WHERE id = :id'
+    );
+    $stmt->execute([
+        'id' => $id,
+        'attempts' => max(0, min(255, $attempts)),
+        'next_attempt_at' => $nextAttemptAt,
+        'status' => $status,
+        'last_error' => $error !== null && trim($error) !== '' ? substr(trim($error), 0, 4000) : null,
+        'resolved_at' => $resolvedAt,
+        'updated_at' => date('Y-m-d H:i:s'),
+    ]);
 
     return $stmt->rowCount() > 0;
 }

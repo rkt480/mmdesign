@@ -185,19 +185,6 @@ foreach ($incomingMessages as $incoming) {
         ? $incoming['attribution']
         : crm_attribution_empty();
 
-    // Click-to-WhatsApp delivers the ad ID in the referral object. Resolve
-    // the readable ad/set/campaign names through Pilot Status before creating
-    // the lead, while keeping the webhook resilient if the async resolution
-    // is still pending or the API is temporarily unavailable.
-    try {
-        $attribution = pilot_status_resolve_referral_attribution($attribution);
-    } catch (Throwable $error) {
-        pilot_status_log('Erro ao resolver a atribuição do anúncio.', [
-            'source_id' => (string) ($attribution['referral_source_id'] ?? ''),
-            'error' => $error->getMessage(),
-        ]);
-    }
-
     $leadPayload = [
         'name' => $name,
         'whatsapp' => $whatsapp,
@@ -229,6 +216,32 @@ foreach ($incomingMessages as $incoming) {
 
             if ($attributionUpdated) {
                 $lead = crm_find_lead((string) $lead['id']) ?? $lead;
+            }
+        }
+
+        // Click-to-WhatsApp delivers the ad ID in the referral object, but
+        // Pilot Status may resolve the readable names only after this webhook
+        // has already returned. Queue the lookup so the message path remains
+        // fast and reliable; the worker updates attribution only.
+        $referralSourceId = trim((string) ($attribution['referral_source_id'] ?? ''));
+        $referralSourceType = strtolower(trim((string) ($attribution['referral_source_type'] ?? '')));
+
+        if ($referralSourceId !== '' && in_array($referralSourceType, ['ad', 'post'], true)) {
+            try {
+                crm_enqueue_pilot_status_attribution(
+                    (string) $lead['id'],
+                    $referralSourceId,
+                    $referralSourceType
+                );
+            } catch (Throwable $error) {
+                // Queueing attribution must never prevent a WhatsApp message
+                // or media item from being recorded.
+                pilot_status_log('Não foi possível enfileirar a atribuição do anúncio.', [
+                    'lead_id' => (string) $lead['id'],
+                    'source_id' => $referralSourceId,
+                    'source_type' => $referralSourceType,
+                    'error' => $error->getMessage(),
+                ]);
             }
         }
 

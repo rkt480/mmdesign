@@ -437,6 +437,141 @@ function pilot_status_resolve_referral_attribution(array $attribution): array
     return $attribution;
 }
 
+function pilot_status_attribution_retry_at(int $attempts): string
+{
+    $delay = $attempts <= 1 ? 5 : 60;
+
+    return date('Y-m-d H:i:s', time() + $delay);
+}
+
+/**
+ * Resolve queued Click-to-WhatsApp referral names without running inside the
+ * inbound webhook request. The queue intentionally updates attribution only;
+ * conversation notes, WhatsApp status and lead workflow remain untouched.
+ *
+ * @return array{processed:int, resolved:int, retried:int, exhausted:int, failed:int, updated:int}
+ */
+function pilot_status_process_referral_attribution_queue(int $limit = 20): array
+{
+    $jobs = crm_read_due_pilot_status_attributions($limit);
+    $result = [
+        'processed' => 0,
+        'resolved' => 0,
+        'retried' => 0,
+        'exhausted' => 0,
+        'failed' => 0,
+        'updated' => 0,
+    ];
+
+    foreach ($jobs as $job) {
+        $result['processed']++;
+        $jobId = (int) ($job['id'] ?? 0);
+        $attempts = (int) ($job['attempts'] ?? 0) + 1;
+        $sourceId = trim((string) ($job['source_id'] ?? ''));
+        $sourceType = strtolower(trim((string) ($job['source_type'] ?? '')));
+
+        $apiResult = pilot_status_api_request(
+            '/referrals',
+            'GET',
+            [
+                'sourceType' => $sourceType,
+                'sourceId' => $sourceId,
+                'page' => 1,
+                'pageSize' => 1,
+            ],
+            8
+        );
+
+        if (($apiResult['ok'] ?? false) !== true || !is_array($apiResult['response'] ?? null)) {
+            $error = (string) ($apiResult['error'] ?? 'Resposta inválida da Pilot Status.');
+
+            if ($attempts < 3) {
+                crm_update_pilot_status_attribution_job(
+                    $jobId,
+                    'pending',
+                    $attempts,
+                    pilot_status_attribution_retry_at($attempts),
+                    $error
+                );
+                $result['retried']++;
+            } else {
+                crm_update_pilot_status_attribution_job(
+                    $jobId,
+                    'failed',
+                    $attempts,
+                    date('Y-m-d H:i:s'),
+                    $error
+                );
+                $result['failed']++;
+            }
+
+            pilot_status_log('Falha ao resolver atribuição enfileirada.', [
+                'job_id' => $jobId,
+                'lead_id' => (string) ($job['lead_id'] ?? ''),
+                'source_id' => $sourceId,
+                'source_type' => $sourceType,
+                'attempt' => $attempts,
+                'error' => $error,
+            ]);
+            continue;
+        }
+
+        $referral = pilot_status_extract_referral_names($apiResult['response']);
+        $namesResolvedAt = trim((string) ($referral['names_resolved_at'] ?? ''));
+        $attribution = [
+            'utm_source' => 'metaads',
+            'utm_medium' => trim((string) ($referral['adset_name'] ?? '')),
+            'utm_campaign' => trim((string) ($referral['campaign_name'] ?? '')),
+            'utm_content' => trim((string) ($referral['ad_name'] ?? '')),
+        ];
+        $hasNames = $attribution['utm_medium'] !== ''
+            || $attribution['utm_campaign'] !== ''
+            || $attribution['utm_content'] !== '';
+
+        // Pilot Status explicitly exposes namesResolvedAt as the readiness
+        // signal. A missing value means Meta is still being queried. Do not
+        // save partial names, because a later definitive response must be
+        // allowed to populate all attribution fields.
+        if ($namesResolvedAt !== '') {
+            if ($hasNames && crm_update_lead_attribution((string) ($job['lead_id'] ?? ''), $attribution)) {
+                $result['updated']++;
+            }
+
+            crm_update_pilot_status_attribution_job(
+                $jobId,
+                'resolved',
+                $attempts,
+                date('Y-m-d H:i:s')
+            );
+            $result['resolved']++;
+            continue;
+        }
+
+        if ($attempts < 3) {
+            crm_update_pilot_status_attribution_job(
+                $jobId,
+                'pending',
+                $attempts,
+                pilot_status_attribution_retry_at($attempts),
+                'namesResolvedAt ainda não foi preenchido.'
+            );
+            $result['retried']++;
+            continue;
+        }
+
+        crm_update_pilot_status_attribution_job(
+            $jobId,
+            'exhausted',
+            $attempts,
+            date('Y-m-d H:i:s'),
+            'A Pilot Status não resolveu os nomes após três consultas.'
+        );
+        $result['exhausted']++;
+    }
+
+    return $result;
+}
+
 function pilot_status_request(string $endpoint, array $payload, int $timeout = 20): array
 {
     return pilot_status_api_request($endpoint, 'POST', $payload, $timeout);
