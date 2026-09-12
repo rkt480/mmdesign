@@ -3702,7 +3702,7 @@ if ($isWaConversationFragment) {
         });
       });
     </script>
-    <script src="./assets/crm.js?v=20260911-coach-v2"></script>
+    <script src="./assets/crm.js?v=20260911-coach-v3"></script>
     <script src="./assets/crm-navigation.js?v=20260812-fast-navigation-v3"></script>
   </body>
 </html>

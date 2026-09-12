@@ -1724,7 +1724,7 @@ if (document.body.classList.contains("leads-page")) {
   let leadFeedReloadScheduled = false;
 
   const leadFeedHasOpenEditor = () => {
-    if (document.querySelector(".utility-dialog:not([hidden]), .lead-modal:not([hidden])")) {
+    if (document.querySelector(".utility-dialog:not([hidden]), .lead-modal:not([hidden]), .lead-details-panel:not([hidden])")) {
       return true;
     }
 
@@ -1771,6 +1771,13 @@ if (document.body.classList.contains("leads-page")) {
       }
 
       if (leadFeedVersion !== data.version) {
+        // Saving a coach analysis updates the lead's updated_at timestamp.
+        // If the details modal was opened while this poll was in flight,
+        // keep it open and let the next poll refresh after the user closes it.
+        if (leadFeedHasOpenEditor()) {
+          return;
+        }
+
         leadFeedVersion = data.version;
 
         if (consumeLocalKanbanMove()) {
