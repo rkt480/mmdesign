@@ -1246,6 +1246,8 @@ document.addEventListener("click", async (event) => {
   const analyzeButton = event.target.closest?.("[data-coach-analyze]");
 
   if (analyzeButton) {
+    event.preventDefault();
+    event.stopImmediatePropagation();
     const panel = analyzeButton.closest("[data-coach-panel]");
     const leadId = panel?.dataset.leadId || "";
     const status = panel?.querySelector("[data-coach-status]");

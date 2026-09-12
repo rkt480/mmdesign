@@ -271,7 +271,7 @@ $visibleLeadTags = $visibleLeadTags ?? lead_visible_tags($lead, $leadTags);
               <p class="eyebrow">Orientação comercial</p>
               <h3>Coach de vendas</h3>
             </div>
-            <button type="button" class="integration-save" data-coach-analyze>✦ Analisar conversa</button>
+            <button type="button" class="integration-save" data-coach-analyze data-no-lead-toggle>✦ Analisar conversa</button>
           </div>
           <p class="coach-status" data-coach-status role="status"></p>
           <div data-coach-content>
