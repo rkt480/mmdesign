@@ -42,6 +42,19 @@ function crm_openai_coach_model(): string
         : 'gpt-5.6-luna';
 }
 
+function crm_openai_coach_temperature_for_score(int $score): string
+{
+    if ($score >= 70) {
+        return 'quente';
+    }
+
+    if ($score >= 40) {
+        return 'morno';
+    }
+
+    return 'frio';
+}
+
 function crm_openai_coach_documents(): array
 {
     $stmt = crm_db()->query(
@@ -73,6 +86,8 @@ function crm_openai_coach_latest_analysis(string $leadId): ?array
 
     $result = json_decode((string) ($analysis['result_json'] ?? ''), true);
     $analysis['result'] = is_array($result) ? $result : [];
+    $analysis['temperature'] = crm_openai_coach_temperature_for_score((int) ($analysis['score'] ?? 0));
+    $analysis['result']['lead_temperature'] = $analysis['temperature'];
 
     return $analysis;
 }
@@ -487,9 +502,8 @@ function crm_openai_coach_analyze(array $lead, array $messages, int $sellerUserI
     }
 
     $score = max(0, min(100, (int) ($result['closing_potential'] ?? 0)));
-    $temperature = in_array(($result['lead_temperature'] ?? ''), ['frio', 'morno', 'quente'], true)
-        ? (string) $result['lead_temperature']
-        : 'morno';
+    $temperature = crm_openai_coach_temperature_for_score($score);
+    $result['lead_temperature'] = $temperature;
     $now = date('Y-m-d H:i:s');
     $usage = is_array($response['usage'] ?? null) ? $response['usage'] : [];
     $stmt = crm_db()->prepare(

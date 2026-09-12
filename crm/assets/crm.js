@@ -1222,7 +1222,7 @@ function renderCoachResult(panel, analysis) {
   }
 
   const score = Math.max(0, Math.min(100, Number(analysis.score ?? result.closing_potential ?? 0)));
-  const temperature = String(analysis.temperature ?? result.lead_temperature ?? "morno");
+  const temperature = score >= 70 ? "quente" : score >= 40 ? "morno" : "frio";
   const potential = String(analysis.potential ?? (score >= 70 ? "alto" : score >= 40 ? "médio" : "baixo"));
   const lists = [
     ["positive_points", "Pontos positivos"],

@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 $coachResult = is_array($coachAnalysis['result'] ?? null) ? $coachAnalysis['result'] : [];
 $coachScore = (int) ($coachAnalysis['score'] ?? ($coachResult['closing_potential'] ?? 0));
-$coachTemperature = (string) ($coachAnalysis['temperature'] ?? ($coachResult['lead_temperature'] ?? 'morno'));
+$coachTemperature = function_exists('crm_openai_coach_temperature_for_score')
+  ? crm_openai_coach_temperature_for_score($coachScore)
+  : ($coachScore >= 70 ? 'quente' : ($coachScore >= 40 ? 'morno' : 'frio'));
 $coachPotential = (string) ($coachAnalysis['potential'] ?? ($coachScore >= 70 ? 'alto' : ($coachScore >= 40 ? 'médio' : 'baixo')));
 $coachLists = [
     'positive_points' => 'Pontos positivos',
