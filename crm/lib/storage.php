@@ -6,10 +6,17 @@ require_once __DIR__ . '/settings.php';
 require_once __DIR__ . '/attribution.php';
 require_once __DIR__ . '/auth.php';
 
-function crm_db(): PDO
+function crm_db(bool $forceReconnect = false): PDO
 {
-    static $pdo = null;
-    static $schemaReady = false;
+    $pdo = $GLOBALS['crm_db_pdo'] ?? null;
+    $schemaReady = (bool) ($GLOBALS['crm_db_schema_ready'] ?? false);
+
+    if ($forceReconnect) {
+        $pdo = null;
+        $schemaReady = false;
+        $GLOBALS['crm_db_pdo'] = null;
+        $GLOBALS['crm_db_schema_ready'] = false;
+    }
 
     if ($pdo instanceof PDO) {
         return $pdo;
@@ -29,7 +36,9 @@ function crm_db(): PDO
         PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
         PDO::ATTR_EMULATE_PREPARES => false,
-        PDO::ATTR_PERSISTENT => true,
+        // Do not reuse a connection that may have been closed by MySQL while
+        // an external API request was in progress.
+        PDO::ATTR_PERSISTENT => false,
     ]);
 
     // Schema checks used to run on every page request. Keep the safety net for
@@ -41,8 +50,29 @@ function crm_db(): PDO
     }
 
     $schemaReady = true;
+    $GLOBALS['crm_db_pdo'] = $pdo;
+    $GLOBALS['crm_db_schema_ready'] = true;
 
     return $pdo;
+}
+
+/**
+ * Close the current PDO connection without opening a replacement.
+ *
+ * This is important before a slow external API request: MySQL can close an
+ * idle connection while PHP is waiting for the API, which then causes error
+ * 2006 when the result is saved afterwards.
+ */
+function crm_db_release(): void
+{
+    $GLOBALS['crm_db_pdo'] = null;
+    $GLOBALS['crm_db_schema_ready'] = false;
+}
+
+function crm_db_reconnect(): PDO
+{
+    crm_db_release();
+    return crm_db();
 }
 
 function crm_schema_version(): string

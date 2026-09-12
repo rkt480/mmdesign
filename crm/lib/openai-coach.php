@@ -468,7 +468,16 @@ function crm_openai_coach_analyze(array $lead, array $messages, int $sellerUserI
     }
 
     $fingerprint = hash('sha256', json_encode($context, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '');
+    // The API request can take longer than the MySQL wait_timeout configured
+    // by some hosts. Release the old connection and open a fresh one for the
+    // analysis write below.
+    if (function_exists('crm_db_release')) {
+        crm_db_release();
+    }
     $response = crm_openai_json_request('POST', '/v1/responses', $payload);
+    if (function_exists('crm_db_reconnect')) {
+        crm_db_reconnect();
+    }
     $text = crm_openai_coach_output_text($response);
     $text = preg_replace('/^```(?:json)?\s*|\s*```$/i', '', $text) ?? $text;
     $result = json_decode(trim($text), true);
