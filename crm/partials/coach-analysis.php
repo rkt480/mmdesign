@@ -18,7 +18,7 @@ $coachLists = [
   <div class="coach-empty" data-coach-empty>
     <span class="coach-empty-icon" aria-hidden="true">✦</span>
     <h3>Coach de vendas</h3>
-    <p>Analise a conversa para receber uma orientação prática baseada no prompt e nos materiais comerciais cadastrados.</p>
+    <p>Analise a conversa para receber orientações práticas e melhorar o próximo contato com o cliente.</p>
   </div>
 <?php else: ?>
   <div class="coach-result" data-coach-result>
