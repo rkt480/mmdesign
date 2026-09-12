@@ -35,6 +35,5 @@ $coachLists = [
     <?php endforeach; ?>
     <?php if (trim((string) ($coachResult['next_action'] ?? '')) !== ''): ?><section class="coach-next-action"><h4>Próximo passo recomendado</h4><p><?= nl2br(htmlspecialchars((string) $coachResult['next_action'])) ?></p></section><?php endif; ?>
     <?php if (trim((string) ($coachResult['suggested_reply'] ?? '')) !== ''): ?><section class="coach-suggested-reply"><h4>Resposta sugerida</h4><p><?= nl2br(htmlspecialchars((string) $coachResult['suggested_reply'])) ?></p><button type="button" class="secondary-action" data-coach-copy>Copiar resposta</button></section><?php endif; ?>
-    <small class="coach-footnote">Análise gerada por <?= htmlspecialchars((string) ($coachAnalysis['model'] ?? 'OpenAI')) ?> em <?= (int) ($coachAnalysis['input_tokens'] ?? 0) ?> tokens de entrada e <?= (int) ($coachAnalysis['output_tokens'] ?? 0) ?> de saída.</small>
   </div>
 <?php endif; ?>

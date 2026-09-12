@@ -1238,7 +1238,6 @@ function renderCoachResult(panel, analysis) {
     ${lists.map(([key, title]) => coachList(result[key], title)).join("")}
     ${result.next_action ? `<section class="coach-next-action"><h4>Próximo passo recomendado</h4><p>${coachText(result.next_action)}</p></section>` : ""}
     ${result.suggested_reply ? `<section class="coach-suggested-reply"><h4>Resposta sugerida</h4><p data-coach-suggested-reply>${coachText(result.suggested_reply)}</p><button type="button" class="secondary-action" data-coach-copy>Copiar resposta</button></section>` : ""}
-    <small class="coach-footnote">Análise gerada por ${coachEscape(analysis.model || "OpenAI")} em ${Number(analysis.input_tokens || 0)} tokens de entrada e ${Number(analysis.output_tokens || 0)} de saída.</small>
   </div>`;
 }
 
