@@ -31,6 +31,7 @@ $visibleLeadTags = $visibleLeadTags ?? lead_visible_tags($lead, $leadTags);
       <?php if ($canViewTimeline): ?>
         <button type="button" data-lead-tab="historico">Histórico</button>
       <?php endif; ?>
+      <button type="button" data-lead-tab="coach">Coach de vendas</button>
     </aside>
 
     <section class="lead-modal-content">
@@ -260,6 +261,22 @@ $visibleLeadTags = $visibleLeadTags ?? lead_visible_tags($lead, $leadTags);
               </form>
             <?php endif; ?>
           </section>
+        </div>
+      </div>
+
+      <div class="lead-tab-panel" data-lead-panel="coach" hidden>
+        <div class="coach-panel" data-coach-panel data-lead-id="<?= htmlspecialchars((string) ($lead['id'] ?? '')) ?>">
+          <div class="coach-panel-heading">
+            <div>
+              <p class="eyebrow">Orientação comercial</p>
+              <h3>Coach de vendas</h3>
+            </div>
+            <button type="button" class="integration-save" data-coach-analyze>✦ Analisar conversa</button>
+          </div>
+          <p class="coach-status" data-coach-status role="status"></p>
+          <div data-coach-content>
+            <?php require __DIR__ . '/partials/coach-analysis.php'; ?>
+          </div>
         </div>
       </div>
 

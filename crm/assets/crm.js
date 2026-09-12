@@ -1192,6 +1192,121 @@ document.addEventListener("click", (event) => {
   });
 });
 
+function coachEscape(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function coachText(value) {
+  return coachEscape(value).replaceAll("\n", "<br>");
+}
+
+function coachList(items, title) {
+  if (!Array.isArray(items) || items.length === 0) {
+    return "";
+  }
+
+  return `<section class="coach-feedback-block"><h4>${coachEscape(title)}</h4><ul>${items.map((item) => `<li>${coachText(item)}</li>`).join("")}</ul></section>`;
+}
+
+function renderCoachResult(panel, analysis) {
+  const result = analysis?.result || {};
+  const content = panel.querySelector("[data-coach-content]");
+
+  if (!content) {
+    return;
+  }
+
+  const score = Math.max(0, Math.min(100, Number(analysis.score ?? result.closing_potential ?? 0)));
+  const temperature = String(analysis.temperature ?? result.lead_temperature ?? "morno");
+  const potential = String(analysis.potential ?? (score >= 70 ? "alto" : score >= 40 ? "médio" : "baixo"));
+  const lists = [
+    ["positive_points", "Pontos positivos"],
+    ["improvements", "O que melhorar"],
+    ["missed_questions", "Perguntas que faltaram"],
+    ["objections", "Objeções identificadas"],
+    ["evidence", "Evidências da conversa"],
+  ];
+
+  content.innerHTML = `<div class="coach-result" data-coach-result>
+    <div class="coach-score-row"><div class="coach-score-badge"><strong>${score}</strong><span>/100 potencial</span></div><div class="coach-result-meta"><span class="coach-temperature is-${coachEscape(temperature)}">${coachEscape(temperature.charAt(0).toUpperCase() + temperature.slice(1))}</span><span>Potencial ${coachEscape(potential)}</span><time>${coachEscape(new Date(analysis.created_at || Date.now()).toLocaleString("pt-BR"))}</time></div></div>
+    ${result.summary ? `<p class="coach-summary">${coachText(result.summary)}</p>` : ""}
+    ${lists.map(([key, title]) => coachList(result[key], title)).join("")}
+    ${result.next_action ? `<section class="coach-next-action"><h4>Próximo passo recomendado</h4><p>${coachText(result.next_action)}</p></section>` : ""}
+    ${result.suggested_reply ? `<section class="coach-suggested-reply"><h4>Resposta sugerida</h4><p data-coach-suggested-reply>${coachText(result.suggested_reply)}</p><button type="button" class="secondary-action" data-coach-copy>Copiar resposta</button></section>` : ""}
+    <small class="coach-footnote">Análise gerada por ${coachEscape(analysis.model || "OpenAI")} em ${Number(analysis.input_tokens || 0)} tokens de entrada e ${Number(analysis.output_tokens || 0)} de saída.</small>
+  </div>`;
+}
+
+document.addEventListener("click", async (event) => {
+  const analyzeButton = event.target.closest?.("[data-coach-analyze]");
+
+  if (analyzeButton) {
+    const panel = analyzeButton.closest("[data-coach-panel]");
+    const leadId = panel?.dataset.leadId || "";
+    const status = panel?.querySelector("[data-coach-status]");
+
+    if (!panel || !leadId || analyzeButton.disabled) {
+      return;
+    }
+
+    analyzeButton.disabled = true;
+    analyzeButton.textContent = "Analisando…";
+
+    if (status) {
+      status.textContent = "O coach está lendo a conversa e os materiais cadastrados…";
+    }
+
+    try {
+      const formData = new FormData();
+      formData.set("lead_id", leadId);
+      const response = await fetch("./api/coach-analyze.php", {
+        method: "POST",
+        headers: { "X-CSRF-Token": csrfToken, Accept: "application/json" },
+        body: formData,
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok || data.ok !== true) {
+        throw new Error(data.error || "Não foi possível concluir a análise.");
+      }
+
+      renderCoachResult(panel, data.analysis);
+
+      if (status) {
+        status.textContent = `Análise concluída com ${data.message_count || 0} mensagens consideradas.`;
+      }
+    } catch (error) {
+      if (status) {
+        status.textContent = error.message || "Não foi possível concluir a análise.";
+      }
+    } finally {
+      analyzeButton.disabled = false;
+      analyzeButton.textContent = "✦ Analisar conversa";
+    }
+
+    return;
+  }
+
+  const copyButton = event.target.closest?.("[data-coach-copy]");
+
+  if (!copyButton) {
+    return;
+  }
+
+  const reply = copyButton.closest("[data-coach-result]")?.querySelector("[data-coach-suggested-reply]")?.innerText || "";
+
+  if (reply && navigator.clipboard) {
+    await navigator.clipboard.writeText(reply);
+    copyButton.textContent = "Copiado";
+    window.setTimeout(() => { copyButton.textContent = "Copiar resposta"; }, 1800);
+  }
+});
+
 const initialLeadId = new URLSearchParams(window.location.search).get("lead");
 
 if (initialLeadId) {

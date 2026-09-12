@@ -192,6 +192,39 @@ CREATE TABLE IF NOT EXISTS publi_ai_crm.whatsapp_conversation_reads (
   INDEX idx_whatsapp_conversation_reads_user (user_id, updated_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS publi_ai_crm.openai_coach_documents (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  filename VARCHAR(255) NOT NULL,
+  openai_file_id VARCHAR(128) NOT NULL UNIQUE,
+  vector_store_id VARCHAR(128) NOT NULL,
+  mime_type VARCHAR(100) NOT NULL DEFAULT 'application/pdf',
+  size_bytes BIGINT UNSIGNED NOT NULL DEFAULT 0,
+  status VARCHAR(30) NOT NULL DEFAULT 'processing',
+  created_by INT NULL,
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL,
+  INDEX idx_openai_coach_documents_status (status, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS publi_ai_crm.openai_coach_analyses (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  lead_id VARCHAR(32) NOT NULL,
+  seller_user_id INT NULL,
+  model VARCHAR(100) NOT NULL,
+  status VARCHAR(30) NOT NULL DEFAULT 'completed',
+  score TINYINT UNSIGNED NULL,
+  temperature VARCHAR(20) NULL,
+  potential VARCHAR(30) NULL,
+  result_json LONGTEXT NULL,
+  conversation_fingerprint CHAR(64) NULL,
+  input_tokens INT UNSIGNED NULL,
+  output_tokens INT UNSIGNED NULL,
+  error_message TEXT NULL,
+  created_at DATETIME NOT NULL,
+  INDEX idx_openai_coach_analyses_lead (lead_id, created_at),
+  INDEX idx_openai_coach_analyses_seller (seller_user_id, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS publi_ai_crm.lead_forms (
   id VARCHAR(32) PRIMARY KEY,
   slug VARCHAR(100) NOT NULL UNIQUE,

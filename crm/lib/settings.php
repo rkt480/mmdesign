@@ -23,6 +23,142 @@ function crm_decode_setting_value(string $value)
     return json_last_error() === JSON_ERROR_NONE ? $decoded : $value;
 }
 
+/**
+ * Secrets saved through the CRM settings screen are encrypted at rest.
+ * An environment secret is preferred. When it is not available, the CRM
+ * generates a protected local key on first use inside the denied data folder.
+ * The key is never rendered back to the browser or stored in the database.
+ */
+function crm_settings_encryption_secret(bool $createIfMissing = false): string
+{
+    $secret = getenv('MMDESIGN_SETTINGS_ENCRYPTION_KEY');
+
+    if ($secret !== false && trim($secret) !== '') {
+        return trim($secret);
+    }
+
+    $keyFile = dirname(__DIR__) . '/data/.settings-encryption.key';
+
+    if (is_file($keyFile)) {
+        $storedSecret = file_get_contents($keyFile);
+
+        return $storedSecret === false ? '' : trim($storedSecret);
+    }
+
+    if (!$createIfMissing) {
+        return '';
+    }
+
+    $handle = @fopen($keyFile, 'x');
+
+    if ($handle === false) {
+        // Another request may have created the key between is_file() and
+        // fopen(). Read it before reporting a genuine permissions problem.
+        if (is_file($keyFile)) {
+            $storedSecret = file_get_contents($keyFile);
+
+            return $storedSecret === false ? '' : trim($storedSecret);
+        }
+
+        throw new RuntimeException('Não foi possível criar a chave interna de proteção das configurações. Verifique a permissão de escrita em crm/data.');
+    }
+
+    try {
+        $secret = bin2hex(random_bytes(32));
+        if (fwrite($handle, $secret) === false) {
+            throw new RuntimeException('Não foi possível gravar a chave interna de proteção das configurações.');
+        }
+    } finally {
+        fclose($handle);
+    }
+
+    @chmod($keyFile, 0600);
+
+    return $secret;
+}
+
+function crm_settings_encryption_key(bool $createIfMissing = false): string
+{
+    $secret = crm_settings_encryption_secret($createIfMissing);
+
+    return $secret === '' ? '' : hash('sha256', $secret, true);
+}
+
+function crm_encrypt_setting_secret(string $value): string
+{
+    if ($value === '') {
+        return '';
+    }
+
+    $key = crm_settings_encryption_key(true);
+
+    if ($key === '' || (!function_exists('sodium_crypto_secretbox') && !function_exists('openssl_encrypt'))) {
+        throw new RuntimeException('A chave de criptografia das configurações não está configurada no servidor.');
+    }
+
+    if (function_exists('sodium_crypto_secretbox')) {
+        $nonce = random_bytes(SODIUM_CRYPTO_SECRETBOX_NONCEBYTES);
+        $ciphertext = sodium_crypto_secretbox($value, $nonce, $key);
+
+        return 'enc:v1:' . base64_encode($nonce . $ciphertext);
+    }
+
+    $nonce = random_bytes(12);
+    $tag = '';
+    $ciphertext = openssl_encrypt($value, 'aes-256-gcm', $key, OPENSSL_RAW_DATA, $nonce, $tag);
+
+    if ($ciphertext === false) {
+        throw new RuntimeException('Não foi possível criptografar a configuração secreta.');
+    }
+
+    return 'enc:v2:' . base64_encode($nonce . $tag . $ciphertext);
+}
+
+function crm_decrypt_setting_secret(string $value): string
+{
+    if ($value === '' || (!str_starts_with($value, 'enc:v1:') && !str_starts_with($value, 'enc:v2:'))) {
+        // Allows a one-time migration of values saved before encryption was
+        // introduced. The next settings save encrypts them.
+        return $value;
+    }
+
+    $key = crm_settings_encryption_key();
+    $version = str_starts_with($value, 'enc:v2:') ? 'enc:v2:' : 'enc:v1:';
+    $encoded = base64_decode(substr($value, strlen($version)), true);
+
+    if ($key === '' || $encoded === false) {
+        return '';
+    }
+
+    if ($version === 'enc:v2:') {
+        if (strlen($encoded) <= 28) {
+            return '';
+        }
+
+        $nonce = substr($encoded, 0, 12);
+        $tag = substr($encoded, 12, 16);
+        $ciphertext = substr($encoded, 28);
+        $plaintext = openssl_decrypt($ciphertext, 'aes-256-gcm', $key, OPENSSL_RAW_DATA, $nonce, $tag);
+
+        return $plaintext === false ? '' : $plaintext;
+    }
+
+    if (!function_exists('sodium_crypto_secretbox_open') || strlen($encoded) <= SODIUM_CRYPTO_SECRETBOX_NONCEBYTES) {
+        return '';
+    }
+
+    $nonce = substr($encoded, 0, SODIUM_CRYPTO_SECRETBOX_NONCEBYTES);
+    $ciphertext = substr($encoded, SODIUM_CRYPTO_SECRETBOX_NONCEBYTES);
+    $plaintext = sodium_crypto_secretbox_open($ciphertext, $nonce, $key);
+
+    return $plaintext === false ? '' : $plaintext;
+}
+
+function crm_is_secret_setting(string $key): bool
+{
+    return $key === 'openai_api_key';
+}
+
 function crm_read_legacy_settings(): array
 {
     $file = crm_settings_file();
@@ -102,7 +238,10 @@ function crm_read_settings_from_db(PDO $pdo): array
             continue;
         }
 
-        $settings[$key] = crm_decode_setting_value((string) ($row['setting_value'] ?? ''));
+        $value = crm_decode_setting_value((string) ($row['setting_value'] ?? ''));
+        $settings[$key] = crm_is_secret_setting($key)
+            ? crm_decrypt_setting_secret((string) $value)
+            : $value;
     }
 
     return $settings;
@@ -141,6 +280,10 @@ function crm_write_settings_to_db(PDO $pdo, array $settings): void
         foreach ($settings as $key => $value) {
             if (!is_string($key) || $key === '' || str_starts_with($key, '__') || $key === 'whatsapp_number') {
                 continue;
+            }
+
+            if (crm_is_secret_setting($key)) {
+                $value = crm_encrypt_setting_secret((string) $value);
             }
 
             $upsert->execute([

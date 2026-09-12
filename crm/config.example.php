@@ -13,6 +13,8 @@ return [
     'app_url' => '',
     'company_name' => 'Publi AI Soluções',
     'auto_migrate' => false,
+    // Required to encrypt secrets saved from the CRM settings screen.
+    'settings_encryption_key' => '',
     'db' => [
         'host' => '127.0.0.1',
         'port' => 3306,

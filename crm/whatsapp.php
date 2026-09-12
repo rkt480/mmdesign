@@ -9,6 +9,7 @@ require_once __DIR__ . '/lib/forms.php';
 require_once __DIR__ . '/lib/whatsapp.php';
 require_once __DIR__ . '/lib/whatsapp-templates.php';
 require_once __DIR__ . '/lib/whatsapp-events.php';
+require_once __DIR__ . '/lib/openai-coach.php';
 
 crm_require_login();
 
@@ -1384,6 +1385,9 @@ if ($requestedLeadId !== '') {
 }
 
 $activeLead = is_array($requestedLead) ? $requestedLead : (is_array($activeConversation) ? $activeConversation['lead'] : null);
+$activeCoachAnalysis = is_array($activeLead)
+    ? crm_openai_coach_latest_analysis((string) ($activeLead['id'] ?? ''))
+    : null;
 $activeMessages = [];
 
 if (is_array($activeConversation)) {
@@ -1447,7 +1451,7 @@ if ($isWaConversationFragment) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
     <meta name="csrf-token" content="<?= htmlspecialchars($csrfToken) ?>" />
     <title>WhatsApp | MM Design</title>
-    <link rel="stylesheet" href="./assets/crm.css?v=20260824-video-preview-v3" />
+    <link rel="stylesheet" href="./assets/crm.css?v=20260911-coach-v1" />
   </head>
   <body class="whatsapp-page whatsapp-crm-page" data-wa-initial-view="<?= is_array($activeLead) ? 'thread' : 'inbox' ?>" data-wa-mobile-view="<?= is_array($activeLead) ? 'thread' : 'inbox' ?>" data-wa-active-lead-id="<?= htmlspecialchars((string) ($activeLead['id'] ?? '')) ?>" data-wa-incoming-signature="<?= htmlspecialchars(is_array($activeLead) ? crm_whatsapp_incoming_signature($activeLead) : '') ?>" data-wa-lead-feed-version="<?= htmlspecialchars($leadFeedVersion) ?>">
     <main class="wa-web-shell" aria-label="Atendimento WhatsApp do CRM">
@@ -1729,8 +1733,8 @@ if ($isWaConversationFragment) {
             </div>
           </section>
 
-          <section class="wa-lead-block">
-            <h3>Informações</h3>
+    <section class="wa-lead-block">
+      <h3>Informações</h3>
             <dl class="wa-lead-details">
               <div>
                 <dt>WhatsApp</dt>
@@ -1758,8 +1762,24 @@ if ($isWaConversationFragment) {
                 <dt>Status WhatsApp</dt>
                 <dd><?= htmlspecialchars(whatsapp_page_whatsapp_status($activeLead)) ?></dd>
               </div>
-            </dl>
-          </section>
+      </dl>
+    </section>
+
+    <section class="wa-lead-block">
+      <div class="coach-panel" data-coach-panel data-lead-id="<?= htmlspecialchars((string) ($activeLead['id'] ?? '')) ?>">
+        <div class="coach-panel-heading">
+          <div>
+            <p class="eyebrow">Orientação comercial</p>
+            <h3>Coach de vendas</h3>
+          </div>
+          <button type="button" class="integration-save" data-coach-analyze>✦ Analisar</button>
+        </div>
+        <p class="coach-status" data-coach-status role="status"></p>
+        <div data-coach-content>
+          <?php $coachAnalysis = $activeCoachAnalysis; require __DIR__ . '/partials/coach-analysis.php'; ?>
+        </div>
+      </div>
+    </section>
 
           <section class="wa-lead-block">
             <h3>Dados do contato</h3>
@@ -3682,6 +3702,7 @@ if ($isWaConversationFragment) {
         });
       });
     </script>
+    <script src="./assets/crm.js?v=20260911-coach-v1"></script>
     <script src="./assets/crm-navigation.js?v=20260812-fast-navigation-v3"></script>
   </body>
 </html>

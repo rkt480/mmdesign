@@ -6,6 +6,7 @@ require_once __DIR__ . '/lib/auth.php';
 require_once __DIR__ . '/lib/settings.php';
 require_once __DIR__ . '/lib/whatsapp.php';
 require_once __DIR__ . '/lib/push.php';
+require_once __DIR__ . '/lib/openai-coach.php';
 
 crm_require_admin();
 
@@ -14,6 +15,10 @@ $googleConnected = ($_GET['google_connected'] ?? '') === '1';
 $googleError = (string) ($_GET['google_error'] ?? '');
 $error = '';
 $settings = crm_read_settings();
+$openAiApiKeyConfigured = trim((string) ($settings['openai_api_key'] ?? '')) !== '';
+$openAiCoachPrompt = crm_openai_coach_prompt();
+$openAiCoachModel = crm_openai_coach_model();
+$openAiCoachDocuments = crm_openai_coach_documents();
 $whatsappProvider = crm_whatsapp_provider();
 $notificationEmail = crm_notification_email();
 $metaSettings = crm_meta_capi_settings();
@@ -175,6 +180,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
+    if ($settingsSection === 'openai') {
+        $openAiApiKey = trim((string) ($_POST['openai_api_key'] ?? ''));
+
+        if ($openAiApiKey !== '') {
+            if (strlen($openAiApiKey) > 255) {
+                $error = 'A chave da OpenAI é inválida ou excede o tamanho permitido.';
+            } else {
+                $settings['openai_api_key'] = $openAiApiKey;
+            }
+        }
+
+        $coachPrompt = trim((string) ($_POST['openai_coach_prompt'] ?? ''));
+        $coachModel = trim((string) ($_POST['openai_coach_model'] ?? 'gpt-5.6-luna'));
+
+        if ($coachPrompt !== '') {
+            $settings['openai_coach_prompt'] = $coachPrompt;
+        } else {
+            unset($settings['openai_coach_prompt']);
+        }
+
+        if (!in_array($coachModel, ['gpt-5.6-luna', 'gpt-5.6-terra', 'gpt-5.6-sol'], true)) {
+            $coachModel = 'gpt-5.6-luna';
+        }
+        $settings['openai_coach_model'] = $coachModel;
+
+        if ($error === '' && isset($_FILES['openai_coach_document']) && (int) ($_FILES['openai_coach_document']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE) {
+            try {
+                // Persist a newly entered API key before using it to upload a
+                // document in the same form submission.
+                if ($openAiApiKey !== '' && !$openAiApiKeyConfigured) {
+                    crm_write_settings($settings);
+                }
+                $currentSettingsUser = crm_current_user();
+                crm_openai_coach_upload_document(
+                    $_FILES['openai_coach_document'],
+                    (int) ($currentSettingsUser['id'] ?? 0)
+                );
+            } catch (Throwable $uploadError) {
+                $error = $uploadError->getMessage();
+            }
+        }
+    }
+
     if ($error === '') {
         crm_write_settings($settings);
         header('Location: settings.php?saved=1');
@@ -189,7 +237,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Configurações | CRM</title>
-    <link rel="stylesheet" href="./assets/crm.css?v=20260813-sidebar-order-v1" />
+    <link rel="stylesheet" href="./assets/crm.css?v=20260911-coach-v1" />
   </head>
   <body class="settings-page">
     <div class="app-shell">
@@ -613,6 +661,72 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                   <button class="integration-save" type="submit">
                     <span aria-hidden="true">✓</span>
                     Salvar configurações
+                  </button>
+                </form>
+              </section>
+            </div>
+          </section>
+
+          <section class="settings-group">
+            <header class="settings-group-header">
+              <div>
+                <p class="eyebrow">Inteligência comercial</p>
+                <h2>Coach de vendas</h2>
+              </div>
+            </header>
+
+            <div class="integrations-layout">
+              <section class="automation-card integration-card">
+                <header class="integration-card-header">
+                  <span class="integration-icon" aria-hidden="true">✦</span>
+                  <div>
+                    <p class="integration-kicker">OpenAI API</p>
+                    <h2>Chave da API</h2>
+                  </div>
+                  <span class="integration-status <?= $openAiApiKeyConfigured ? 'is-active' : '' ?>">
+                    <?= $openAiApiKeyConfigured ? 'Configurado' : 'Inativo' ?>
+                  </span>
+                </header>
+                <p class="integration-description">Usada somente pelo servidor para analisar conversas e gerar orientações do coach.</p>
+
+                <form class="flow-form" method="post" enctype="multipart/form-data" autocomplete="off">
+                  <input type="hidden" name="_csrf_token" value="<?= htmlspecialchars(crm_csrf_token()) ?>" />
+                  <input type="hidden" name="settings_section" value="openai" />
+                  <label>
+                    Secret API key
+                    <input type="password" name="openai_api_key" value="" placeholder="<?= $openAiApiKeyConfigured ? 'Chave salva. Preencha só para trocar.' : 'Cole a chave sk-...' ?>" autocomplete="new-password" spellcheck="false" />
+                  </label>
+                  <small class="settings-help">A chave nunca é exibida no HTML nem retornada para o navegador. O servidor a salva criptografada e o campo vazio mantém a chave atual.</small>
+                  <label>
+                    Modelo do coach
+                    <select name="openai_coach_model">
+                      <option value="gpt-5.6-luna" <?= $openAiCoachModel === 'gpt-5.6-luna' ? 'selected' : '' ?>>Econômico — GPT-5.6 Luna</option>
+                      <option value="gpt-5.6-terra" <?= $openAiCoachModel === 'gpt-5.6-terra' ? 'selected' : '' ?>>Intermediário — GPT-5.6 Terra</option>
+                      <option value="gpt-5.6-sol" <?= $openAiCoachModel === 'gpt-5.6-sol' ? 'selected' : '' ?>>Avançado — GPT-5.6 Sol</option>
+                    </select>
+                  </label>
+                  <label>
+                    Prompt e metodologia do coach
+                    <textarea name="openai_coach_prompt" rows="9" maxlength="12000" placeholder="Defina como o coach deve avaliar as negociações..." spellcheck="true"><?= htmlspecialchars($openAiCoachPrompt) ?></textarea>
+                  </label>
+                  <label>
+                    PDF de apoio
+                    <input type="file" name="openai_coach_document" accept="application/pdf,.pdf" />
+                  </label>
+                  <small class="settings-help">Envie materiais autorizados, como manual comercial, catálogo ou metodologia de vendas. O PDF será indexado para consultas durante a análise.</small>
+                  <?php if (count($openAiCoachDocuments) > 0): ?>
+                    <div class="settings-help">
+                      <strong>Materiais cadastrados</strong>
+                      <ul>
+                        <?php foreach ($openAiCoachDocuments as $document): ?>
+                          <li><?= htmlspecialchars((string) ($document['filename'] ?? 'PDF')) ?> · <?= htmlspecialchars((string) ($document['status'] ?? 'processing')) ?></li>
+                        <?php endforeach; ?>
+                      </ul>
+                    </div>
+                  <?php endif; ?>
+                  <button class="integration-save" type="submit">
+                    <span aria-hidden="true">✓</span>
+                    Salvar chave
                   </button>
                 </form>
               </section>

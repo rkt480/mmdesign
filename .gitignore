@@ -2,6 +2,7 @@
 crm/config.php
 crm/config.local.php
 crm/data/settings.json
+crm/data/.settings-encryption.key
 .env
 .env.*
 !.env.example

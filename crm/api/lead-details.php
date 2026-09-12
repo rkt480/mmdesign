@@ -7,6 +7,7 @@ require_once dirname(__DIR__) . '/lib/storage.php';
 require_once dirname(__DIR__) . '/lib/settings.php';
 require_once dirname(__DIR__) . '/lib/forms.php';
 require_once dirname(__DIR__) . '/lib/lead-view.php';
+require_once dirname(__DIR__) . '/lib/openai-coach.php';
 
 crm_require_login();
 
@@ -45,6 +46,7 @@ $status = (string) ($lead['status'] ?? 'novo');
 $leadTags = crm_decode_lead_tags($lead);
 $visibleLeadTags = lead_visible_tags($lead, $leadTags);
 $leadTimeline = $canViewTimeline ? crm_read_lead_timeline($lead) : [];
+$coachAnalysis = crm_openai_coach_latest_analysis((string) ($lead['id'] ?? ''));
 
 header('Content-Type: text/html; charset=utf-8');
 require dirname(__DIR__) . '/lead-details.php';
