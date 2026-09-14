@@ -2378,8 +2378,6 @@ function crm_append_lead_note(string $id, string $note): bool
         return false;
     }
 
-    $existingNotes = trim((string) ($lead['notes'] ?? ''));
-    $notes = $existingNotes === '' ? $note : $existingNotes . "\n\n" . $note;
     $firstContactSql = '';
     $firstContactParams = [];
 
@@ -2397,7 +2395,10 @@ function crm_append_lead_note(string $id, string $note): bool
     [$accessSql, $accessParams] = crm_lead_access_sql('leads');
     $stmt = crm_db()->prepare(
         'UPDATE leads
-        SET notes = :notes,
+        SET notes = CASE
+                WHEN TRIM(COALESCE(notes, \'\')) = \'\' THEN :note_initial
+                ELSE CONCAT(TRIM(notes), CHAR(10, 10), :note_append)
+            END,
             last_activity_at = :last_activity_at,
             last_activity_type = :last_activity_type,
             updated_at = :updated_at' . $firstContactSql . '
@@ -2406,7 +2407,11 @@ function crm_append_lead_note(string $id, string $note): bool
     $now = date('Y-m-d H:i:s');
     $stmt->execute([
         'id' => $id,
-        'notes' => $notes,
+        // Keep the append inside the UPDATE statement. InnoDB serializes
+        // concurrent row updates, so each statement sees the latest notes
+        // value instead of overwriting a value read by another request.
+        'note_initial' => $note,
+        'note_append' => $note,
         'last_activity_at' => $now,
         'last_activity_type' => 'note',
         'updated_at' => $now,
