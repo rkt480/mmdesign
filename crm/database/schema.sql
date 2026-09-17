@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS publi_ai_crm.leads (
   score_reasons TEXT NULL,
   status VARCHAR(80) NOT NULL DEFAULT 'novo',
   kanban_position INT NOT NULL DEFAULT 0,
-  notes TEXT NULL,
+  notes MEDIUMTEXT NULL,
   commercial_notes TEXT NULL,
   tags TEXT NULL,
   assigned_user_id INT NULL,

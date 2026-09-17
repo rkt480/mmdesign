@@ -77,7 +77,7 @@ function crm_db_reconnect(): PDO
 
 function crm_schema_version(): string
 {
-    return '20260911.2';
+    return '20260917.1';
 }
 
 function crm_schema_version_is_current(PDO $pdo): bool
@@ -174,6 +174,18 @@ function crm_column_character_length(PDO $pdo, string $table, string $column): i
     );
     $stmt->execute(['table_name' => $table, 'column_name' => $column]);
     return (int) $stmt->fetchColumn();
+}
+
+function crm_column_data_type(PDO $pdo, string $table, string $column): string
+{
+    $stmt = $pdo->prepare(
+        'SELECT DATA_TYPE
+         FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :table_name AND COLUMN_NAME = :column_name
+         LIMIT 1'
+    );
+    $stmt->execute(['table_name' => $table, 'column_name' => $column]);
+    return strtolower((string) $stmt->fetchColumn());
 }
 
 function crm_ensure_crm_schema(PDO $pdo): void
@@ -659,6 +671,17 @@ function crm_ensure_lead_columns(PDO $pdo): void
         if (!crm_column_exists($pdo, 'leads', $column)) {
             $pdo->exec(sprintf('ALTER TABLE leads ADD COLUMN %s %s', $column, $definition));
         }
+    }
+
+    // The WhatsApp conversation is currently kept in notes. A regular TEXT
+    // column stops at 65,535 bytes and caused active conversations to be
+    // silently truncated once that limit was reached. MEDIUMTEXT preserves
+    // the existing history and leaves enough room for long-running chats.
+    if (
+        crm_column_exists($pdo, 'leads', 'notes')
+        && in_array(crm_column_data_type($pdo, 'leads', 'notes'), ['tinytext', 'text'], true)
+    ) {
+        $pdo->exec('ALTER TABLE leads MODIFY COLUMN notes MEDIUMTEXT NULL');
     }
 
     foreach (['segment', 'advertises'] as $column) {

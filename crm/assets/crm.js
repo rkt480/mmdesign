@@ -1706,7 +1706,7 @@ if ("serviceWorker" in navigator) {
     void syncPushState();
   }, 5 * 60 * 1000);
 
-  navigator.serviceWorker.register("./sw.js?v=20260824-push-reliability-v1", {
+  navigator.serviceWorker.register("./sw.js?v=20260917-chat-open-v1", {
     scope: "./",
     updateViaCache: "none",
   })

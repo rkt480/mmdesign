@@ -1,4 +1,4 @@
-const CACHE_NAME = "mm-design-crm-v30";
+const CACHE_NAME = "mm-design-crm-v31";
 const APP_SHELL = [
   "./assets/crm.css?v=20260813-lazy-lead-details-v1",
   "./assets/crm.js?v=20260824-push-reliability-v1",
@@ -108,8 +108,9 @@ self.addEventListener("notificationclick", (event) => {
       const existing = clientList.find((client) => "focus" in client);
 
       if (existing) {
-        existing.navigate(targetUrl);
-        return existing.focus();
+        return existing.navigate(targetUrl)
+          .then((navigatedClient) => (navigatedClient || existing).focus())
+          .catch(() => clients.openWindow(targetUrl));
       }
 
       return clients.openWindow(targetUrl);
