@@ -32,6 +32,7 @@ if (!is_array($lead)) {
 $canManageSales = crm_current_user_can_manage_sales();
 $canManageSettings = crm_current_user_is_admin();
 $isAgency = crm_current_user_is_agency();
+$canViewOrigin = $canManageSettings || $isAgency;
 $canViewTimeline = $canManageSales;
 $assignableUsers = $canManageSales ? crm_read_assignable_users(false) : [];
 $followupFlows = $isAgency ? [] : crm_read_followup_flows(true);

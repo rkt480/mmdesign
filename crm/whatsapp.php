@@ -1812,6 +1812,31 @@ if ($isWaConversationFragment) {
                 </div>
               </dl>
             </section>
+            <section class="wa-lead-block">
+              <h3>Origem e UTMs</h3>
+              <dl class="wa-lead-details">
+                <div>
+                  <dt>UTM source</dt>
+                  <dd><?= htmlspecialchars(trim((string) ($activeLead['utm_source'] ?? '')) ?: 'Sem UTM') ?></dd>
+                </div>
+                <div>
+                  <dt>UTM medium</dt>
+                  <dd><?= htmlspecialchars(trim((string) ($activeLead['utm_medium'] ?? '')) ?: 'Sem UTM') ?></dd>
+                </div>
+                <div>
+                  <dt>UTM campaign</dt>
+                  <dd><?= htmlspecialchars(trim((string) ($activeLead['utm_campaign'] ?? '')) ?: 'Sem UTM') ?></dd>
+                </div>
+                <div>
+                  <dt>UTM content / term</dt>
+                  <dd><?= htmlspecialchars(trim((string) ($activeLead['utm_content'] ?? '')) ?: 'Sem UTM') ?><?= trim((string) ($activeLead['utm_term'] ?? '')) !== '' ? ' / ' . htmlspecialchars((string) $activeLead['utm_term']) : '' ?></dd>
+                </div>
+                <div class="field-wide">
+                  <dt>Página/referrer</dt>
+                  <dd><?= htmlspecialchars(trim((string) ($activeLead['landing_path'] ?? '')) ?: (string) ($activeLead['page'] ?? 'Sem página')) ?><?= trim((string) ($activeLead['referrer'] ?? '')) !== '' ? ' | Ref: ' . htmlspecialchars((string) $activeLead['referrer']) : '' ?></dd>
+                </div>
+              </dl>
+            </section>
           <?php else: ?>
           <section class="wa-lead-block">
             <h3>Dados do contato</h3>

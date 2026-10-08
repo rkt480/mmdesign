@@ -27,7 +27,7 @@ $visibleLeadTags = $visibleLeadTags ?? lead_visible_tags($lead, $leadTags);
   <div class="lead-modal-body">
     <aside class="lead-modal-tabs" aria-label="Seções do contato">
       <button class="active" type="button" data-lead-tab="dados">Dados do contato</button>
-      <?php if ($canManageSettings): ?>
+      <?php if ($canViewOrigin): ?>
         <button type="button" data-lead-tab="origem">Origem e UTM</button>
       <?php endif; ?>
       <button type="button" data-lead-tab="comercial">Comercial</button>
@@ -128,7 +128,7 @@ $visibleLeadTags = $visibleLeadTags ?? lead_visible_tags($lead, $leadTags);
         <?php endif; ?>
       </div>
 
-      <?php if ($canManageSettings): ?>
+      <?php if ($canViewOrigin): ?>
       <div class="lead-tab-panel" data-lead-panel="origem" hidden>
         <h3>Origem e UTM</h3>
         <dl class="lead-details">
