@@ -190,6 +190,7 @@ foreach ($filteredLeads as $lead) {
       </aside>
 
       <div class="workspace">
+        <?php if (!$isAgency): ?>
         <header class="topbar">
           <nav class="topbar-nav" aria-label="Áreas do CRM">
             <a class="active" href="index.php">Contatos</a>
@@ -204,6 +205,7 @@ foreach ($filteredLeads as $lead) {
             <?php endif; ?>
           </nav>
         </header>
+        <?php endif; ?>
 
         <header class="app-header">
           <div>
