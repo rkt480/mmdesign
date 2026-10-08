@@ -53,7 +53,7 @@ if (
 $result = pilot_status_fetch_profile_picture_url((string) ($lead['whatsapp'] ?? ''));
 $profilePictureUrl = crm_normalize_profile_picture_url((string) ($result['profile_picture_url'] ?? ''));
 
-if ($profilePictureUrl !== '' && $profilePictureUrl !== $currentUrl) {
+if (!crm_current_user_is_agency() && $profilePictureUrl !== '' && $profilePictureUrl !== $currentUrl) {
     crm_update_lead_profile_picture($leadId, $profilePictureUrl);
 }
 

@@ -4,6 +4,7 @@ const kanbanBoard = document.querySelector(".kanban-board");
 const mobileStatusControls = document.querySelectorAll("[data-mobile-status]");
 const dialogButtons = document.querySelectorAll("[data-open-dialog]");
 const csrfToken = document.querySelector("meta[name='csrf-token']")?.content || "";
+const isReadOnlyCRM = document.body.dataset.crmReadOnly === "true";
 
 let draggedCard = null;
 let boardScrollFrame = null;
@@ -334,7 +335,7 @@ function placeTouchCardInDropzone(card, zone, clientY) {
 }
 
 function beginTouchKanbanDrag(event) {
-  if (!isTouchKanbanEvent(event) || isKanbanInteractiveTarget(event.target)) {
+  if (isReadOnlyCRM || !isTouchKanbanEvent(event) || isKanbanInteractiveTarget(event.target)) {
     return;
   }
 
@@ -481,6 +482,10 @@ async function finishTouchKanbanDrag(event, cancelled = false) {
 
 cards.forEach((card) => {
   card.addEventListener("dragstart", () => {
+    if (isReadOnlyCRM) {
+      return;
+    }
+
     draggedCard = card;
     card.classList.add("is-dragging");
   });
@@ -520,7 +525,7 @@ if (!window.PointerEvent) {
 const syncMobileDraggable = () => {
   const isMobile = window.matchMedia("(max-width: 880px), (pointer: coarse)").matches;
   cards.forEach((card) => {
-    card.draggable = !isMobile;
+    card.draggable = !isMobile && card.dataset.readOnly !== "true";
   });
 };
 

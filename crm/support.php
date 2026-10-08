@@ -25,7 +25,8 @@ $supportSections = [
             ['Administrador (master)', 'Tem acesso total ao CRM e pode visualizar e responder todas as conversas, independentemente do vendedor atribuído, além de gerenciar as regras sensíveis.'],
             ['Gestor', 'Acompanha a operação comercial e dashboards, sem mexer nas configurações administrativas.'],
             ['Vendedor', 'Enxerga somente leads e conversas atribuídos a ele, protegendo a carteira dos outros vendedores.'],
-            ['Conversas do WhatsApp', 'A aba de conversas respeita a mesma atribuição do lead: vendedor só vê conversa do próprio lead.'],
+            ['Agência (somente leitura)', 'Consulta todos os leads, colunas, detalhes dos cards e conversas. Não pode editar ou mover leads, enviar mensagens nem acessar as outras áreas do CRM.'],
+            ['Conversas do WhatsApp', 'A aba de conversas respeita a atribuição do lead: vendedor vê os próprios leads, enquanto agência e gestor veem todos.'],
         ],
     ],
     [

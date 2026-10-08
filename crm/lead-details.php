@@ -2,6 +2,9 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/lib/auth.php';
+crm_require_login();
+
 $leadTags = $leadTags ?? crm_decode_lead_tags($lead);
 $visibleLeadTags = $visibleLeadTags ?? lead_visible_tags($lead, $leadTags);
 ?>
@@ -31,12 +34,50 @@ $visibleLeadTags = $visibleLeadTags ?? lead_visible_tags($lead, $leadTags);
       <?php if ($canViewTimeline): ?>
         <button type="button" data-lead-tab="historico">Histórico</button>
       <?php endif; ?>
-      <button type="button" data-lead-tab="coach">Coach de vendas</button>
+      <?php if (!$isAgency): ?>
+        <button type="button" data-lead-tab="coach">Coach de vendas</button>
+      <?php endif; ?>
     </aside>
 
     <section class="lead-modal-content">
       <div class="lead-tab-panel active" data-lead-panel="dados">
         <h3>Contato</h3>
+        <?php if ($isAgency): ?>
+          <dl class="lead-details">
+            <div>
+              <dt>Nome do contato</dt>
+              <dd><?= htmlspecialchars((string) ($lead['name'] ?? 'Sem nome')) ?></dd>
+            </div>
+            <div>
+              <dt>WhatsApp</dt>
+              <dd><?= htmlspecialchars(crm_normalize_lead_whatsapp((string) ($lead['whatsapp'] ?? '')) ?: 'Não informado') ?></dd>
+            </div>
+            <div>
+              <dt>CPF</dt>
+              <dd><?= htmlspecialchars(crm_format_cpf((string) ($lead['cpf'] ?? '')) ?: 'Não informado') ?></dd>
+            </div>
+            <div>
+              <dt>Etapa</dt>
+              <dd><?= htmlspecialchars($statusLabels[$status] ?? $status) ?></dd>
+            </div>
+            <div>
+              <dt>Vendedor</dt>
+              <dd><?= htmlspecialchars(trim((string) ($lead['assigned_user_name'] ?? '')) !== '' ? (string) $lead['assigned_user_name'] : 'Sem vendedor') ?></dd>
+            </div>
+            <div>
+              <dt>Recebido em</dt>
+              <dd><?= htmlspecialchars(date('d/m/Y H:i', strtotime((string) ($lead['created_at'] ?? 'now')))) ?></dd>
+            </div>
+            <div class="field-wide">
+              <dt>Mensagem inicial</dt>
+              <dd><?= nl2br(htmlspecialchars(trim((string) ($lead['message'] ?? '')) ?: 'Sem mensagem registrada.')) ?></dd>
+            </div>
+            <div class="field-wide">
+              <dt>Tags</dt>
+              <dd><?= htmlspecialchars(implode(', ', $visibleLeadTags) ?: 'Nenhuma') ?></dd>
+            </div>
+          </dl>
+        <?php else: ?>
         <form class="update-form lead-contact-edit" method="post" action="update.php">
           <input type="hidden" name="_csrf_token" value="<?= htmlspecialchars(crm_csrf_token()) ?>" />
           <input type="hidden" name="id" value="<?= htmlspecialchars((string) ($lead['id'] ?? '')) ?>" />
@@ -84,6 +125,7 @@ $visibleLeadTags = $visibleLeadTags ?? lead_visible_tags($lead, $leadTags);
             </dd>
           </div>
         </dl>
+        <?php endif; ?>
       </div>
 
       <?php if ($canManageSettings): ?>
@@ -126,6 +168,37 @@ $visibleLeadTags = $visibleLeadTags ?? lead_visible_tags($lead, $leadTags);
       <?php endif; ?>
 
       <div class="lead-tab-panel" data-lead-panel="comercial" hidden>
+        <?php if ($isAgency): ?>
+          <h3>Informações comerciais</h3>
+          <dl class="lead-details">
+            <div>
+              <dt>Valor da proposta</dt>
+              <dd><?= htmlspecialchars(lead_money_input($lead, 'proposal_value') ?: 'Não informado') ?></dd>
+            </div>
+            <div>
+              <dt>Previsão de fechamento</dt>
+              <dd><?= htmlspecialchars(trim((string) ($lead['expected_close_date'] ?? '')) ?: 'Não informada') ?></dd>
+            </div>
+            <div>
+              <dt>Motivo de perda</dt>
+              <dd><?= htmlspecialchars(trim((string) ($lead['lost_reason'] ?? '')) ?: 'Não informado') ?></dd>
+            </div>
+            <div class="field-wide">
+              <dt>Observações do vendedor</dt>
+              <dd><?= nl2br(htmlspecialchars(trim((string) ($lead['commercial_notes'] ?? '')) ?: 'Nenhuma observação.')) ?></dd>
+            </div>
+            <div class="field-wide">
+              <dt>Tags</dt>
+              <dd><?= htmlspecialchars(implode(', ', $visibleLeadTags) ?: 'Nenhuma') ?></dd>
+            </div>
+            <?php if (!empty($lead['whatsapp_error'])): ?>
+              <div class="field-wide">
+                <dt>Status de envio</dt>
+                <dd><?= htmlspecialchars((string) $lead['whatsapp_error']) ?></dd>
+              </div>
+            <?php endif; ?>
+          </dl>
+        <?php else: ?>
         <div class="commercial-grid">
           <?php if (!empty($lead['whatsapp_error'])): ?>
             <p class="message error-message field-wide"><?= htmlspecialchars((string) $lead['whatsapp_error']) ?></p>
@@ -262,8 +335,10 @@ $visibleLeadTags = $visibleLeadTags ?? lead_visible_tags($lead, $leadTags);
             <?php endif; ?>
           </section>
         </div>
+        <?php endif; ?>
       </div>
 
+      <?php if (!$isAgency): ?>
       <div class="lead-tab-panel" data-lead-panel="coach" hidden>
         <div class="coach-panel" data-coach-panel data-lead-id="<?= htmlspecialchars((string) ($lead['id'] ?? '')) ?>">
           <div class="coach-panel-heading">
@@ -279,6 +354,7 @@ $visibleLeadTags = $visibleLeadTags ?? lead_visible_tags($lead, $leadTags);
           </div>
         </div>
       </div>
+      <?php endif; ?>
 
       <?php if ($canViewTimeline): ?>
       <div class="lead-tab-panel" data-lead-panel="historico" hidden>

@@ -31,9 +31,10 @@ if (!is_array($lead)) {
 
 $canManageSales = crm_current_user_can_manage_sales();
 $canManageSettings = crm_current_user_is_admin();
+$isAgency = crm_current_user_is_agency();
 $canViewTimeline = $canManageSales;
 $assignableUsers = $canManageSales ? crm_read_assignable_users(false) : [];
-$followupFlows = crm_read_followup_flows(true);
+$followupFlows = $isAgency ? [] : crm_read_followup_flows(true);
 $googleCalendarConnected = crm_google_calendar_is_connected();
 $kanbanColumns = crm_read_kanban_columns();
 $statusLabels = [];
@@ -46,7 +47,7 @@ $status = (string) ($lead['status'] ?? 'novo');
 $leadTags = crm_decode_lead_tags($lead);
 $visibleLeadTags = lead_visible_tags($lead, $leadTags);
 $leadTimeline = $canViewTimeline ? crm_read_lead_timeline($lead) : [];
-$coachAnalysis = crm_openai_coach_latest_analysis((string) ($lead['id'] ?? ''));
+$coachAnalysis = $isAgency ? null : crm_openai_coach_latest_analysis((string) ($lead['id'] ?? ''));
 
 header('Content-Type: text/html; charset=utf-8');
 require dirname(__DIR__) . '/lead-details.php';

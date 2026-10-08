@@ -1,3 +1,7 @@
+<?php
+require_once dirname(__DIR__) . '/lib/auth.php';
+crm_require_login();
+?>
 <section class="wa-thread" aria-label="Conversa selecionada">
   <?php if (!is_array($activeLead)): ?>
     <div class="wa-no-thread">
@@ -56,11 +60,12 @@
     </div>
 
     <div class="wa-thread-bottom">
-      <div class="wa-window-banner <?= $wa24hOpen ? 'is-open' : 'is-closed' ?>">
-        <span class="wa-window-icon"><?= $wa24hOpen ? '✓' : '!' ?></span>
-        <div><strong><?= $wa24hOpen ? 'Resposta livre liberada' : 'Janela de 24 horas encerrada' ?></strong><span><?= htmlspecialchars($waWindowLabel) ?></span></div>
+      <div class="wa-window-banner <?= $isAgency ? '' : ($wa24hOpen ? 'is-open' : 'is-closed') ?>">
+        <span class="wa-window-icon"><?= $isAgency ? 'i' : ($wa24hOpen ? '✓' : '!') ?></span>
+        <div><strong><?= $isAgency ? 'Visualização somente para consulta' : ($wa24hOpen ? 'Resposta livre liberada' : 'Janela de 24 horas encerrada') ?></strong><span><?= $isAgency ? 'Este perfil não pode enviar mensagens.' : htmlspecialchars($waWindowLabel) ?></span></div>
       </div>
 
+      <?php if (!$isAgency): ?>
       <?php if (!$wa24hOpen): ?>
         <section class="wa-template-picker" data-wa-template-picker>
           <div class="wa-template-picker-heading"><div><p class="eyebrow"><?= $provider === 'pilot_status' ? 'Pilot Status' : 'API oficial' ?></p><strong>Enviar template aprovado</strong></div><span><?= $provider === 'pilot_status' ? 'Pilot' : 'Meta' ?></span></div>
@@ -129,6 +134,7 @@
           </svg>
         </button>
       </form>
+      <?php endif; ?>
     </div>
   <?php endif; ?>
 </section>
@@ -182,6 +188,33 @@
       </dl>
     </section>
 
+    <?php if ($isAgency): ?>
+      <section class="wa-lead-block">
+        <h3>Informações comerciais</h3>
+        <dl class="wa-lead-details">
+          <div>
+            <dt>Valor da proposta</dt>
+            <dd><?= htmlspecialchars(whatsapp_page_money_input($activeLead, 'proposal_value') ?: 'Não informado') ?></dd>
+          </div>
+          <div>
+            <dt>Previsão de fechamento</dt>
+            <dd><?= htmlspecialchars(trim((string) ($activeLead['expected_close_date'] ?? '')) ?: 'Não informada') ?></dd>
+          </div>
+          <div>
+            <dt>Motivo de perda</dt>
+            <dd><?= htmlspecialchars(trim((string) ($activeLead['lost_reason'] ?? '')) ?: 'Não informado') ?></dd>
+          </div>
+          <div>
+            <dt>Tags</dt>
+            <dd><?= htmlspecialchars(implode(', ', $activeLeadTags) ?: 'Nenhuma') ?></dd>
+          </div>
+          <div class="field-wide">
+            <dt>Observações do vendedor</dt>
+            <dd><?= nl2br(htmlspecialchars(trim((string) ($activeLead['commercial_notes'] ?? '')) ?: 'Nenhuma observação.')) ?></dd>
+          </div>
+        </dl>
+      </section>
+    <?php else: ?>
     <section class="wa-lead-block">
       <h3>Dados do contato</h3>
       <form class="wa-side-form" method="post" action="update.php">
@@ -330,6 +363,7 @@
         </form>
       <?php endif; ?>
     </section>
+    <?php endif; ?>
 
     <section class="wa-lead-actions">
       <a class="secondary-action" href="index.php?q=<?= urlencode((string) ($activeLead['whatsapp'] ?? '')) ?>" data-no-navigation-prefetch>Abrir no kanban</a>

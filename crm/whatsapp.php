@@ -17,6 +17,7 @@ $currentUser = crm_current_user();
 $currentUserId = (int) ($currentUser['id'] ?? 0);
 $canManageSales = crm_current_user_can_manage_sales();
 $canManageSettings = crm_current_user_is_admin();
+$isAgency = crm_current_user_is_agency();
 $csrfToken = crm_csrf_token();
 
 // Do not keep the PHP session locked while the inbox is being assembled.
@@ -1395,7 +1396,7 @@ if (is_array($activeConversation)) {
     usort($activeMessages, 'whatsapp_page_compare_messages');
 }
 
-if (is_array($activeConversation) && $currentUserId > 0) {
+if (!$isAgency && is_array($activeConversation) && $currentUserId > 0) {
     crm_mark_whatsapp_conversation_read(
         $currentUserId,
         (string) ($activeConversation['conversation_key'] ?? ''),
@@ -1405,7 +1406,7 @@ if (is_array($activeConversation) && $currentUserId > 0) {
 
 $activeProvider = is_array($activeConversation) ? (string) $activeConversation['provider'] : $provider;
 $leadFeedVersion = whatsapp_page_lead_feed_version($leads);
-$whatsappTemplates = crm_read_whatsapp_templates(true);
+$whatsappTemplates = $isAgency ? [] : crm_read_whatsapp_templates(true);
 $hasApprovedWhatsAppTemplate = false;
 
 foreach ($whatsappTemplates as $template) {
@@ -1639,11 +1640,12 @@ if ($isWaConversationFragment) {
           </div>
 
           <div class="wa-thread-bottom">
-            <div class="wa-window-banner <?= $wa24hOpen ? 'is-open' : 'is-closed' ?>">
-              <span class="wa-window-icon"><?= $wa24hOpen ? '✓' : '!' ?></span>
-              <div><strong><?= $wa24hOpen ? 'Resposta livre liberada' : 'Janela de 24 horas encerrada' ?></strong><span><?= htmlspecialchars($waWindowLabel) ?></span></div>
+            <div class="wa-window-banner <?= $isAgency ? '' : ($wa24hOpen ? 'is-open' : 'is-closed') ?>">
+              <span class="wa-window-icon"><?= $isAgency ? 'i' : ($wa24hOpen ? '✓' : '!') ?></span>
+              <div><strong><?= $isAgency ? 'Visualização somente para consulta' : ($wa24hOpen ? 'Resposta livre liberada' : 'Janela de 24 horas encerrada') ?></strong><span><?= $isAgency ? 'Este perfil não pode enviar mensagens.' : htmlspecialchars($waWindowLabel) ?></span></div>
             </div>
 
+            <?php if (!$isAgency): ?>
             <?php if (!$wa24hOpen): ?>
               <section class="wa-template-picker" data-wa-template-picker>
                 <div class="wa-template-picker-heading"><div><p class="eyebrow"><?= $provider === 'pilot_status' ? 'Pilot Status' : 'API oficial' ?></p><strong>Enviar template aprovado</strong></div><span><?= $provider === 'pilot_status' ? 'Pilot' : 'Meta' ?></span></div>
@@ -1712,6 +1714,7 @@ if ($isWaConversationFragment) {
               </svg>
             </button>
             </form>
+            <?php endif; ?>
           </div>
         <?php endif; ?>
       </section>
@@ -1765,6 +1768,7 @@ if ($isWaConversationFragment) {
       </dl>
     </section>
 
+    <?php if (!$isAgency): ?>
     <section class="wa-lead-block">
       <div class="coach-panel" data-coach-panel data-lead-id="<?= htmlspecialchars((string) ($activeLead['id'] ?? '')) ?>">
         <div class="coach-panel-heading">
@@ -1780,7 +1784,35 @@ if ($isWaConversationFragment) {
         </div>
       </div>
     </section>
+    <?php endif; ?>
 
+          <?php if ($isAgency): ?>
+            <section class="wa-lead-block">
+              <h3>Informações comerciais</h3>
+              <dl class="wa-lead-details">
+                <div>
+                  <dt>Valor da proposta</dt>
+                  <dd><?= htmlspecialchars(whatsapp_page_money_input($activeLead, 'proposal_value') ?: 'Não informado') ?></dd>
+                </div>
+                <div>
+                  <dt>Previsão de fechamento</dt>
+                  <dd><?= htmlspecialchars(trim((string) ($activeLead['expected_close_date'] ?? '')) ?: 'Não informada') ?></dd>
+                </div>
+                <div>
+                  <dt>Motivo de perda</dt>
+                  <dd><?= htmlspecialchars(trim((string) ($activeLead['lost_reason'] ?? '')) ?: 'Não informado') ?></dd>
+                </div>
+                <div>
+                  <dt>Tags</dt>
+                  <dd><?= htmlspecialchars(implode(', ', $activeLeadTags) ?: 'Nenhuma') ?></dd>
+                </div>
+                <div class="field-wide">
+                  <dt>Observações do vendedor</dt>
+                  <dd><?= nl2br(htmlspecialchars(trim((string) ($activeLead['commercial_notes'] ?? '')) ?: 'Nenhuma observação.')) ?></dd>
+                </div>
+              </dl>
+            </section>
+          <?php else: ?>
           <section class="wa-lead-block">
             <h3>Dados do contato</h3>
             <form class="wa-side-form" method="post" action="update.php">
@@ -1929,6 +1961,7 @@ if ($isWaConversationFragment) {
               </form>
             <?php endif; ?>
           </section>
+          <?php endif; ?>
 
           <section class="wa-lead-actions">
             <a class="secondary-action" href="index.php?q=<?= urlencode((string) ($activeLead['whatsapp'] ?? '')) ?>" data-no-navigation-prefetch>Abrir no kanban</a>
