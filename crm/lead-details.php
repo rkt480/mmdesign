@@ -69,10 +69,6 @@ $visibleLeadTags = $visibleLeadTags ?? lead_visible_tags($lead, $leadTags);
               <dd><?= htmlspecialchars(date('d/m/Y H:i', strtotime((string) ($lead['created_at'] ?? 'now')))) ?></dd>
             </div>
             <div class="field-wide">
-              <dt>Mensagem inicial</dt>
-              <dd><?= nl2br(htmlspecialchars(trim((string) ($lead['message'] ?? '')) ?: 'Sem mensagem registrada.')) ?></dd>
-            </div>
-            <div class="field-wide">
               <dt>Tags</dt>
               <dd><?= htmlspecialchars(implode(', ', $visibleLeadTags) ?: 'Nenhuma') ?></dd>
             </div>
