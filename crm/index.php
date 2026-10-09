@@ -141,7 +141,7 @@ foreach ($filteredLeads as $lead) {
     <title>CRM MM Design</title>
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="apple-touch-icon" sizes="180x180" href="./assets/icon-180.png" />
-    <link rel="stylesheet" href="./assets/crm.css?v=20260911-coach-v2" />
+    <link rel="stylesheet" href="./assets/crm.css?v=20261008-kanban-scrollbar-v3" />
   </head>
   <body class="leads-page" data-crm-read-only="<?= $isAgency ? 'true' : 'false' ?>">
     <div class="app-shell">
@@ -474,7 +474,7 @@ foreach ($filteredLeads as $lead) {
         <?php if (!$isAgency): ?>
           <p class="mobile-kanban-hint">Toque e segure um lead para arrastá-lo para outra etapa.</p>
         <?php endif; ?>
-        <section class="kanban-board" aria-label="Funil comercial em Kanban" style="grid-template-columns: repeat(<?= max(1, count($statusLabels)) ?>, minmax(285px, 1fr));">
+        <section id="kanban-board" class="kanban-board" aria-label="Funil comercial em Kanban" style="grid-template-columns: repeat(<?= max(1, count($statusLabels)) ?>, minmax(285px, 1fr));">
           <?php foreach ($statusLabels as $status => $label): ?>
             <section class="kanban-column" data-status="<?= htmlspecialchars($status) ?>">
               <header class="kanban-column-header">
@@ -550,11 +550,25 @@ foreach ($filteredLeads as $lead) {
             </section>
           <?php endforeach; ?>
         </section>
+        <div class="kanban-scrollbar" data-kanban-scrollbar hidden aria-label="Navegação horizontal do funil">
+          <div
+            class="kanban-scroll-track"
+            data-kanban-scroll-track
+            role="scrollbar"
+            aria-label="Rolar colunas do funil"
+            aria-controls="kanban-board"
+            aria-orientation="horizontal"
+            aria-valuemin="0"
+            aria-valuemax="0"
+            aria-valuenow="0"
+            tabindex="0"
+          ><span class="kanban-scroll-thumb" data-kanban-scroll-thumb></span></div>
+        </div>
       <?php endif; ?>
     </main>
       </div>
     </div>
-    <script src="./assets/crm.js?v=20261004-agency-readonly-v1"></script>
+    <script src="./assets/crm.js?v=20261008-kanban-scrollbar-v2"></script>
     <script src="./assets/crm-navigation.js?v=20260812-fast-navigation-v3"></script>
   </body>
 </html>

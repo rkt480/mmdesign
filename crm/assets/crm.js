@@ -1,6 +1,9 @@
 const cards = document.querySelectorAll(".kanban-card");
 const dropzones = document.querySelectorAll(".kanban-dropzone");
 const kanbanBoard = document.querySelector(".kanban-board");
+const kanbanScrollbar = document.querySelector("[data-kanban-scrollbar]");
+const kanbanScrollTrack = kanbanScrollbar?.querySelector("[data-kanban-scroll-track]");
+const kanbanScrollThumb = kanbanScrollbar?.querySelector("[data-kanban-scroll-thumb]");
 const mobileStatusControls = document.querySelectorAll("[data-mobile-status]");
 const dialogButtons = document.querySelectorAll("[data-open-dialog]");
 const csrfToken = document.querySelector("meta[name='csrf-token']")?.content || "";
@@ -11,6 +14,129 @@ let boardScrollFrame = null;
 let boardScrollSpeed = 0;
 let localKanbanMoveUntil = 0;
 const modalOrigins = new WeakMap();
+
+if (kanbanBoard && kanbanScrollbar && kanbanScrollTrack && kanbanScrollThumb) {
+  let scrollbarFrame = 0;
+  let activeScrollbarPointer = null;
+
+  const isDesktopKanban = () => window.matchMedia("(min-width: 881px) and (pointer: fine)").matches;
+
+  const syncKanbanScrollbar = () => {
+    scrollbarFrame = 0;
+    const maxScroll = Math.max(0, kanbanBoard.scrollWidth - kanbanBoard.clientWidth);
+
+    if (!isDesktopKanban() || maxScroll <= 1) {
+      kanbanScrollbar.hidden = true;
+      return;
+    }
+
+    kanbanScrollbar.hidden = false;
+    const trackWidth = kanbanScrollTrack.clientWidth;
+    const thumbWidth = Math.min(trackWidth, Math.max(40, trackWidth * kanbanBoard.clientWidth / kanbanBoard.scrollWidth));
+    const travel = Math.max(0, trackWidth - thumbWidth);
+    const thumbLeft = maxScroll ? kanbanBoard.scrollLeft / maxScroll * travel : 0;
+
+    kanbanScrollThumb.style.width = `${thumbWidth}px`;
+    kanbanScrollThumb.style.transform = `translate(${thumbLeft}px, -50%)`;
+    kanbanScrollTrack.setAttribute("aria-valuemax", String(Math.round(maxScroll)));
+    kanbanScrollTrack.setAttribute("aria-valuenow", String(Math.round(kanbanBoard.scrollLeft)));
+  };
+
+  const requestKanbanScrollbarSync = () => {
+    if (!scrollbarFrame) {
+      scrollbarFrame = window.requestAnimationFrame(syncKanbanScrollbar);
+    }
+  };
+
+  kanbanBoard.addEventListener("scroll", requestKanbanScrollbarSync, { passive: true });
+  window.addEventListener("resize", requestKanbanScrollbarSync);
+
+  if ("ResizeObserver" in window) {
+    new ResizeObserver(requestKanbanScrollbarSync).observe(kanbanBoard);
+  }
+
+  new MutationObserver(requestKanbanScrollbarSync).observe(kanbanBoard, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+  });
+
+  kanbanScrollTrack.addEventListener("pointerdown", (event) => {
+    if (!isDesktopKanban()) {
+      return;
+    }
+
+    const trackRect = kanbanScrollTrack.getBoundingClientRect();
+    const thumbRect = kanbanScrollThumb.getBoundingClientRect();
+    const startedOnThumb = event.target === kanbanScrollThumb;
+    const thumbWidth = thumbRect.width;
+    const travel = Math.max(0, trackRect.width - thumbWidth);
+    const maxScroll = Math.max(0, kanbanBoard.scrollWidth - kanbanBoard.clientWidth);
+    const offset = startedOnThumb ? event.clientX - thumbRect.left : thumbWidth / 2;
+
+    if (!startedOnThumb && travel > 0) {
+      const thumbLeft = Math.max(0, Math.min(travel, event.clientX - trackRect.left - offset));
+      kanbanBoard.scrollLeft = thumbLeft / travel * maxScroll;
+    }
+
+    activeScrollbarPointer = { id: event.pointerId, offset };
+    kanbanScrollTrack.setPointerCapture(event.pointerId);
+    kanbanScrollTrack.classList.add("is-dragging");
+    event.preventDefault();
+  });
+
+  kanbanScrollTrack.addEventListener("pointermove", (event) => {
+    if (!activeScrollbarPointer || activeScrollbarPointer.id !== event.pointerId) {
+      return;
+    }
+
+    const trackRect = kanbanScrollTrack.getBoundingClientRect();
+    const thumbWidth = kanbanScrollThumb.getBoundingClientRect().width;
+    const travel = Math.max(0, trackRect.width - thumbWidth);
+    const maxScroll = Math.max(0, kanbanBoard.scrollWidth - kanbanBoard.clientWidth);
+
+    if (travel > 0) {
+      const thumbLeft = Math.max(0, Math.min(travel, event.clientX - trackRect.left - activeScrollbarPointer.offset));
+      kanbanBoard.scrollLeft = thumbLeft / travel * maxScroll;
+    }
+  });
+
+  const finishKanbanScrollbarDrag = (event) => {
+    if (!activeScrollbarPointer || activeScrollbarPointer.id !== event.pointerId) {
+      return;
+    }
+
+    activeScrollbarPointer = null;
+    kanbanScrollTrack.classList.remove("is-dragging");
+  };
+
+  kanbanScrollTrack.addEventListener("pointerup", finishKanbanScrollbarDrag);
+  kanbanScrollTrack.addEventListener("pointercancel", finishKanbanScrollbarDrag);
+  kanbanScrollTrack.addEventListener("lostpointercapture", finishKanbanScrollbarDrag);
+  kanbanScrollTrack.addEventListener("keydown", (event) => {
+    const actions = {
+      ArrowLeft: -Math.max(80, kanbanBoard.clientWidth * 0.1),
+      ArrowRight: Math.max(80, kanbanBoard.clientWidth * 0.1),
+      PageDown: kanbanBoard.clientWidth * 0.8,
+      PageUp: -kanbanBoard.clientWidth * 0.8,
+      Home: -Infinity,
+      End: Infinity,
+    };
+
+    if (!(event.key in actions)) {
+      return;
+    }
+
+    event.preventDefault();
+    const amount = actions[event.key];
+    kanbanBoard.scrollTo({
+      left: amount === -Infinity ? 0 : amount === Infinity ? kanbanBoard.scrollWidth : kanbanBoard.scrollLeft + amount,
+      behavior: "smooth",
+    });
+  });
+
+  requestKanbanScrollbarSync();
+}
 
 function updateColumnCounts() {
   document.querySelectorAll(".kanban-column").forEach((column) => {
