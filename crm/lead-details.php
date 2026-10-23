@@ -3,10 +3,19 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/lib/auth.php';
+require_once __DIR__ . '/lib/forms.php';
 crm_require_login();
 
 $leadTags = $leadTags ?? crm_decode_lead_tags($lead);
 $visibleLeadTags = $visibleLeadTags ?? lead_visible_tags($lead, $leadTags);
+$leadFormAnswers = crm_decode_lead_form_answers($lead);
+$leadSubmittedFields = [
+  'Empresa' => trim((string) ($lead['company'] ?? '')),
+  'Segmento' => trim((string) ($lead['segment'] ?? '')),
+  'Como divulga/controla os leads' => trim((string) ($lead['advertises'] ?? '')),
+  'Mensagem ou necessidade' => trim((string) ($lead['message'] ?? '')),
+];
+$hasLeadSubmissionData = count(array_filter($leadSubmittedFields, static fn(string $value): bool => $value !== '')) > 0 || count($leadFormAnswers) > 0;
 ?>
 <div class="lead-modal-card">
   <header class="lead-modal-header">
@@ -121,6 +130,38 @@ $visibleLeadTags = $visibleLeadTags ?? lead_visible_tags($lead, $leadTags);
             </dd>
           </div>
         </dl>
+        <?php endif; ?>
+
+        <?php if ($hasLeadSubmissionData): ?>
+          <section class="lead-form-answers">
+            <h3>Dados enviados pelo formulário</h3>
+            <dl class="lead-details">
+              <?php foreach ($leadSubmittedFields as $label => $value): ?>
+                <?php if ($value !== ''): ?>
+                  <div class="field-wide">
+                    <dt><?= htmlspecialchars($label) ?></dt>
+                    <dd><?= nl2br(htmlspecialchars($value)) ?></dd>
+                  </div>
+                <?php endif; ?>
+              <?php endforeach; ?>
+              <?php foreach ($leadFormAnswers as $answer): ?>
+                <?php
+                  if (!is_array($answer)) {
+                      continue;
+                  }
+                  $answerQuestion = trim((string) ($answer['question'] ?? $answer['question_id'] ?? 'Resposta'));
+                  $answerValue = trim((string) ($answer['answer'] ?? $answer['value'] ?? ''));
+                  if ($answerValue === '') {
+                      continue;
+                  }
+                ?>
+                <div class="field-wide">
+                  <dt><?= htmlspecialchars($answerQuestion !== '' ? $answerQuestion : 'Resposta') ?></dt>
+                  <dd><?= nl2br(htmlspecialchars($answerValue)) ?></dd>
+                </div>
+              <?php endforeach; ?>
+            </dl>
+          </section>
         <?php endif; ?>
       </div>
 

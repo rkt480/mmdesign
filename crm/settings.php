@@ -49,6 +49,28 @@ $host = (string) ($_SERVER['HTTP_HOST'] ?? '');
 $scriptDir = rtrim(str_replace('\\', '/', dirname((string) ($_SERVER['SCRIPT_NAME'] ?? '/crm/settings.php'))), '/');
 $metaWhatsAppWebhookUrl = $host !== '' ? ($https ? 'https://' : 'http://') . $host . $scriptDir . '/api/meta-whatsapp-webhook.php' : '';
 $pilotStatusWebhookUrl = $host !== '' ? ($https ? 'https://' : 'http://') . $host . $scriptDir . '/api/pilot-status-webhook.php' : '';
+$leadWebhookToken = trim((string) ($settings['lead_webhook_token'] ?? ''));
+$leadWebhookUrl = '';
+$configuredAppUrl = trim((string) (crm_config()['app_url'] ?? ''));
+$configuredAppUrlParts = $configuredAppUrl !== '' ? parse_url($configuredAppUrl) : false;
+
+if (
+    is_array($configuredAppUrlParts)
+    && in_array(strtolower((string) ($configuredAppUrlParts['scheme'] ?? '')), ['http', 'https'], true)
+    && trim((string) ($configuredAppUrlParts['host'] ?? '')) !== ''
+) {
+    $leadWebhookBaseUrl = rtrim($configuredAppUrl, '/');
+} elseif ($host !== '' && preg_match('/\\A[a-z0-9.:-]+\\z/i', $host) === 1) {
+    $forwardedProtocol = strtolower(trim((string) ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '')));
+    $scheme = $https || $forwardedProtocol === 'https' ? 'https' : 'http';
+    $leadWebhookBaseUrl = $scheme . '://' . $host . $scriptDir;
+} else {
+    $leadWebhookBaseUrl = '';
+}
+
+if ($leadWebhookToken !== '' && $leadWebhookBaseUrl !== '') {
+    $leadWebhookUrl = $leadWebhookBaseUrl . '/api/lead-webhook.php?token=' . rawurlencode($leadWebhookToken);
+}
 $googleCalendarErrorMessages = [
     'missing_config' => 'Informe o Client ID e o Client Secret antes de conectar o Google Agenda.',
     'invalid_state' => 'A conexão com o Google expirou. Tente conectar novamente.',
@@ -126,6 +148,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error = 'Informe um e-mail válido para receber as notificações.';
         } else {
             $settings['notification_email'] = $normalizedEmail;
+        }
+    }
+
+    if ($settingsSection === 'lead_webhook') {
+        $action = (string) ($_POST['webhook_action'] ?? 'generate');
+
+        if ($action === 'generate' || $action === 'rotate') {
+            try {
+                $settings['lead_webhook_token'] = bin2hex(random_bytes(32));
+            } catch (Throwable $tokenError) {
+                $error = 'Não foi possível gerar o link do webhook. Tente novamente.';
+            }
         }
     }
 
@@ -464,6 +498,48 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
               <section class="automation-card integration-card">
                 <header class="integration-card-header">
+                  <span class="integration-icon" aria-hidden="true">↗</span>
+                  <div>
+                    <p class="integration-kicker">Entrada de leads</p>
+                    <h2>Webhook da landing page</h2>
+                  </div>
+                  <span class="integration-status <?= $leadWebhookUrl !== '' ? 'is-active' : '' ?>">
+                    <?= $leadWebhookUrl !== '' ? 'Configurado' : 'Inativo' ?>
+                  </span>
+                </header>
+                <p class="integration-description">Compartilhe o endpoint com o desenvolvedor da landing page. O servidor do site deve enviar cada cadastro ao CRM por uma requisição POST.</p>
+
+                <?php if ($leadWebhookUrl !== ''): ?>
+                  <div class="flow-form">
+                    <label>
+                      URL do webhook (POST)
+                      <input type="url" data-lead-webhook-url value="<?= htmlspecialchars($leadWebhookUrl, ENT_QUOTES, 'UTF-8') ?>" readonly />
+                    </label>
+                    <button class="secondary-action" type="button" data-copy-lead-webhook>Copiar URL</button>
+                    <small class="settings-help">Trate este link como uma senha. Envie-o apenas ao desenvolvedor responsável e faça a chamada pelo servidor da landing page, sem expor a URL no navegador.</small>
+                    <div class="settings-subgroup">
+                      <strong>Campos aceitos</strong>
+                      <small class="settings-help">A mesma URL pode ser usada em várias landing pages. Envie JSON com <code>name</code> e <code>whatsapp</code> (ou <code>telefone</code>/<code>celular</code>) como campos obrigatórios. E-mail e perguntas personalizadas ficam nas respostas do lead; envie-as em <code>answers</code> ou como campos extras. Use <code>page</code> e <code>landing_path</code> para identificar de qual página veio cada cadastro. Também aceita empresa, mensagem, UTMs e campos agrupados em <code>lead</code>, <code>data</code>, <code>contact</code> ou <code>fields</code>.</small>
+                      <pre class="settings-help" data-lead-webhook-example><?= htmlspecialchars("{\n  \"name\": \"João da Silva\",\n  \"email\": \"joao@empresa.com.br\",\n  \"celular\": \"11999999999\",\n  \"page\": \"Landing page - Consultoria\",\n  \"landing_path\": \"/consultoria\",\n  \"answers\": {\n    \"interesse\": \"Quero uma landing page\",\n    \"prazo\": \"Nos próximos 30 dias\"\n  },\n  \"utm_source\": \"google\"\n}", ENT_QUOTES, 'UTF-8') ?></pre>
+                    </div>
+                  </div>
+                <?php else: ?>
+                  <p class="settings-help">Gere uma URL segura para compartilhar com o desenvolvedor. O link antigo deixa de funcionar quando você gerar outro.</p>
+                <?php endif; ?>
+
+                <form class="flow-form" method="post">
+                  <input type="hidden" name="_csrf_token" value="<?= htmlspecialchars(crm_csrf_token()) ?>" />
+                  <input type="hidden" name="settings_section" value="lead_webhook" />
+                  <input type="hidden" name="webhook_action" value="<?= $leadWebhookUrl !== '' ? 'rotate' : 'generate' ?>" />
+                  <button class="integration-save" type="submit">
+                    <span aria-hidden="true">↻</span>
+                    <?= $leadWebhookUrl !== '' ? 'Gerar novo link' : 'Gerar link do webhook' ?>
+                  </button>
+                </form>
+              </section>
+
+              <section class="automation-card integration-card">
+                <header class="integration-card-header">
                   <span class="integration-icon email-icon" aria-hidden="true">
                     <svg class="brand-logo" viewBox="0 0 48 48" focusable="false">
                       <path fill="#0ea5e9" d="M8 14.5A4.5 4.5 0 0 1 12.5 10h23A4.5 4.5 0 0 1 40 14.5v19a4.5 4.5 0 0 1-4.5 4.5h-23A4.5 4.5 0 0 1 8 33.5v-19Z" />
@@ -736,5 +812,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       </div>
     </div>
     <script src="./assets/crm-navigation.js?v=20260812-fast-navigation-v3"></script>
+    <script>
+      document.querySelector('[data-copy-lead-webhook]')?.addEventListener('click', async (event) => {
+        const button = event.currentTarget;
+        const input = document.querySelector('[data-lead-webhook-url]');
+        if (!input) return;
+
+        try {
+          await navigator.clipboard.writeText(input.value);
+          button.textContent = 'URL copiada';
+        } catch (error) {
+          input.focus();
+          input.select();
+          document.execCommand('copy');
+          button.textContent = 'URL copiada';
+        }
+
+        window.setTimeout(() => { button.textContent = 'Copiar URL'; }, 1800);
+      });
+    </script>
   </body>
 </html>

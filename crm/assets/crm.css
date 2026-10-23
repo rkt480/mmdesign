@@ -1317,6 +1317,10 @@ dd {
   letter-spacing: -0.03em;
 }
 
+.lead-form-answers {
+  margin-top: 22px;
+}
+
 .commercial-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

@@ -156,7 +156,7 @@ function crm_decrypt_setting_secret(string $value): string
 
 function crm_is_secret_setting(string $key): bool
 {
-    return $key === 'openai_api_key';
+    return in_array($key, ['openai_api_key', 'lead_webhook_token'], true);
 }
 
 function crm_read_legacy_settings(): array
