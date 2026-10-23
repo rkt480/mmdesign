@@ -164,8 +164,22 @@ if ($contentType === 'application/json' || $contentType === 'application/ld+json
     }
 }
 
+$rdEventType = strtoupper(lead_webhook_scalar($payload['event_type'] ?? ''));
+$rdEntityType = strtoupper(lead_webhook_scalar($payload['entity_type'] ?? ''));
+$isRdStationWebhook = $rdEntityType === 'CONTACT'
+    && in_array($rdEventType, ['WEBHOOK.CONVERTED', 'WEBHOOK.MARKED_OPPORTUNITY'], true);
+
 if (trim(lead_webhook_scalar($payload['website'] ?? '')) !== '') {
     lead_webhook_respond(201, ['ok' => true, 'created' => false]);
+}
+
+$rdOrigin = '';
+$rdEventIdentifier = '';
+if ($isRdStationWebhook && is_array($payload['contact'] ?? null)) {
+    $rdOrigin = lead_webhook_scalar($payload['contact']['funnel']['origin'] ?? '');
+}
+if ($isRdStationWebhook) {
+    $rdEventIdentifier = lead_webhook_scalar($payload['event_identifier'] ?? '');
 }
 
 for ($wrapperDepth = 0; $wrapperDepth < 3; $wrapperDepth++) {
@@ -207,7 +221,7 @@ foreach ($payload as $key => $value) {
 
 $fieldAliases = [
     'name' => ['name', 'nome', 'fullname', 'nomecompleto', 'leadname'],
-    'whatsapp' => ['whatsapp', 'phone', 'telefone', 'celular', 'mobile', 'mobilenumber', 'cellphone', 'cell', 'fone', 'phonenumber', 'telefonewhatsapp', 'whatsappnumber'],
+    'whatsapp' => ['whatsapp', 'phone', 'telefone', 'celular', 'mobile', 'mobilephone', 'personalphone', 'mobilenumber', 'cellphone', 'cell', 'fone', 'phonenumber', 'telefonewhatsapp', 'whatsappnumber'],
     'company' => ['company', 'empresa', 'companyname', 'nomeempresa'],
     'cpf' => ['cpf', 'document'],
     'segment' => ['segment', 'segmento', 'industry', 'ramo'],
@@ -227,7 +241,12 @@ $fieldAliases = [
 foreach ($fieldAliases as $target => $aliases) {
     foreach ($aliases as $alias) {
         if (array_key_exists($alias, $normalizedPayload)) {
-            $values[$target] = lead_webhook_scalar($normalizedPayload[$alias]);
+            $candidate = lead_webhook_scalar($normalizedPayload[$alias]);
+            if ($candidate === '') {
+                continue;
+            }
+
+            $values[$target] = $candidate;
             break;
         }
     }
@@ -239,7 +258,34 @@ if (trim((string) ($values['name'] ?? '')) === '') {
     $values['name'] = trim($firstName . ' ' . $lastName);
 }
 
-if (trim((string) ($values['name'] ?? '')) === '' || trim((string) ($values['whatsapp'] ?? '')) === '') {
+if ($isRdStationWebhook) {
+    $rdEmail = lead_webhook_scalar($normalizedPayload['email'] ?? '');
+
+    if (trim((string) ($values['name'] ?? '')) === '' && $rdEmail !== '') {
+        $emailSeparator = strpos($rdEmail, '@');
+        $values['name'] = $emailSeparator === false ? '' : trim(substr($rdEmail, 0, $emailSeparator));
+    }
+
+    // O RD pode enviar contatos sem celular. O CRM aceita o campo vazio e
+    // preserva o e-mail como resposta do formulário.
+    if (trim((string) ($values['name'] ?? '')) === ''
+        && (trim((string) ($values['whatsapp'] ?? '')) !== '' || $rdEmail !== '')) {
+        $values['name'] = 'Lead RD Station';
+    }
+
+    // A ação "Verificar" do RD pode enviar um evento de validação sem dados
+    // de contato. Responder 2xx confirma a URL sem criar um card vazio.
+    if (trim((string) ($values['name'] ?? '')) === ''
+        && trim((string) ($values['whatsapp'] ?? '')) === ''
+        && $rdEmail === '') {
+        lead_webhook_respond(200, [
+            'ok' => true,
+            'accepted' => true,
+            'created' => false,
+            'message' => 'Validação recebida; nenhum lead foi criado.',
+        ]);
+    }
+} elseif (trim((string) ($values['name'] ?? '')) === '' || trim((string) ($values['whatsapp'] ?? '')) === '') {
     lead_webhook_respond(422, ['ok' => false, 'error' => 'Informe os campos obrigatórios: name (ou nome) e whatsapp (ou telefone).']);
 }
 
@@ -274,6 +320,22 @@ foreach (['cpf', 'company', 'segment', 'advertises', 'message', 'utm_source', 'u
 }
 
 $customAnswers = lead_webhook_response_answers($payload['answers'] ?? $payload['form_answers'] ?? []);
+if ($rdOrigin !== '' && count($customAnswers) < 50) {
+    $customAnswers[] = [
+        'question_id' => 'rd_origin',
+        'question' => 'Origem (RD Station)',
+        'value' => lead_webhook_truncate($rdOrigin, 1000),
+        'answer' => lead_webhook_truncate($rdOrigin, 1000),
+    ];
+}
+if ($rdEventIdentifier !== '' && count($customAnswers) < 50) {
+    $customAnswers[] = [
+        'question_id' => 'rd_event_identifier',
+        'question' => 'Evento de conversão (RD Station)',
+        'value' => lead_webhook_truncate($rdEventIdentifier, 1000),
+        'answer' => lead_webhook_truncate($rdEventIdentifier, 1000),
+    ];
+}
 $recognizedAliases = [];
 foreach ($fieldAliases as $aliases) {
     foreach ($aliases as $alias) {
@@ -283,8 +345,10 @@ foreach ($fieldAliases as $aliases) {
 $recognizedAliases['firstname'] = true;
 $recognizedAliases['lastname'] = true;
 $reservedKeys = array_fill_keys([
-    'website', 'data', 'lead', 'answers', 'formanswers', 'formid', 'id', 'event', 'eventid',
-    'token', 'csrf', 'csrftoken', 'password', 'authorization', 'headers', 'createdat', 'updatedat',
+    'website', 'data', 'lead', 'contact', 'fields', 'answers', 'formanswers', 'formid', 'id',
+    'event', 'eventid', 'eventtype', 'entitytype', 'eventidentifier', 'timestamp', 'eventtimestamp',
+    'funnel', 'company', 'legalbases', 'token', 'csrf', 'csrftoken', 'password', 'authorization',
+    'headers', 'createdat', 'updatedat',
 ], true);
 
 foreach ($payload as $key => $value) {

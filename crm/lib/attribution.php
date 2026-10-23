@@ -191,10 +191,17 @@ function crm_extract_marketing_attribution(array $payload): array
 function crm_apply_page_attribution(array $payload): array
 {
     $fromPage = crm_attribution_from_url((string) ($payload['page'] ?? ''));
+    $fromLandingPath = crm_attribution_from_url((string) ($payload['landing_path'] ?? ''));
 
     foreach (['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'] as $field) {
-        if (trim((string) ($payload[$field] ?? '')) === '' && $fromPage[$field] !== '') {
+        if (trim((string) ($payload[$field] ?? '')) !== '') {
+            continue;
+        }
+
+        if ($fromPage[$field] !== '') {
             $payload[$field] = $fromPage[$field];
+        } elseif ($fromLandingPath[$field] !== '') {
+            $payload[$field] = $fromLandingPath[$field];
         }
     }
 
