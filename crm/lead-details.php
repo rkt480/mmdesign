@@ -50,6 +50,31 @@ if (strcasecmp($leadSubmittedFields['Segmento'], 'WhatsApp') === 0) {
 if (strcasecmp($leadSubmittedFields['Como divulga/controla os leads'], 'whatsapp') === 0) {
   $leadSubmittedFields['Como divulga/controla os leads'] = '';
 }
+$priorityLeadAnswers = ['interest' => [], 'email' => []];
+$otherLeadAnswers = [];
+foreach ($leadFormAnswers as $answer) {
+  $question = trim((string) ($answer['question'] ?? $answer['question_id'] ?? 'Resposta'));
+  $questionKey = strtolower($question . ' ' . (string) ($answer['question_id'] ?? ''));
+  $value = trim((string) ($answer['answer'] ?? $answer['value'] ?? ''));
+
+  if (str_contains($questionKey, 'interesse') || str_contains($questionKey, 'interest')) {
+    $priorityLeadAnswers['interest'][] = ['question' => $question, 'answer' => $value];
+  } elseif (filter_var($value, FILTER_VALIDATE_EMAIL) !== false) {
+    $priorityLeadAnswers['email'][] = ['question' => $question, 'answer' => $value];
+  } else {
+    $otherLeadAnswers[] = ['question' => $question, 'answer' => $value];
+  }
+}
+$leadDisplayAnswers = array_merge(
+  $priorityLeadAnswers['interest'],
+  $priorityLeadAnswers['email']
+);
+foreach ($leadSubmittedFields as $label => $value) {
+  if ($value !== '') {
+    $leadDisplayAnswers[] = ['question' => $label, 'answer' => $value];
+  }
+}
+$leadDisplayAnswers = array_merge($leadDisplayAnswers, $otherLeadAnswers);
 $hasLeadSubmissionData = count(array_filter($leadSubmittedFields, static fn(string $value): bool => $value !== '')) > 0 || count($leadFormAnswers) > 0;
 ?>
 <div class="lead-modal-card">
@@ -171,20 +196,9 @@ $hasLeadSubmissionData = count(array_filter($leadSubmittedFields, static fn(stri
           <section class="lead-form-answers">
             <h3>Dados enviados pelo formulário</h3>
             <dl class="lead-details">
-              <?php foreach ($leadSubmittedFields as $label => $value): ?>
-                <?php if ($value !== ''): ?>
-                  <div class="field-wide">
-                    <dt><?= htmlspecialchars($label) ?></dt>
-                    <dd><?= nl2br(htmlspecialchars($value)) ?></dd>
-                  </div>
-                <?php endif; ?>
-              <?php endforeach; ?>
-              <?php foreach ($leadFormAnswers as $answer): ?>
+              <?php foreach ($leadDisplayAnswers as $answer): ?>
                 <?php
-                  if (!is_array($answer)) {
-                      continue;
-                  }
-                  $answerQuestion = trim((string) ($answer['question'] ?? $answer['question_id'] ?? 'Resposta'));
+                  $answerQuestion = trim((string) ($answer['question'] ?? 'Resposta'));
                   $answerValue = trim((string) ($answer['answer'] ?? $answer['value'] ?? ''));
                   if ($answerValue === '') {
                       continue;
