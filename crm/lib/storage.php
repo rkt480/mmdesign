@@ -971,6 +971,25 @@ function crm_encode_tags(string $tags): string
     return json_encode(crm_parse_tags($tags), JSON_UNESCAPED_UNICODE) ?: '[]';
 }
 
+function crm_is_technical_lead_answer(string $key, string $value = ''): bool
+{
+    $normalizedKey = strtolower((string) preg_replace('/[^a-zA-Z0-9]+/', '', $key));
+
+    if (in_array($normalizedKey, [
+        'useragent',
+        'device',
+        'assetid',
+        'conversionpayload',
+        'cdporiginalevent',
+        'lastmarkedopportunitydate',
+        'uuid',
+    ], true)) {
+        return true;
+    }
+
+    return $normalizedKey === 'interest' && is_numeric(trim($value));
+}
+
 function crm_normalize_money($value): ?string
 {
     $value = trim((string) $value);

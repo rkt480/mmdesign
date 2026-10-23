@@ -8,7 +8,21 @@ crm_require_login();
 
 $leadTags = $leadTags ?? crm_decode_lead_tags($lead);
 $visibleLeadTags = $visibleLeadTags ?? lead_visible_tags($lead, $leadTags);
-$leadFormAnswers = crm_decode_lead_form_answers($lead);
+$leadFormAnswers = array_values(array_filter(
+  crm_decode_lead_form_answers($lead),
+  static function (mixed $answer): bool {
+    if (!is_array($answer)) {
+      return false;
+    }
+
+    $question = (string) ($answer['question'] ?? '');
+    $questionId = (string) ($answer['question_id'] ?? '');
+    $value = (string) ($answer['answer'] ?? $answer['value'] ?? '');
+
+    return !crm_is_technical_lead_answer($questionId, $value)
+      && !crm_is_technical_lead_answer($question, $value);
+  }
+));
 $leadSubmittedFields = [
   'Empresa' => trim((string) ($lead['company'] ?? '')),
   'Segmento' => trim((string) ($lead['segment'] ?? '')),

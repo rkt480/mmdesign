@@ -512,6 +512,15 @@ foreach (['cpf', 'company', 'segment', 'advertises', 'message', 'utm_source', 'u
 }
 
 $customAnswers = lead_webhook_response_answers($payload['answers'] ?? $payload['form_answers'] ?? []);
+if ($isRdStationWebhook) {
+    $customAnswers = array_values(array_filter(
+        $customAnswers,
+        static fn(array $answer): bool => !crm_is_technical_lead_answer(
+            (string) ($answer['question_id'] ?? $answer['question'] ?? ''),
+            (string) ($answer['answer'] ?? $answer['value'] ?? '')
+        )
+    ));
+}
 if ($rdOrigin !== '' && count($customAnswers) < 50) {
     $customAnswers[] = [
         'question_id' => 'rd_origin',
@@ -556,6 +565,10 @@ foreach ($payload as $key => $value) {
 
     $answerValue = lead_webhook_scalar($value);
     if ($answerValue === '' || count($customAnswers) >= 50) {
+        continue;
+    }
+
+    if ($isRdStationWebhook && crm_is_technical_lead_answer($key, $answerValue)) {
         continue;
     }
 
