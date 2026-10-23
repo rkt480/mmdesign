@@ -252,7 +252,9 @@ if ($payload === []) {
 
 $rdEventType = strtoupper(lead_webhook_scalar($payload['event_type'] ?? ''));
 $rdEntityType = strtoupper(lead_webhook_scalar($payload['entity_type'] ?? ''));
-$isRdStationWebhook = is_array($payload['contact'] ?? null)
+$rdLegacyLead = is_array($payload['leads'][0] ?? null) ? $payload['leads'][0] : null;
+$isRdStationWebhook = $rdLegacyLead !== null
+    || is_array($payload['contact'] ?? null)
     || ($rdEntityType === 'CONTACT'
         && in_array($rdEventType, ['WEBHOOK.CONVERTED', 'WEBHOOK.MARKED_OPPORTUNITY'], true));
 
@@ -267,6 +269,57 @@ if ($isRdStationWebhook && is_array($payload['contact'] ?? null)) {
 }
 if ($isRdStationWebhook) {
     $rdEventIdentifier = lead_webhook_scalar($payload['event_identifier'] ?? '');
+}
+
+// A tela clássica de Webhooks do RD Marketing envia {"leads":[{...}]}.
+// O lead e os campos da última conversão precisam ser abertos antes do mapa.
+if ($rdLegacyLead !== null) {
+    $rdOrigin = lead_webhook_scalar(
+        $rdLegacyLead['last_conversion']['source']
+        ?? $rdLegacyLead['first_conversion']['source']
+        ?? ''
+    );
+    $rdEventIdentifier = lead_webhook_scalar(
+        $rdLegacyLead['last_conversion']['content']['identificador']
+        ?? $rdLegacyLead['first_conversion']['content']['identificador']
+        ?? ''
+    );
+    $payload = array_merge($payload, $rdLegacyLead);
+
+    foreach (['last_conversion', 'first_conversion'] as $conversionKey) {
+        $conversionFields = $rdLegacyLead[$conversionKey]['content'] ?? null;
+        if (!is_array($conversionFields)) {
+            continue;
+        }
+
+        foreach ($conversionFields as $key => $value) {
+            if (is_string($key) && (!array_key_exists($key, $payload) || lead_webhook_scalar($payload[$key]) === '')) {
+                $payload[$key] = $value;
+            }
+        }
+    }
+
+    $conversionOrigin = $rdLegacyLead['last_conversion']['conversion_origin']
+        ?? $rdLegacyLead['first_conversion']['conversion_origin']
+        ?? null;
+    if (is_array($conversionOrigin)) {
+        foreach (['source' => 'utm_source', 'medium' => 'utm_medium', 'campaign' => 'utm_campaign'] as $originKey => $utmKey) {
+            if (trim(lead_webhook_scalar($payload[$utmKey] ?? '')) === '') {
+                $payload[$utmKey] = lead_webhook_scalar($conversionOrigin[$originKey] ?? '');
+            }
+        }
+    }
+
+    $rdCustomFields = $rdLegacyLead['custom_fields'] ?? [];
+    foreach ((is_array($rdCustomFields) ? $rdCustomFields : []) as $key => $value) {
+        if (is_string($key) && (!array_key_exists($key, $payload) || lead_webhook_scalar($payload[$key]) === '')) {
+            $payload[$key] = $value;
+        }
+    }
+
+    if ($rdEventIdentifier !== '' && trim(lead_webhook_scalar($payload['page'] ?? '')) === '') {
+        $payload['page'] = $rdEventIdentifier;
+    }
 }
 
 for ($wrapperDepth = 0; $wrapperDepth < 3; $wrapperDepth++) {
@@ -315,11 +368,11 @@ $fieldAliases = [
     'advertises' => ['advertises', 'advertising', 'comocontrolaosleads', 'comovocedivulga', 'divulgacao'],
     'message' => ['message', 'mensagem', 'necessidade', 'observacao', 'observacoes', 'notes', 'description'],
     'page' => ['page', 'pagina', 'landingpage', 'sourcepage'],
-    'utm_source' => ['utmsource'],
-    'utm_medium' => ['utmmedium'],
-    'utm_campaign' => ['utmcampaign'],
-    'utm_content' => ['utmcontent'],
-    'utm_term' => ['utmterm'],
+    'utm_source' => ['utmsource', 'trafficsource'],
+    'utm_medium' => ['utmmedium', 'trafficmedium'],
+    'utm_campaign' => ['utmcampaign', 'trafficcampaign'],
+    'utm_content' => ['utmcontent', 'trafficcontent'],
+    'utm_term' => ['utmterm', 'trafficterm'],
     'referrer' => ['referrer', 'referer'],
     'landing_path' => ['landingpath', 'pathname', 'pageurl'],
     'tags' => ['tags', 'etiquetas'],
@@ -346,7 +399,7 @@ if (trim((string) ($values['name'] ?? '')) === '') {
 }
 
 if ($isRdStationWebhook) {
-    $rdEmail = lead_webhook_scalar($normalizedPayload['email'] ?? '');
+    $rdEmail = lead_webhook_scalar($normalizedPayload['email'] ?? $normalizedPayload['emaillead'] ?? '');
 
     if (trim((string) ($values['name'] ?? '')) === '' && $rdEmail !== '') {
         $emailSeparator = strpos($rdEmail, '@');
@@ -373,6 +426,12 @@ if ($isRdStationWebhook) {
         ]);
     }
 } elseif (trim((string) ($values['name'] ?? '')) === '' || trim((string) ($values['whatsapp'] ?? '')) === '') {
+    crm_lead_webhook_record_attempt(
+        lead_webhook_request_id(),
+        'payload_shape',
+        0,
+        'Campos: ' . implode(', ', array_slice(array_keys($normalizedPayload), 0, 30))
+    );
     error_log(sprintf(
         '[CRM lead webhook] request_id=%s rejected payload keys=%s',
         lead_webhook_request_id(),
@@ -437,10 +496,11 @@ foreach ($fieldAliases as $aliases) {
 $recognizedAliases['firstname'] = true;
 $recognizedAliases['lastname'] = true;
 $reservedKeys = array_fill_keys([
-    'website', 'data', 'lead', 'contact', 'fields', 'answers', 'formanswers', 'formid', 'id',
+    'website', 'data', 'lead', 'leads', 'contact', 'fields', 'answers', 'formanswers', 'formid', 'id',
     'event', 'eventid', 'eventtype', 'entitytype', 'eventidentifier', 'timestamp', 'eventtimestamp',
     'funnel', 'company', 'legalbases', 'token', 'csrf', 'csrftoken', 'password', 'authorization',
-    'headers', 'createdat', 'updatedat',
+    'headers', 'createdat', 'updatedat', 'firstconversion', 'lastconversion', 'customfields',
+    'publicurl', 'user', 'numberconversions', 'opportunity', 'fitscore', 'leadstage',
 ], true);
 
 foreach ($payload as $key => $value) {
@@ -458,7 +518,7 @@ foreach ($payload as $key => $value) {
         continue;
     }
 
-    $displayQuestion = in_array($normalizedKey, ['email', 'mail', 'correioeletronico'], true) ? 'E-mail' : $key;
+    $displayQuestion = in_array($normalizedKey, ['email', 'emaillead', 'mail', 'correioeletronico'], true) ? 'E-mail' : $key;
 
     $customAnswers[] = [
         'question_id' => lead_webhook_truncate($normalizedKey, 120),
