@@ -17,6 +17,40 @@ function lead_webhook_respond(int $status, array $body): void
     exit;
 }
 
+function lead_webhook_respond_before_side_effects(array $body): void
+{
+    $json = json_encode($body, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    if (!is_string($json)) {
+        $json = '{"ok":true}';
+    }
+
+    http_response_code(200);
+    header('Content-Type: application/json; charset=utf-8');
+    header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+    header('Connection: close');
+
+    $compression = strtolower(trim((string) ini_get('zlib.output_compression')));
+    if ($compression === '' || in_array($compression, ['0', 'off'], true)) {
+        header('Content-Length: ' . strlen($json));
+    }
+
+    echo $json;
+    ignore_user_abort(true);
+
+    if (function_exists('fastcgi_finish_request')) {
+        fastcgi_finish_request();
+        return;
+    }
+
+    while (ob_get_level() > 0) {
+        if (!@ob_end_flush()) {
+            break;
+        }
+    }
+
+    flush();
+}
+
 function lead_webhook_normalize_key(string $key): string
 {
     if (function_exists('iconv')) {
@@ -170,7 +204,7 @@ $isRdStationWebhook = $rdEntityType === 'CONTACT'
     && in_array($rdEventType, ['WEBHOOK.CONVERTED', 'WEBHOOK.MARKED_OPPORTUNITY'], true);
 
 if (trim(lead_webhook_scalar($payload['website'] ?? '')) !== '') {
-    lead_webhook_respond(201, ['ok' => true, 'created' => false]);
+    lead_webhook_respond(200, ['ok' => true, 'created' => false]);
 }
 
 $rdOrigin = '';
@@ -380,14 +414,26 @@ $leadPayload['form_answers'] = $customAnswers;
 $leadPayload['form_id'] = '';
 
 try {
-    $leadResult = crm_create_lead_once($leadPayload);
+    $leadResult = crm_create_lead_once($leadPayload, false);
     $lead = $leadResult['lead'];
 } catch (Throwable $error) {
     error_log('Erro ao receber lead via webhook do CRM: ' . $error->getMessage());
     lead_webhook_respond(500, ['ok' => false, 'error' => 'Não foi possível salvar o lead no CRM.']);
 }
 
+lead_webhook_respond_before_side_effects([
+    'ok' => true,
+    'lead_id' => (string) ($lead['id'] ?? ''),
+    'created' => (bool) ($leadResult['created'] ?? false),
+]);
+
 if (($leadResult['created'] ?? false) === true) {
+    try {
+        crm_notify_created_lead_push($lead);
+    } catch (Throwable $error) {
+        error_log('Erro push Lead ' . (string) $lead['id'] . ': ' . $error->getMessage());
+    }
+
     try {
         $metaResult = meta_capi_send_lead_created($lead, $leadPayload);
         if (($metaResult['ok'] ?? false) !== true && ($metaResult['skipped'] ?? false) !== true) {
@@ -406,9 +452,3 @@ if (($leadResult['created'] ?? false) === true) {
         error_log('Erro e-mail Lead ' . (string) $lead['id'] . ': ' . $error->getMessage());
     }
 }
-
-lead_webhook_respond(201, [
-    'ok' => true,
-    'lead_id' => (string) ($lead['id'] ?? ''),
-    'created' => (bool) ($leadResult['created'] ?? false),
-]);

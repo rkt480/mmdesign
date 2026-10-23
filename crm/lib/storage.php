@@ -2309,7 +2309,7 @@ function crm_create_lead(array $payload): array
     return $lead;
 }
 
-function crm_create_lead_once(array $payload): array
+function crm_create_lead_once(array $payload, bool $notifyPush = true): array
 {
     $whatsapp = (string) ($payload['whatsapp'] ?? '');
     $normalizedWhatsapp = crm_normalize_lead_whatsapp($whatsapp);
@@ -2318,7 +2318,9 @@ function crm_create_lead_once(array $payload): array
     // operação. Webhooks e envios repetidos podem chegar ao mesmo tempo.
     if ($normalizedWhatsapp === '') {
         $lead = crm_create_lead($payload);
-        crm_notify_created_lead_push($lead);
+        if ($notifyPush) {
+            crm_notify_created_lead_push($lead);
+        }
 
         return ['lead' => $lead, 'created' => true];
     }
@@ -2344,7 +2346,9 @@ function crm_create_lead_once(array $payload): array
         }
 
         $lead = crm_create_lead($payload);
-        crm_notify_created_lead_push($lead);
+        if ($notifyPush) {
+            crm_notify_created_lead_push($lead);
+        }
 
         return ['lead' => $lead, 'created' => true];
     } finally {
