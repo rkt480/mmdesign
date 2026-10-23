@@ -62,7 +62,13 @@ function lead_webhook_respond_before_side_effects(array $body): void
         lead_webhook_request_id(),
         'response',
         200,
-        ($body['created'] ?? false) ? 'Lead criado' : 'Lead já existente'
+        ($body['created'] ?? false)
+            ? 'Lead criado'
+            : (($body['reactivated'] ?? false)
+                ? 'Contato reativado na coluna Novo'
+                : (($body['duplicate_reason'] ?? '') === 'rd_conversion'
+                    ? 'Conversão do RD já recebida'
+                    : 'Cadastro recente da landing page já recebido'))
     );
     $GLOBALS['lead_webhook_responded'] = true;
 
@@ -257,6 +263,41 @@ $isRdStationWebhook = $rdLegacyLead !== null
     || is_array($payload['contact'] ?? null)
     || ($rdEntityType === 'CONTACT'
         && in_array($rdEventType, ['WEBHOOK.CONVERTED', 'WEBHOOK.MARKED_OPPORTUNITY'], true));
+
+$rdEventKey = '';
+$rdContactKey = '';
+if ($isRdStationWebhook) {
+    $rdContact = $rdLegacyLead ?? (is_array($payload['contact'] ?? null) ? $payload['contact'] : []);
+    $rdIdentity = lead_webhook_scalar($rdContact['uuid'] ?? $rdContact['id'] ?? $rdContact['email'] ?? '');
+    $rdContactKey = $rdIdentity !== '' ? hash('sha256', strtolower($rdIdentity)) : '';
+    $rdOccurrence = lead_webhook_scalar(
+        $rdLegacyLead['last_conversion']['created_at']
+        ?? $payload['event_timestamp']
+        ?? ''
+    );
+    $rdConversionCount = lead_webhook_scalar(
+        $rdLegacyLead['last_conversion']['cumulative_sum']
+        ?? $rdLegacyLead['number_conversions']
+        ?? ''
+    );
+    $rdIdentifier = lead_webhook_scalar(
+        $rdLegacyLead['last_conversion']['content']['identificador']
+        ?? $payload['event_identifier']
+        ?? ''
+    );
+
+    // O horário de envio (timestamp) muda em tentativas repetidas. A data da
+    // conversão identifica o mesmo evento nas duas versões do webhook do RD.
+    $rdEventKey = hash('sha256', json_encode([
+        'version' => $rdLegacyLead !== null ? 'rd-v1' : 'rd-v2',
+        'contact' => $rdIdentity,
+        'event' => $rdEventType,
+        'identifier' => $rdIdentifier,
+        'occurred_at' => $rdOccurrence,
+        'conversion_count' => $rdConversionCount,
+        'fallback' => $rdOccurrence === '' ? hash('sha256', $rawBody) : '',
+    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: $rawBody);
+}
 
 if (trim(lead_webhook_scalar($payload['website'] ?? '')) !== '') {
     lead_webhook_respond(200, ['ok' => true, 'created' => false]);
@@ -530,9 +571,15 @@ foreach ($payload as $key => $value) {
 
 $leadPayload['form_answers'] = $customAnswers;
 $leadPayload['form_id'] = '';
+$landingSubmissionHash = hash('sha256', json_encode(
+    $leadPayload,
+    JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+) ?: $rawBody);
 
 try {
-    $leadResult = crm_create_lead_once($leadPayload, false);
+    $leadResult = $isRdStationWebhook
+        ? crm_create_rd_webhook_lead_once($leadPayload, $rdEventKey, $rdContactKey)
+        : crm_receive_landing_webhook_lead_once($leadPayload, $landingSubmissionHash);
     $lead = $leadResult['lead'];
 } catch (Throwable $error) {
     error_log(sprintf(
@@ -547,22 +594,26 @@ lead_webhook_respond_before_side_effects([
     'ok' => true,
     'lead_id' => (string) ($lead['id'] ?? ''),
     'created' => (bool) ($leadResult['created'] ?? false),
+    'reactivated' => (bool) ($leadResult['reactivated'] ?? false),
+    'duplicate_reason' => (string) ($leadResult['duplicate_reason'] ?? ''),
 ]);
 
-if (($leadResult['created'] ?? false) === true) {
+if (($leadResult['created'] ?? false) === true || ($leadResult['reactivated'] ?? false) === true) {
     try {
         crm_notify_created_lead_push($lead);
     } catch (Throwable $error) {
         error_log('Erro push Lead ' . (string) $lead['id'] . ': ' . $error->getMessage());
     }
 
-    try {
-        $metaResult = meta_capi_send_lead_created($lead, $leadPayload);
-        if (($metaResult['ok'] ?? false) !== true && ($metaResult['skipped'] ?? false) !== true) {
-            error_log('Erro Meta CAPI Lead ' . (string) $lead['id'] . ': ' . (string) ($metaResult['error'] ?? 'Erro desconhecido.'));
+    if (($leadResult['created'] ?? false) === true) {
+        try {
+            $metaResult = meta_capi_send_lead_created($lead, $leadPayload);
+            if (($metaResult['ok'] ?? false) !== true && ($metaResult['skipped'] ?? false) !== true) {
+                error_log('Erro Meta CAPI Lead ' . (string) $lead['id'] . ': ' . (string) ($metaResult['error'] ?? 'Erro desconhecido.'));
+            }
+        } catch (Throwable $error) {
+            error_log('Erro Meta CAPI Lead ' . (string) $lead['id'] . ': ' . $error->getMessage());
         }
-    } catch (Throwable $error) {
-        error_log('Erro Meta CAPI Lead ' . (string) $lead['id'] . ': ' . $error->getMessage());
     }
 
     try {

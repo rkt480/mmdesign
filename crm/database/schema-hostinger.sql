@@ -158,6 +158,15 @@ CREATE TABLE IF NOT EXISTS lead_timeline_events (
   INDEX idx_lead_timeline_events_type (event_type, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS rd_webhook_conversions (
+  event_key CHAR(64) PRIMARY KEY,
+  contact_key CHAR(64) NULL,
+  lead_id VARCHAR(32) NOT NULL,
+  created_at DATETIME NOT NULL,
+  INDEX idx_rd_webhook_conversions_contact (contact_key, created_at),
+  INDEX idx_rd_webhook_conversions_lead (lead_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS crm_push_subscriptions (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   user_id INT NOT NULL,

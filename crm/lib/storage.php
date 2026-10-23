@@ -77,7 +77,7 @@ function crm_db_reconnect(): PDO
 
 function crm_schema_version(): string
 {
-    return '20260917.1';
+    return '20261023.2';
 }
 
 function crm_schema_version_is_current(PDO $pdo): bool
@@ -324,6 +324,24 @@ function crm_ensure_crm_schema(PDO $pdo): void
             INDEX idx_lead_timeline_events_type (event_type, created_at)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
     );
+
+    $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS rd_webhook_conversions (
+            event_key CHAR(64) PRIMARY KEY,
+            contact_key CHAR(64) NULL,
+            lead_id VARCHAR(32) NOT NULL,
+            created_at DATETIME NOT NULL,
+            INDEX idx_rd_webhook_conversions_contact (contact_key, created_at),
+            INDEX idx_rd_webhook_conversions_lead (lead_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
+    );
+
+    if (!crm_column_exists($pdo, 'rd_webhook_conversions', 'contact_key')) {
+        $pdo->exec('ALTER TABLE rd_webhook_conversions ADD COLUMN contact_key CHAR(64) NULL AFTER event_key');
+    }
+    if (!crm_index_exists($pdo, 'rd_webhook_conversions', 'idx_rd_webhook_conversions_contact')) {
+        $pdo->exec('ALTER TABLE rd_webhook_conversions ADD INDEX idx_rd_webhook_conversions_contact (contact_key, created_at)');
+    }
 
     $pdo->exec(
         'CREATE TABLE IF NOT EXISTS crm_push_subscriptions (
@@ -2351,6 +2369,283 @@ function crm_create_lead_once(array $payload, bool $notifyPush = true): array
         }
 
         return ['lead' => $lead, 'created' => true];
+    } finally {
+        $unlockStmt = $db->prepare('SELECT RELEASE_LOCK(:lock_name)');
+        $unlockStmt->execute(['lock_name' => $lockName]);
+    }
+}
+
+function crm_reactivate_lead_from_webhook(array $lead, array $payload, string $sourceLabel, string $submissionHash = ''): array
+{
+    $db = crm_db();
+    if (!$db->inTransaction()) {
+        throw new LogicException('A reativação do lead precisa de uma transação.');
+    }
+
+    $leadId = (string) ($lead['id'] ?? '');
+    $lockLead = $db->prepare('SELECT * FROM leads WHERE id = :id LIMIT 1 FOR UPDATE');
+    $lockLead->execute(['id' => $leadId]);
+    $lead = $lockLead->fetch();
+    if (!is_array($lead)) {
+        throw new RuntimeException('Contato original não encontrado para reativação.');
+    }
+
+    $payload = crm_apply_page_attribution($payload);
+    $previousStatus = (string) ($lead['status'] ?? '');
+    $now = date('Y-m-d H:i:s');
+    $storedAnswers = json_decode((string) ($lead['form_answers'] ?? '[]'), true);
+    $storedAnswers = is_array($storedAnswers) ? $storedAnswers : [];
+    $newAnswers = is_array($payload['form_answers'] ?? null) ? $payload['form_answers'] : [];
+    $page = trim((string) ($payload['page'] ?? ''));
+
+    if ($newAnswers !== []) {
+        $storedAnswers[] = [
+            'question_id' => 'webhook_reentry',
+            'question' => 'Nova inscrição (' . $sourceLabel . ')',
+            'value' => date('d/m/Y H:i') . ($page !== '' ? ' · ' . $page : ''),
+            'answer' => date('d/m/Y H:i') . ($page !== '' ? ' · ' . $page : ''),
+        ];
+        array_push($storedAnswers, ...$newAnswers);
+    }
+
+    $fields = [
+        'id' => $leadId,
+        'name' => trim((string) ($payload['name'] ?? '')) ?: (string) ($lead['name'] ?? ''),
+        'whatsapp' => crm_normalize_lead_whatsapp((string) ($payload['whatsapp'] ?? '')) ?: (string) ($lead['whatsapp'] ?? ''),
+        'company' => trim((string) ($payload['company'] ?? '')) ?: (string) ($lead['company'] ?? ''),
+        'cpf' => crm_normalize_cpf((string) ($payload['cpf'] ?? '')) ?: (string) ($lead['cpf'] ?? ''),
+        'segment' => trim((string) ($payload['segment'] ?? '')) ?: (string) ($lead['segment'] ?? ''),
+        'advertises' => trim((string) ($payload['advertises'] ?? '')) ?: (string) ($lead['advertises'] ?? ''),
+        'message' => trim((string) ($payload['message'] ?? '')) ?: (string) ($lead['message'] ?? ''),
+        'page' => $page !== '' ? $page : (string) ($lead['page'] ?? ''),
+        'utm_source' => trim((string) ($payload['utm_source'] ?? '')),
+        'utm_medium' => trim((string) ($payload['utm_medium'] ?? '')),
+        'utm_campaign' => trim((string) ($payload['utm_campaign'] ?? '')),
+        'utm_content' => trim((string) ($payload['utm_content'] ?? '')),
+        'utm_term' => trim((string) ($payload['utm_term'] ?? '')),
+        'referrer' => trim((string) ($payload['referrer'] ?? '')),
+        'landing_path' => trim((string) ($payload['landing_path'] ?? '')),
+        'form_answers' => json_encode($storedAnswers, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '[]',
+        'tags' => crm_encode_tags(implode(',', array_merge(
+            crm_decode_lead_tags($lead),
+            crm_parse_tags((string) ($payload['tags'] ?? ''))
+        ))),
+        'last_activity_at' => $now,
+        'updated_at' => $now,
+    ];
+
+    $stmt = $db->prepare(
+        'UPDATE leads SET
+            name = :name, whatsapp = :whatsapp, company = :company, cpf = :cpf,
+            segment = :segment, advertises = :advertises, message = :message,
+            page = :page, utm_source = :utm_source, utm_medium = :utm_medium,
+            utm_campaign = :utm_campaign, utm_content = :utm_content,
+            utm_term = :utm_term, referrer = :referrer,
+            landing_path = :landing_path, form_answers = :form_answers,
+            tags = :tags,
+            status = "novo", kanban_position = 0,
+            lost_at = NULL, lost_reason = NULL, closed_at = NULL,
+            last_activity_at = :last_activity_at,
+            last_activity_type = "webhook_reentry", updated_at = :updated_at
+         WHERE id = :id'
+    );
+    $stmt->execute($fields);
+
+    if ($previousStatus === 'followup') {
+        $cancel = $db->prepare(
+            'UPDATE followup_queue SET status = "cancelado", sent_at = NULL,
+                error = "Cancelado porque o lead voltou para Novo após nova inscrição."
+             WHERE lead_id = :lead_id AND status = "pendente"'
+        );
+        $cancel->execute(['lead_id' => $leadId]);
+    }
+
+    $description = 'Nova inscrição por ' . $sourceLabel;
+    if ($page !== '') {
+        $description .= ' em ' . $page;
+    }
+    $description .= $previousStatus === 'novo'
+        ? '. Contato permanece em Novo.'
+        : '. Movido de ' . crm_kanban_status_label($previousStatus) . ' para Novo.';
+    crm_record_lead_timeline_event(
+        $leadId,
+        'webhook_reentry',
+        'Lead entrou em contato novamente',
+        $description,
+        'Sistema',
+        null,
+        [
+            'source' => $sourceLabel,
+            'previous_status' => $previousStatus,
+            'previous_page' => (string) ($lead['page'] ?? ''),
+            'previous_utm_source' => (string) ($lead['utm_source'] ?? ''),
+            'previous_utm_campaign' => (string) ($lead['utm_campaign'] ?? ''),
+            'page' => $fields['page'],
+            'utm_source' => $fields['utm_source'],
+            'utm_campaign' => $fields['utm_campaign'],
+            'answers' => $newAnswers,
+            'submission_hash' => $submissionHash,
+        ]
+    );
+
+    $find = $db->prepare('SELECT * FROM leads WHERE id = :id LIMIT 1');
+    $find->execute(['id' => $leadId]);
+    return $find->fetch() ?: $lead;
+}
+
+function crm_receive_landing_webhook_lead_once(array $payload, string $submissionHash): array
+{
+    $whatsapp = crm_normalize_lead_whatsapp((string) ($payload['whatsapp'] ?? ''));
+    if ($whatsapp === '' || !preg_match('/^[a-f0-9]{64}$/', $submissionHash)) {
+        throw new InvalidArgumentException('Cadastro da landing page inválido.');
+    }
+
+    $db = crm_db();
+    $lockName = 'crm_lead_whatsapp_' . substr(hash('sha256', $whatsapp), 0, 40);
+    $lockStmt = $db->prepare('SELECT GET_LOCK(:lock_name, 10)');
+    $lockStmt->execute(['lock_name' => $lockName]);
+    if ((int) $lockStmt->fetchColumn() !== 1) {
+        throw new RuntimeException('Não foi possível reservar o contato da landing page.');
+    }
+
+    try {
+        $existingLead = crm_find_lead_by_whatsapp($whatsapp);
+        if (is_array($existingLead)) {
+            $recent = $db->prepare(
+                'SELECT metadata FROM lead_timeline_events
+                 WHERE lead_id = :lead_id
+                   AND event_type IN ("webhook_submission", "webhook_reentry")
+                   AND created_at >= :since
+                 ORDER BY id DESC LIMIT 20'
+            );
+            $recent->execute([
+                'lead_id' => (string) $existingLead['id'],
+                'since' => date('Y-m-d H:i:s', time() - 300),
+            ]);
+            foreach ($recent->fetchAll() as $event) {
+                $metadata = json_decode((string) ($event['metadata'] ?? ''), true);
+                if (is_array($metadata) && ($metadata['submission_hash'] ?? '') === $submissionHash) {
+                    return [
+                        'lead' => $existingLead,
+                        'created' => false,
+                        'reactivated' => false,
+                        'duplicate_reason' => 'landing_submission',
+                    ];
+                }
+            }
+        }
+
+        $db->beginTransaction();
+        try {
+            if (is_array($existingLead)) {
+                $lead = crm_reactivate_lead_from_webhook(
+                    $existingLead,
+                    $payload,
+                    'landing page',
+                    $submissionHash
+                );
+                $created = false;
+            } else {
+                $lead = crm_create_lead($payload);
+                $created = true;
+                crm_record_lead_timeline_event(
+                    (string) $lead['id'],
+                    'webhook_submission',
+                    'Cadastro recebido pela landing page',
+                    'Dados recebidos por webhook.',
+                    'Sistema',
+                    null,
+                    ['submission_hash' => $submissionHash]
+                );
+            }
+            $db->commit();
+
+            return ['lead' => $lead, 'created' => $created, 'reactivated' => !$created];
+        } catch (Throwable $error) {
+            if ($db->inTransaction()) {
+                $db->rollBack();
+            }
+            throw $error;
+        }
+    } finally {
+        $unlockStmt = $db->prepare('SELECT RELEASE_LOCK(:lock_name)');
+        $unlockStmt->execute(['lock_name' => $lockName]);
+    }
+}
+
+function crm_create_rd_webhook_lead_once(array $payload, string $eventKey, string $contactKey = ''): array
+{
+    if (!preg_match('/^[a-f0-9]{64}$/', $eventKey)) {
+        throw new InvalidArgumentException('Identificador de conversão inválido.');
+    }
+
+    $db = crm_db();
+    $normalizedWhatsapp = crm_normalize_lead_whatsapp((string) ($payload['whatsapp'] ?? ''));
+    $lockName = $normalizedWhatsapp !== ''
+        ? 'crm_lead_whatsapp_' . substr(hash('sha256', $normalizedWhatsapp), 0, 40)
+        : 'crm_rd_webhook_' . substr($contactKey !== '' ? $contactKey : $eventKey, 0, 40);
+    $lockStmt = $db->prepare('SELECT GET_LOCK(:lock_name, 10)');
+    $lockStmt->execute(['lock_name' => $lockName]);
+
+    if ((int) $lockStmt->fetchColumn() !== 1) {
+        throw new RuntimeException('Não foi possível reservar a conversão do RD Station.');
+    }
+
+    try {
+        $existingStmt = $db->prepare('SELECT lead_id FROM rd_webhook_conversions WHERE event_key = :event_key LIMIT 1');
+        $existingStmt->execute(['event_key' => $eventKey]);
+        $existingId = (string) ($existingStmt->fetchColumn() ?: '');
+
+        if ($existingId !== '') {
+            return ['lead' => ['id' => $existingId], 'created' => false, 'duplicate_reason' => 'rd_conversion'];
+        }
+
+        $db->beginTransaction();
+        try {
+            $existingLead = $normalizedWhatsapp !== ''
+                ? crm_find_lead_by_whatsapp($normalizedWhatsapp)
+                : null;
+
+            if ($existingLead === null && $contactKey !== '') {
+                $findByRdContact = $db->prepare(
+                    'SELECT leads.* FROM rd_webhook_conversions AS conversions
+                     JOIN leads ON leads.id = conversions.lead_id
+                     WHERE conversions.contact_key = :contact_key
+                     ORDER BY conversions.created_at DESC LIMIT 1'
+                );
+                $findByRdContact->execute(['contact_key' => $contactKey]);
+                $existingLead = $findByRdContact->fetch() ?: null;
+            }
+
+            if (is_array($existingLead)) {
+                $lead = crm_reactivate_lead_from_webhook($existingLead, $payload, 'RD Station');
+                $created = false;
+                $reactivated = true;
+            } else {
+                $lead = crm_create_lead($payload);
+                $created = true;
+                $reactivated = false;
+            }
+
+            $insert = $db->prepare(
+                'INSERT INTO rd_webhook_conversions (event_key, contact_key, lead_id, created_at)
+                 VALUES (:event_key, :contact_key, :lead_id, :created_at)'
+            );
+            $insert->execute([
+                'event_key' => $eventKey,
+                'contact_key' => $contactKey !== '' ? $contactKey : null,
+                'lead_id' => (string) $lead['id'],
+                'created_at' => date('Y-m-d H:i:s'),
+            ]);
+            $db->commit();
+
+            return ['lead' => $lead, 'created' => $created, 'reactivated' => $reactivated];
+        } catch (Throwable $error) {
+            if ($db->inTransaction()) {
+                $db->rollBack();
+            }
+            throw $error;
+        }
     } finally {
         $unlockStmt = $db->prepare('SELECT RELEASE_LOCK(:lock_name)');
         $unlockStmt->execute(['lock_name' => $lockName]);
