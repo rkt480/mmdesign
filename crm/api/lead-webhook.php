@@ -10,8 +10,31 @@ require_once dirname(__DIR__) . '/lib/security.php';
 header('Content-Type: application/json; charset=utf-8');
 crm_send_security_headers();
 
+function lead_webhook_request_id(): string
+{
+    static $requestId = '';
+
+    if ($requestId === '') {
+        $requestId = bin2hex(random_bytes(8));
+    }
+
+    return $requestId;
+}
+
 function lead_webhook_respond(int $status, array $body): void
 {
+    header('X-CRM-Webhook-Request-ID: ' . lead_webhook_request_id());
+
+    if ($status >= 400) {
+        $message = is_scalar($body['error'] ?? null) ? (string) $body['error'] : 'Webhook rejected.';
+        error_log(sprintf(
+            '[CRM lead webhook] request_id=%s status=%d message=%s',
+            lead_webhook_request_id(),
+            $status,
+            substr(preg_replace('/[\r\n]+/', ' ', $message) ?: 'Webhook rejected.', 0, 180)
+        ));
+    }
+
     http_response_code($status);
     echo json_encode($body, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     exit;
@@ -27,6 +50,7 @@ function lead_webhook_respond_before_side_effects(array $body): void
     http_response_code(200);
     header('Content-Type: application/json; charset=utf-8');
     header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+    header('X-CRM-Webhook-Request-ID: ' . lead_webhook_request_id());
     header('Connection: close');
 
     $compression = strtolower(trim((string) ini_get('zlib.output_compression')));
@@ -200,8 +224,9 @@ if ($contentType === 'application/json' || $contentType === 'application/ld+json
 
 $rdEventType = strtoupper(lead_webhook_scalar($payload['event_type'] ?? ''));
 $rdEntityType = strtoupper(lead_webhook_scalar($payload['entity_type'] ?? ''));
-$isRdStationWebhook = $rdEntityType === 'CONTACT'
-    && in_array($rdEventType, ['WEBHOOK.CONVERTED', 'WEBHOOK.MARKED_OPPORTUNITY'], true);
+$isRdStationWebhook = is_array($payload['contact'] ?? null)
+    || ($rdEntityType === 'CONTACT'
+        && in_array($rdEventType, ['WEBHOOK.CONVERTED', 'WEBHOOK.MARKED_OPPORTUNITY'], true));
 
 if (trim(lead_webhook_scalar($payload['website'] ?? '')) !== '') {
     lead_webhook_respond(200, ['ok' => true, 'created' => false]);
@@ -320,6 +345,11 @@ if ($isRdStationWebhook) {
         ]);
     }
 } elseif (trim((string) ($values['name'] ?? '')) === '' || trim((string) ($values['whatsapp'] ?? '')) === '') {
+    error_log(sprintf(
+        '[CRM lead webhook] request_id=%s rejected payload keys=%s',
+        lead_webhook_request_id(),
+        implode(',', array_slice(array_keys($normalizedPayload), 0, 60))
+    ));
     lead_webhook_respond(422, ['ok' => false, 'error' => 'Informe os campos obrigatórios: name (ou nome) e whatsapp (ou telefone).']);
 }
 
@@ -417,7 +447,11 @@ try {
     $leadResult = crm_create_lead_once($leadPayload, false);
     $lead = $leadResult['lead'];
 } catch (Throwable $error) {
-    error_log('Erro ao receber lead via webhook do CRM: ' . $error->getMessage());
+    error_log(sprintf(
+        '[CRM lead webhook] request_id=%s save failed: %s',
+        lead_webhook_request_id(),
+        $error->getMessage()
+    ));
     lead_webhook_respond(500, ['ok' => false, 'error' => 'Não foi possível salvar o lead no CRM.']);
 }
 
