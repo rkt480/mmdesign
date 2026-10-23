@@ -2,6 +2,17 @@
 
 declare(strict_types=1);
 
+require_once dirname(__DIR__) . '/lib/lead-webhook-diagnostics.php';
+
+$GLOBALS['lead_webhook_request_id'] = bin2hex(random_bytes(8));
+$GLOBALS['lead_webhook_responded'] = false;
+crm_lead_webhook_record_attempt((string) $GLOBALS['lead_webhook_request_id'], 'received');
+register_shutdown_function(static function (): void {
+    if (($GLOBALS['lead_webhook_responded'] ?? false) !== true) {
+        crm_lead_webhook_record_attempt((string) ($GLOBALS['lead_webhook_request_id'] ?? ''), 'interrupted', 0, 'Execução interrompida antes da resposta');
+    }
+});
+
 require_once dirname(__DIR__) . '/lib/storage.php';
 require_once dirname(__DIR__) . '/lib/email.php';
 require_once dirname(__DIR__) . '/lib/meta-capi.php';
@@ -12,18 +23,18 @@ crm_send_security_headers();
 
 function lead_webhook_request_id(): string
 {
-    static $requestId = '';
-
-    if ($requestId === '') {
-        $requestId = bin2hex(random_bytes(8));
-    }
-
-    return $requestId;
+    return (string) ($GLOBALS['lead_webhook_request_id'] ?? '');
 }
 
 function lead_webhook_respond(int $status, array $body): void
 {
     header('X-CRM-Webhook-Request-ID: ' . lead_webhook_request_id());
+
+    $result = is_scalar($body['error'] ?? null)
+        ? (string) $body['error']
+        : (($body['created'] ?? null) === true ? 'Lead criado' : 'Requisição aceita sem novo lead');
+    crm_lead_webhook_record_attempt(lead_webhook_request_id(), 'response', $status, $result);
+    $GLOBALS['lead_webhook_responded'] = true;
 
     if ($status >= 400) {
         $message = is_scalar($body['error'] ?? null) ? (string) $body['error'] : 'Webhook rejected.';
@@ -46,6 +57,14 @@ function lead_webhook_respond_before_side_effects(array $body): void
     if (!is_string($json)) {
         $json = '{"ok":true}';
     }
+
+    crm_lead_webhook_record_attempt(
+        lead_webhook_request_id(),
+        'response',
+        200,
+        ($body['created'] ?? false) ? 'Lead criado' : 'Lead já existente'
+    );
+    $GLOBALS['lead_webhook_responded'] = true;
 
     http_response_code(200);
     header('Content-Type: application/json; charset=utf-8');
@@ -220,6 +239,15 @@ if ($contentType === 'application/json' || $contentType === 'application/ld+json
     if (!is_array($payload)) {
         lead_webhook_respond(400, ['ok' => false, 'error' => 'Formato de dados inválido.']);
     }
+}
+
+if ($payload === []) {
+    lead_webhook_respond(200, [
+        'ok' => true,
+        'accepted' => true,
+        'created' => false,
+        'message' => 'Endpoint disponível; nenhum lead foi criado.',
+    ]);
 }
 
 $rdEventType = strtoupper(lead_webhook_scalar($payload['event_type'] ?? ''));

@@ -7,6 +7,7 @@ require_once __DIR__ . '/lib/settings.php';
 require_once __DIR__ . '/lib/whatsapp.php';
 require_once __DIR__ . '/lib/push.php';
 require_once __DIR__ . '/lib/openai-coach.php';
+require_once __DIR__ . '/lib/lead-webhook-diagnostics.php';
 
 crm_require_admin();
 
@@ -50,6 +51,8 @@ $scriptDir = rtrim(str_replace('\\', '/', dirname((string) ($_SERVER['SCRIPT_NAM
 $metaWhatsAppWebhookUrl = $host !== '' ? ($https ? 'https://' : 'http://') . $host . $scriptDir . '/api/meta-whatsapp-webhook.php' : '';
 $pilotStatusWebhookUrl = $host !== '' ? ($https ? 'https://' : 'http://') . $host . $scriptDir . '/api/pilot-status-webhook.php' : '';
 $leadWebhookToken = trim((string) ($settings['lead_webhook_token'] ?? ''));
+$leadWebhookAttempts = crm_lead_webhook_recent_attempts();
+$leadWebhookDiagnosticsWritable = is_writable(__DIR__ . '/data');
 $leadWebhookUrl = '';
 $configuredAppUrl = trim((string) (crm_config()['app_url'] ?? ''));
 $configuredAppUrlParts = $configuredAppUrl !== '' ? parse_url($configuredAppUrl) : false;
@@ -516,6 +519,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                       <input type="url" data-lead-webhook-url value="<?= htmlspecialchars($leadWebhookUrl, ENT_QUOTES, 'UTF-8') ?>" readonly />
                     </label>
                     <button class="secondary-action" type="button" data-copy-lead-webhook>Copiar URL</button>
+                    <button class="secondary-action" type="button" data-test-lead-webhook>Testar endpoint</button>
+                    <small class="settings-help" data-test-lead-webhook-result aria-live="polite">O teste verifica a URL sem criar um lead.</small>
                     <small class="settings-help">Trate este link como uma senha. Envie-o apenas ao desenvolvedor responsável e faça a chamada pelo servidor da landing page, sem expor a URL no navegador.</small>
                     <div class="settings-subgroup">
                       <strong>Campos aceitos</strong>
@@ -536,6 +541,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <?= $leadWebhookUrl !== '' ? 'Gerar novo link' : 'Gerar link do webhook' ?>
                   </button>
                 </form>
+                <div class="settings-subgroup">
+                  <strong>Últimas tentativas do webhook</strong>
+                  <small class="settings-help">Depois de clicar em “Verificar” no RD Station, atualize esta página. Os horários abaixo estão em UTC. Este histórico mostra apenas método, formato e resultado; não guarda o link, token ou dados do lead.</small>
+                  <?php if (!$leadWebhookDiagnosticsWritable): ?>
+                    <small class="settings-help">O diretório crm/data precisa ter permissão de escrita para registrar as tentativas.</small>
+                  <?php endif; ?>
+                  <?php if ($leadWebhookAttempts === []): ?>
+                    <small class="settings-help">Nenhuma requisição chegou ao arquivo do webhook desde a publicação deste diagnóstico.</small>
+                  <?php else: ?>
+                    <div class="settings-help" style="overflow-x:auto">
+                      <table style="width:100%;text-align:left;border-spacing:10px 6px">
+                        <thead><tr><th>Horário</th><th>ID</th><th>Etapa</th><th>HTTP</th><th>Método</th><th>Formato</th><th>Resultado</th></tr></thead>
+                        <tbody>
+                          <?php foreach ($leadWebhookAttempts as $attempt): ?>
+                            <tr>
+                              <td><?= htmlspecialchars((string) ($attempt['at'] ?? ''), ENT_QUOTES, 'UTF-8') ?></td>
+                              <td><?= htmlspecialchars((string) ($attempt['request_id'] ?? ''), ENT_QUOTES, 'UTF-8') ?></td>
+                              <td><?= htmlspecialchars((string) ($attempt['phase'] ?? ''), ENT_QUOTES, 'UTF-8') ?></td>
+                              <td><?= htmlspecialchars((string) ($attempt['status'] ?? ''), ENT_QUOTES, 'UTF-8') ?></td>
+                              <td><?= htmlspecialchars((string) ($attempt['method'] ?? ''), ENT_QUOTES, 'UTF-8') ?></td>
+                              <td><?= htmlspecialchars((string) ($attempt['content_type'] ?? ''), ENT_QUOTES, 'UTF-8') ?></td>
+                              <td><?= htmlspecialchars((string) ($attempt['result'] ?? ''), ENT_QUOTES, 'UTF-8') ?></td>
+                            </tr>
+                          <?php endforeach; ?>
+                        </tbody>
+                      </table>
+                    </div>
+                  <?php endif; ?>
+                </div>
               </section>
 
               <section class="automation-card integration-card">
@@ -829,6 +863,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         window.setTimeout(() => { button.textContent = 'Copiar URL'; }, 1800);
+      });
+
+      document.querySelector('[data-test-lead-webhook]')?.addEventListener('click', async (event) => {
+        const button = event.currentTarget;
+        const url = document.querySelector('[data-lead-webhook-url]')?.value;
+        const result = document.querySelector('[data-test-lead-webhook-result]');
+        if (!url || !result) return;
+
+        button.disabled = true;
+        result.textContent = 'Enviando verificação sem dados de lead...';
+        try {
+          const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ event_type: 'WEBHOOK.CONVERTED', entity_type: 'CONTACT' }),
+            cache: 'no-store',
+          });
+          const body = await response.json();
+          result.textContent = `HTTP ${response.status} — ${body.message || body.error || (body.ok ? 'Endpoint respondeu.' : 'Resposta inesperada.')}`;
+        } catch (error) {
+          result.textContent = 'Não foi possível alcançar o endpoint pelo navegador. Confira a URL e o certificado HTTPS.';
+        } finally {
+          button.disabled = false;
+        }
       });
     </script>
   </body>

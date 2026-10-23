@@ -11,6 +11,7 @@ crm/data/.settings-encryption.key
 crm/data/*.log
 crm/data/*.lock
 crm/data/security-*.json
+crm/data/lead-webhook-diagnostics.jsonl
 
 # Arquivos do sistema operacional
 .DS_Store
