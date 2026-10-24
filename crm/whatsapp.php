@@ -261,7 +261,10 @@ function whatsapp_page_is_customer_facing_observation(string $text): bool
         return false;
     }
 
-    return preg_match('/\b(?:olá|oi|bom dia|boa tarde|boa noite|temos|vou encaminhar|gostaria|poderia|informar|atendimento|informações|desconto)\b/iu', trim($text)) === 1;
+    return preg_match(
+        '/\b(?:olá|oi|bom dia|boa tarde|boa noite|temos|vou encaminhar|gostaria|poderia|informar|atendimento|informações|desconto|venda|whats(?:app)?|loja|mm\s+design|avenida|av\.?|ponta\s+grossa|endereço|endereco|me chama|por aqui)\b/iu',
+        trim($text)
+    ) === 1;
 }
 
 function whatsapp_page_is_outgoing_history_block(string $block): bool
