@@ -363,6 +363,19 @@ if ($rdLegacyLead !== null) {
     }
 }
 
+// As conversões do próprio CRM também acionam o webhook de conversões do RD.
+// Ignoramos esse retorno para não mover o lead novamente para Novo nem criar ciclo.
+if ($isRdStationWebhook && $rdEventIdentifier !== ''
+    && strncasecmp($rdEventIdentifier, 'CRM MM Design |', strlen('CRM MM Design |')) === 0) {
+    lead_webhook_respond(200, [
+        'ok' => true,
+        'accepted' => true,
+        'created' => false,
+        'ignored' => true,
+        'message' => 'Evento originado pelo CRM; nenhuma alteração foi aplicada.',
+    ]);
+}
+
 for ($wrapperDepth = 0; $wrapperDepth < 3; $wrapperDepth++) {
     foreach (['data', 'lead', 'contact', 'fields'] as $wrapperKey) {
         $nestedPayload = $payload[$wrapperKey] ?? null;

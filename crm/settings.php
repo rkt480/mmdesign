@@ -8,12 +8,16 @@ require_once __DIR__ . '/lib/whatsapp.php';
 require_once __DIR__ . '/lib/push.php';
 require_once __DIR__ . '/lib/openai-coach.php';
 require_once __DIR__ . '/lib/lead-webhook-diagnostics.php';
+require_once __DIR__ . '/lib/rd-marketing.php';
 
 crm_require_admin();
 
 $saved = ($_GET['saved'] ?? '') === '1';
 $googleConnected = ($_GET['google_connected'] ?? '') === '1';
 $googleError = (string) ($_GET['google_error'] ?? '');
+$rdMarketingConnectedNotice = ($_GET['rd_marketing_connected'] ?? '') === '1';
+$rdMarketingRetryNotice = ($_GET['rd_marketing_retry'] ?? '') === '1';
+$rdMarketingError = (string) ($_GET['rd_marketing_error'] ?? '');
 $error = '';
 $settings = crm_read_settings();
 $openAiApiKeyConfigured = trim((string) ($settings['openai_api_key'] ?? '')) !== '';
@@ -45,6 +49,10 @@ $pilotStatusWebhookSecretConfigured = $pilotStatusSettings['webhook_secret'] !==
 $gtmConfigured = $googleTagManagerId !== '';
 $googleCalendarConfigured = crm_google_calendar_is_configured();
 $googleCalendarConnected = crm_google_calendar_is_connected();
+$rdMarketingSettings = crm_rd_marketing_settings();
+$rdMarketingConfigured = crm_rd_marketing_is_configured();
+$rdMarketingConnected = crm_rd_marketing_is_connected();
+$rdMarketingSummary = crm_rd_marketing_queue_summary();
 $https = !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off';
 $host = (string) ($_SERVER['HTTP_HOST'] ?? '');
 $scriptDir = rtrim(str_replace('\\', '/', dirname((string) ($_SERVER['SCRIPT_NAME'] ?? '/crm/settings.php'))), '/');
@@ -80,6 +88,13 @@ $googleCalendarErrorMessages = [
     'denied' => 'A conexão com o Google Agenda foi cancelada.',
     'missing_code' => 'O Google não retornou o código de autorização.',
     'token' => 'Não foi possível concluir a conexão com o Google Agenda.',
+];
+$rdMarketingErrorMessages = [
+    'missing_config' => 'Informe o Client ID e o Client Secret do aplicativo RD Station Marketing antes de conectar.',
+    'invalid_state' => 'A conexão com o RD Station expirou ou foi iniciada em outra sessão. Tente conectar novamente.',
+    'denied' => 'A conexão com o RD Station Marketing foi cancelada.',
+    'missing_code' => 'O RD Station não retornou o código de autorização.',
+    'token' => 'Não foi possível concluir a conexão com o RD Station Marketing. Confira as credenciais e a URL de callback.',
 ];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -217,6 +232,57 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
+    if ($settingsSection === 'rd_marketing') {
+        $rdAction = (string) ($_POST['rd_marketing_action'] ?? 'save');
+
+        if ($rdAction === 'disconnect') {
+            unset(
+                $settings['rd_marketing_access_token'],
+                $settings['rd_marketing_refresh_token'],
+                $settings['rd_marketing_token_expires_at'],
+                $settings['rd_marketing_connected_at']
+            );
+        } elseif ($rdAction === 'retry') {
+            if (!crm_rd_marketing_is_connected()) {
+                $error = 'Conecte o RD Station Marketing antes de tentar reenviar as atividades pendentes.';
+            } else {
+                try {
+                    crm_rd_marketing_retry_pending(5);
+                    header('Location: settings.php?rd_marketing_retry=1');
+                    exit;
+                } catch (Throwable $retryError) {
+                    $error = 'Não foi possível reenviar as atividades pendentes: ' . $retryError->getMessage();
+                }
+            }
+        } else {
+            $clientId = trim((string) ($_POST['rd_marketing_client_id'] ?? ''));
+            $clientSecretInput = trim((string) ($_POST['rd_marketing_client_secret'] ?? ''));
+            $previousClientId = trim((string) ($settings['rd_marketing_client_id'] ?? ''));
+            $previousClientSecret = trim((string) ($settings['rd_marketing_client_secret'] ?? ''));
+            $clientSecret = $clientSecretInput !== '' ? $clientSecretInput : $previousClientSecret;
+
+            if ($clientId === '' || $clientSecret === '') {
+                $error = 'Informe o Client ID e o Client Secret do aplicativo RD Station Marketing.';
+            } elseif (strlen($clientId) > 255 || strlen($clientSecret) > 500) {
+                $error = 'As credenciais informadas excedem o tamanho permitido.';
+            } else {
+                $credentialsChanged = $previousClientId !== $clientId || ($clientSecretInput !== '' && $previousClientSecret !== $clientSecretInput);
+                $settings['rd_marketing_client_id'] = $clientId;
+                if ($clientSecretInput !== '') {
+                    $settings['rd_marketing_client_secret'] = $clientSecretInput;
+                }
+                if ($credentialsChanged) {
+                    unset(
+                        $settings['rd_marketing_access_token'],
+                        $settings['rd_marketing_refresh_token'],
+                        $settings['rd_marketing_token_expires_at'],
+                        $settings['rd_marketing_connected_at']
+                    );
+                }
+            }
+        }
+    }
+
     if ($settingsSection === 'openai') {
         $openAiApiKey = trim((string) ($_POST['openai_api_key'] ?? ''));
 
@@ -340,12 +406,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           <div class="alert success">Google Agenda conectado.</div>
         <?php endif; ?>
 
+        <?php if ($rdMarketingConnectedNotice): ?>
+          <div class="alert success">RD Station Marketing conectado. As próximas mudanças de etapa serão sincronizadas.</div>
+        <?php endif; ?>
+
+        <?php if ($rdMarketingRetryNotice): ?>
+          <div class="alert success">A fila de atividades pendentes foi processada. Confira o resultado abaixo.</div>
+        <?php endif; ?>
+
         <?php if ($error !== ''): ?>
           <div class="alert"><?= htmlspecialchars($error) ?></div>
         <?php endif; ?>
 
         <?php if ($googleError !== ''): ?>
           <div class="alert"><?= htmlspecialchars($googleCalendarErrorMessages[$googleError] ?? 'Erro ao conectar o Google Agenda.') ?></div>
+        <?php endif; ?>
+
+        <?php if ($rdMarketingError !== ''): ?>
+          <div class="alert"><?= htmlspecialchars($rdMarketingErrorMessages[$rdMarketingError] ?? 'Erro ao conectar o RD Station Marketing.') ?></div>
         <?php endif; ?>
 
         <main class="dashboard settings-layout">
@@ -563,6 +641,90 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                               <td><?= htmlspecialchars((string) ($attempt['method'] ?? ''), ENT_QUOTES, 'UTF-8') ?></td>
                               <td><?= htmlspecialchars((string) ($attempt['content_type'] ?? ''), ENT_QUOTES, 'UTF-8') ?></td>
                               <td><?= htmlspecialchars((string) ($attempt['result'] ?? ''), ENT_QUOTES, 'UTF-8') ?></td>
+                            </tr>
+                          <?php endforeach; ?>
+                        </tbody>
+                      </table>
+                    </div>
+                  <?php endif; ?>
+                </div>
+              </section>
+
+              <section class="automation-card integration-card">
+                <header class="integration-card-header">
+                  <span class="integration-icon" aria-hidden="true">↔</span>
+                  <div>
+                    <p class="integration-kicker">Atividades comerciais</p>
+                    <h2>RD Station Marketing</h2>
+                  </div>
+                  <span class="integration-status <?= $rdMarketingConnected ? 'is-active' : '' ?>">
+                    <?= $rdMarketingConnected ? 'Conectado' : ($rdMarketingConfigured ? 'Pronto para conectar' : 'Inativo') ?>
+                  </span>
+                </header>
+                <p class="integration-description">Registra mudanças de etapa na atividade do contato no RD Marketing. Ao fechar uma venda ou marcar uma perda, envia também o evento comercial correspondente. A sincronização usa o mesmo contato recebido pelo webhook do RD.</p>
+
+                <form class="flow-form" method="post">
+                  <input type="hidden" name="_csrf_token" value="<?= htmlspecialchars(crm_csrf_token()) ?>" />
+                  <input type="hidden" name="settings_section" value="rd_marketing" />
+                  <input type="hidden" name="rd_marketing_action" value="save" />
+                  <label>
+                    Client ID do aplicativo RD Marketing
+                    <input type="text" name="rd_marketing_client_id" value="<?= htmlspecialchars($rdMarketingSettings['client_id']) ?>" placeholder="Client ID do app criado na RD Station App Store" autocomplete="off" />
+                  </label>
+                  <label>
+                    Client Secret
+                    <input type="password" name="rd_marketing_client_secret" value="" placeholder="<?= $rdMarketingSettings['client_secret'] !== '' ? 'Segredo salvo. Preencha só para trocar.' : 'Cole o Client Secret do aplicativo' ?>" autocomplete="new-password" />
+                  </label>
+                  <label>
+                    URL de callback para cadastrar no aplicativo RD
+                    <input type="url" value="<?= htmlspecialchars($rdMarketingSettings['redirect_uri']) ?>" readonly />
+                  </label>
+                  <small class="settings-help">Crie um aplicativo privado para o produto RD Station Marketing. Cadastre a URL de callback acima exatamente como aparece e informe aqui o Client ID e o Client Secret. O CRM guarda as credenciais e os tokens criptografados.</small>
+                  <button class="integration-save" type="submit">
+                    <span aria-hidden="true">✓</span>
+                    Salvar credenciais
+                  </button>
+                </form>
+
+                <div class="integration-actions">
+                  <?php if ($rdMarketingConfigured): ?>
+                    <a class="integration-connect" href="rd-marketing-connect.php"><?= $rdMarketingConnected ? 'Reconectar RD Marketing' : 'Conectar RD Marketing' ?></a>
+                  <?php endif; ?>
+                  <?php if ($rdMarketingConnected): ?>
+                    <form method="post">
+                      <input type="hidden" name="_csrf_token" value="<?= htmlspecialchars(crm_csrf_token()) ?>" />
+                      <input type="hidden" name="settings_section" value="rd_marketing" />
+                      <input type="hidden" name="rd_marketing_action" value="disconnect" />
+                      <button class="secondary-action" type="submit">Desconectar</button>
+                    </form>
+                  <?php endif; ?>
+                  <?php if ($rdMarketingConnected && ($rdMarketingSummary['counts']['pending'] > 0 || $rdMarketingSummary['counts']['processing'] > 0)): ?>
+                    <form method="post">
+                      <input type="hidden" name="_csrf_token" value="<?= htmlspecialchars(crm_csrf_token()) ?>" />
+                      <input type="hidden" name="settings_section" value="rd_marketing" />
+                      <input type="hidden" name="rd_marketing_action" value="retry" />
+                      <button class="secondary-action" type="submit">Reenviar pendentes</button>
+                    </form>
+                  <?php endif; ?>
+                </div>
+
+                <div class="settings-subgroup">
+                  <strong>Fila de sincronização</strong>
+                  <small class="settings-help"><?= (int) $rdMarketingSummary['counts']['sent'] ?> atividade(s) enviada(s) · <?= (int) $rdMarketingSummary['counts']['pending'] ?> pendente(s) · <?= (int) $rdMarketingSummary['counts']['processing'] ?> em processamento</small>
+                  <?php if ($rdMarketingSummary['recent'] === []): ?>
+                    <small class="settings-help">As mudanças de etapa de leads recebidos pelo RD aparecerão aqui após a próxima movimentação no CRM.</small>
+                  <?php else: ?>
+                    <div class="settings-help" style="overflow-x:auto">
+                      <table style="width:100%;text-align:left;border-spacing:10px 6px">
+                        <thead><tr><th>Horário</th><th>Evento</th><th>Estado</th><th>Detalhe</th></tr></thead>
+                        <tbody>
+                          <?php foreach ($rdMarketingSummary['recent'] as $event): ?>
+                            <?php $eventStatus = (string) ($event['status'] ?? ''); ?>
+                            <tr>
+                              <td><?= htmlspecialchars((string) ($event['created_at'] ?? ''), ENT_QUOTES, 'UTF-8') ?></td>
+                              <td><?= htmlspecialchars((string) ($event['event_label'] ?? $event['event_type'] ?? ''), ENT_QUOTES, 'UTF-8') ?></td>
+                              <td><?= htmlspecialchars(['sent' => 'Enviado', 'pending' => 'Pendente', 'processing' => 'Processando'][$eventStatus] ?? $eventStatus, ENT_QUOTES, 'UTF-8') ?></td>
+                              <td><?= htmlspecialchars((string) ($event['last_error'] ?? (($eventStatus === 'pending' && (int) ($event['attempts'] ?? 0) === 0) ? 'Aguardando conexão ou próximo reenvio.' : '')), ENT_QUOTES, 'UTF-8') ?></td>
                             </tr>
                           <?php endforeach; ?>
                         </tbody>

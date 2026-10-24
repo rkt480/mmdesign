@@ -77,7 +77,7 @@ function crm_db_reconnect(): PDO
 
 function crm_schema_version(): string
 {
-    return '20261023.2';
+    return '20261024.1';
 }
 
 function crm_schema_version_is_current(PDO $pdo): bool
@@ -342,6 +342,26 @@ function crm_ensure_crm_schema(PDO $pdo): void
     if (!crm_index_exists($pdo, 'rd_webhook_conversions', 'idx_rd_webhook_conversions_contact')) {
         $pdo->exec('ALTER TABLE rd_webhook_conversions ADD INDEX idx_rd_webhook_conversions_contact (contact_key, created_at)');
     }
+
+    $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS rd_marketing_sync_queue (
+            id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            event_key CHAR(64) NOT NULL UNIQUE,
+            lead_id VARCHAR(32) NOT NULL,
+            event_type VARCHAR(40) NOT NULL,
+            event_label VARCHAR(255) NOT NULL,
+            event_payload LONGTEXT NOT NULL,
+            status VARCHAR(20) NOT NULL DEFAULT "pending",
+            attempts INT UNSIGNED NOT NULL DEFAULT 0,
+            next_attempt_at DATETIME NOT NULL,
+            last_error TEXT NULL,
+            created_at DATETIME NOT NULL,
+            updated_at DATETIME NOT NULL,
+            sent_at DATETIME NULL,
+            INDEX idx_rd_marketing_queue_status (status, next_attempt_at, id),
+            INDEX idx_rd_marketing_queue_lead (lead_id, id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
+    );
 
     $pdo->exec(
         'CREATE TABLE IF NOT EXISTS crm_push_subscriptions (
@@ -3144,9 +3164,30 @@ function crm_update_lead(string $id, array $updates): bool
                 ['fields' => $updatedFields]
             );
         }
+
+        if ($previousStatus !== $status) {
+            crm_sync_lead_stage_to_rd_marketing($id, $previousStatus, $status);
+        }
     }
 
     return $changed;
+}
+
+function crm_sync_lead_stage_to_rd_marketing(string $leadId, string $previousStatus, string $nextStatus): void
+{
+    if ($previousStatus === $nextStatus) {
+        return;
+    }
+
+    try {
+        require_once __DIR__ . '/rd-marketing.php';
+        $lead = crm_find_lead($leadId, false);
+        if (is_array($lead)) {
+            crm_rd_marketing_sync_stage_change($lead, $previousStatus, $nextStatus);
+        }
+    } catch (Throwable $error) {
+        error_log('[CRM RD Marketing] Falha ao sincronizar mudança de etapa: ' . substr($error->getMessage(), 0, 300));
+    }
 }
 
 function crm_move_lead(string $id, string $status, array $orders): bool
@@ -3285,6 +3326,7 @@ function crm_move_lead(string $id, string $status, array $orders): bool
         }
 
         $pdo->commit();
+        crm_sync_lead_stage_to_rd_marketing($id, $previousStatus, $status);
         return true;
     } catch (Throwable $error) {
         if ($pdo->inTransaction()) {
@@ -3626,7 +3668,11 @@ function crm_assign_followup_flow(string $leadId, int $flowId, bool $automatic =
         }
 
         $db->commit();
-        return $update->rowCount() > 0;
+        $updated = $update->rowCount() > 0;
+        if ($updated) {
+            crm_sync_lead_stage_to_rd_marketing($leadId, (string) ($lead['status'] ?? ''), 'followup');
+        }
+        return $updated;
     } catch (Throwable $error) {
         $db->rollBack();
         throw $error;
@@ -3762,10 +3808,14 @@ function crm_stop_followup_after_incoming_reply(string $leadId): array
             );
         }
 
+        $statusChanged = $updateLead->rowCount() > 0;
         $db->commit();
+        if ($statusChanged) {
+            crm_sync_lead_stage_to_rd_marketing($leadId, (string) ($lead['status'] ?? ''), 'contatado');
+        }
 
         return [
-            'stopped' => $updateLead->rowCount() > 0,
+            'stopped' => $statusChanged,
             'cancelled' => $cancelQueue->rowCount(),
         ];
     } catch (Throwable $error) {

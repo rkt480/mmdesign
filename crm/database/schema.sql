@@ -171,6 +171,24 @@ CREATE TABLE IF NOT EXISTS publi_ai_crm.rd_webhook_conversions (
   INDEX idx_rd_webhook_conversions_lead (lead_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS publi_ai_crm.rd_marketing_sync_queue (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  event_key CHAR(64) NOT NULL UNIQUE,
+  lead_id VARCHAR(32) NOT NULL,
+  event_type VARCHAR(40) NOT NULL,
+  event_label VARCHAR(255) NOT NULL,
+  event_payload LONGTEXT NOT NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'pending',
+  attempts INT UNSIGNED NOT NULL DEFAULT 0,
+  next_attempt_at DATETIME NOT NULL,
+  last_error TEXT NULL,
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL,
+  sent_at DATETIME NULL,
+  INDEX idx_rd_marketing_queue_status (status, next_attempt_at, id),
+  INDEX idx_rd_marketing_queue_lead (lead_id, id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS publi_ai_crm.crm_push_subscriptions (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   user_id INT NOT NULL,
