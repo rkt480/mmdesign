@@ -336,6 +336,7 @@ $hasLeadSubmissionData = count(array_filter($leadSubmittedFields, static fn(stri
               <label>
                 Etiquetas do contato
                 <input type="text" name="tags" value="<?= htmlspecialchars(implode(', ', $leadTags)) ?>" placeholder="proposta, retorno, indicação" data-tags-input />
+                <span class="tag-instructions">Para adicionar novas etiquetas, separe-as por vírgula e clique em Salvar detalhes.</span>
                 <span class="tag-preview" data-tags-preview hidden></span>
               </label>
               <label>

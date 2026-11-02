@@ -990,6 +990,13 @@ dd {
   border-radius: 16px;
 }
 
+.tag-instructions {
+  color: #64748b;
+  font-size: 0.82rem;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
 .tag-preview[hidden] {
   display: none;
 }
