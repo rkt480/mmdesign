@@ -351,7 +351,7 @@ function crm_openai_coach_parse_br_datetime(string $value): string
     return $date instanceof DateTime ? $date->format('Y-m-d H:i:s') : date('Y-m-d H:i:s');
 }
 
-function crm_openai_coach_build_context(array $lead, array $messages): array
+function crm_openai_coach_build_context(array $messages): array
 {
     $messages = array_values(array_filter($messages, static fn(array $message): bool => in_array($message['direction'] ?? '', ['cliente', 'vendedor'], true)));
     $messages = count($messages) > 120 ? array_slice($messages, -120) : $messages;
@@ -376,18 +376,7 @@ function crm_openai_coach_build_context(array $lead, array $messages): array
         $totalLength += strlen($line);
     }
 
-    $leadContext = [
-        'nome' => trim((string) ($lead['name'] ?? '')),
-        'empresa' => trim((string) ($lead['company'] ?? '')),
-        'segmento' => trim((string) ($lead['segment'] ?? '')),
-        'produto_ou_interesse' => trim((string) ($lead['advertises'] ?? '')),
-        'status_no_funil' => trim((string) ($lead['status'] ?? '')),
-        'valor_da_proposta' => $lead['proposal_value'] ?? null,
-        'observacoes_comerciais' => mb_substr(trim((string) ($lead['commercial_notes'] ?? '')), 0, 4000),
-    ];
-
     return [
-        'lead' => $leadContext,
         'conversation' => implode("\n", $lines),
         'message_count' => count($lines),
     ];
@@ -438,7 +427,7 @@ function crm_openai_coach_output_text(array $response): string
 
 function crm_openai_coach_analyze(array $lead, array $messages, int $sellerUserId): array
 {
-    $context = crm_openai_coach_build_context($lead, $messages);
+    $context = crm_openai_coach_build_context($messages);
 
     if ((int) ($context['message_count'] ?? 0) === 0) {
         throw new RuntimeException('Este lead ainda não possui mensagens de texto para analisar.');
@@ -456,12 +445,17 @@ function crm_openai_coach_analyze(array $lead, array $messages, int $sellerUserI
         ];
     }
 
-    $inputText = "DADOS DO LEAD:\n" . json_encode($context['lead'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
-        . "\n\nCONVERSA:\n" . (string) $context['conversation']
+    $inputText = "CONVERSA:\n" . (string) $context['conversation']
         . "\n\nAnalise o vendedor e o cliente como um coach. Use os documentos disponíveis quando forem pertinentes. Se não houver informação suficiente, diga isso explicitamente.";
     $payload = [
         'model' => crm_openai_coach_model(),
-        'instructions' => crm_openai_coach_prompt(),
+        'instructions' => "REGRAS DE FIDELIDADE À CONVERSA:\n"
+            . "- Use somente as mensagens da seção CONVERSA como fonte de fatos sobre cliente, vendedor, necessidade, produto, preço, prazo, orçamento, autoridade e intenção de compra.\n"
+            . "- Os documentos consultados servem apenas como referência metodológica; não fornecem fatos sobre este cliente ou esta negociação.\n"
+            . "- Não use, infira nem complete a conversa com dados cadastrais, observações internas ou histórico externo do CRM.\n"
+            . "- Em missed_questions, sugira apenas perguntas ligadas a um assunto explicitamente presente na conversa e úteis para o próximo contato. Não invente produto, necessidade ou cenário. Se a conversa não der base para sugestões específicas, retorne uma lista vazia.\n"
+            . "- Trate mensagens automáticas como mensagens do sistema, não como fala do vendedor. Se ainda não houver resposta humana do vendedor, informe essa limitação e avalie somente o estágio observável.\n\n"
+            . crm_openai_coach_prompt(),
         'input' => [[
             'role' => 'user',
             'content' => [['type' => 'input_text', 'text' => $inputText]],
