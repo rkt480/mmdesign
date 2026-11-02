@@ -1455,7 +1455,7 @@ if ($isWaConversationFragment) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
     <meta name="csrf-token" content="<?= htmlspecialchars($csrfToken) ?>" />
     <title>WhatsApp | MM Design</title>
-    <link rel="stylesheet" href="./assets/crm.css?v=20261102-wa-search" />
+    <link rel="stylesheet" href="./assets/crm.css?v=20261102-wa-search-mobile" />
   </head>
   <body class="whatsapp-page whatsapp-crm-page" data-wa-initial-view="<?= is_array($activeLead) ? 'thread' : 'inbox' ?>" data-wa-mobile-view="<?= is_array($activeLead) ? 'thread' : 'inbox' ?>" data-wa-active-lead-id="<?= htmlspecialchars((string) ($activeLead['id'] ?? '')) ?>" data-wa-incoming-signature="<?= htmlspecialchars(is_array($activeLead) ? crm_whatsapp_incoming_signature($activeLead) : '') ?>" data-wa-lead-feed-version="<?= htmlspecialchars($leadFeedVersion) ?>">
     <main class="wa-web-shell" aria-label="Atendimento WhatsApp do CRM">
@@ -2193,7 +2193,7 @@ if ($isWaConversationFragment) {
 
         const messageFocused = document.activeElement?.matches("[data-wa-message]");
         const templateFieldFocused = document.activeElement?.matches("[data-wa-template-fields] input");
-        const keyboardOpen = messageFocused || templateFieldFocused || window.innerHeight - viewport.height > 120;
+        const keyboardOpen = messageFocused || templateFieldFocused;
         document.body.classList.toggle("wa-keyboard-open", keyboardOpen);
 
         if (keyboardOpen) {

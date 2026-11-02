@@ -6699,6 +6699,10 @@ textarea:focus {
     height: 100%;
   }
 
+  .whatsapp-crm-page .wa-search input {
+    font-size: 16px;
+  }
+
   .whatsapp-crm-page .wa-chat-list {
     min-height: 0;
   }
