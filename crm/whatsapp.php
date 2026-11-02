@@ -1567,7 +1567,8 @@ if ($isWaConversationFragment) {
               data-wa-lead-id="<?= htmlspecialchars($leadId) ?>"
               data-wa-last-key="<?= htmlspecialchars(hash('sha256', (string) ($conversation['last_message_key'] ?? ''))) ?>"
               data-wa-last-direction="<?= htmlspecialchars((string) ($conversation['last_direction'] ?? '')) ?>"
-              data-search="<?= htmlspecialchars(strtolower($leadName . ' ' . (string) ($lead['whatsapp'] ?? '') . ' ' . (string) $conversation['preview'])) ?>"
+              data-search="<?= htmlspecialchars($leadName . ' ' . (string) $conversation['preview']) ?>"
+              data-phone="<?= htmlspecialchars((string) ($lead['whatsapp'] ?? '')) ?>"
             >
               <?= whatsapp_page_avatar_markup($lead) ?>
               <span class="wa-chat-summary">
@@ -2248,10 +2249,20 @@ if ($isWaConversationFragment) {
           return;
         }
 
-        const query = searchInput.value.trim().toLocaleLowerCase("pt-BR");
+        const rawQuery = searchInput.value.trim();
+        const normalizeText = (value) => String(value || "")
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .toLocaleLowerCase("pt-BR");
+        const query = normalizeText(rawQuery);
+        const queryDigits = rawQuery.replace(/\D/g, "");
 
         document.querySelectorAll("[data-wa-chat]").forEach((chat) => {
-          chat.hidden = query !== "" && !chat.dataset.search.includes(query);
+          const searchableText = normalizeText(chat.dataset.search || chat.textContent);
+          const phoneDigits = String(chat.dataset.phone || "").replace(/\D/g, "");
+          const matchesText = query !== "" && searchableText.includes(query);
+          const matchesPhone = queryDigits !== "" && phoneDigits.includes(queryDigits);
+          chat.hidden = rawQuery !== "" && !matchesText && !matchesPhone;
         });
       };
 
