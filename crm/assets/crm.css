@@ -3583,6 +3583,10 @@ textarea:focus {
   transition: background 0.18s ease, transform 0.18s ease;
 }
 
+.wa-chat-item[hidden] {
+  display: none !important;
+}
+
 .wa-chat-item:hover,
 .wa-chat-item.active {
   background: rgba(255, 255, 255, 0.9);
