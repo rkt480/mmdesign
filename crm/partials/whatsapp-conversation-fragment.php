@@ -201,7 +201,7 @@ crm_require_login();
             <dd><?= htmlspecialchars(trim((string) ($activeLead['lost_reason'] ?? '')) ?: 'Não informado') ?></dd>
           </div>
           <div>
-            <dt>Tags</dt>
+            <dt>Etiquetas</dt>
             <dd><?= htmlspecialchars(implode(', ', $activeLeadTags) ?: 'Nenhuma') ?></dd>
           </div>
           <div class="field-wide">
@@ -275,7 +275,7 @@ crm_require_login();
     </section>
 
     <section class="wa-lead-block">
-      <h3>Tags e observações do vendedor</h3>
+      <h3>Etiquetas e observações do vendedor</h3>
       <form class="wa-side-form" method="post" action="update.php">
         <input type="hidden" name="_csrf_token" value="<?= htmlspecialchars($csrfToken) ?>" />
         <input type="hidden" name="id" value="<?= htmlspecialchars((string) ($activeLead['id'] ?? '')) ?>" />

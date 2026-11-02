@@ -138,7 +138,7 @@ $hasLeadSubmissionData = count(array_filter($leadSubmittedFields, static fn(stri
               <dd><?= htmlspecialchars(date('d/m/Y H:i', strtotime((string) ($lead['created_at'] ?? 'now')))) ?></dd>
             </div>
             <div class="field-wide">
-              <dt>Tags</dt>
+              <dt>Etiquetas</dt>
               <dd><?= htmlspecialchars(implode(', ', $visibleLeadTags) ?: 'Nenhuma') ?></dd>
             </div>
           </dl>
@@ -270,7 +270,7 @@ $hasLeadSubmissionData = count(array_filter($leadSubmittedFields, static fn(stri
               <dd><?= nl2br(htmlspecialchars(trim((string) ($lead['commercial_notes'] ?? '')) ?: 'Nenhuma observação.')) ?></dd>
             </div>
             <div class="field-wide">
-              <dt>Tags</dt>
+              <dt>Etiquetas</dt>
               <dd><?= htmlspecialchars(implode(', ', $visibleLeadTags) ?: 'Nenhuma') ?></dd>
             </div>
             <?php if (!empty($lead['whatsapp_error'])): ?>
@@ -334,7 +334,7 @@ $hasLeadSubmissionData = count(array_filter($leadSubmittedFields, static fn(stri
               <input type="hidden" name="id" value="<?= htmlspecialchars((string) ($lead['id'] ?? '')) ?>" />
               <input type="hidden" name="status" value="<?= htmlspecialchars($status) ?>" />
               <label>
-                Tags do contato
+                Etiquetas do contato
                 <input type="text" name="tags" value="<?= htmlspecialchars(implode(', ', $leadTags)) ?>" placeholder="proposta, retorno, indicação" data-tags-input />
                 <span class="tag-preview" data-tags-preview hidden></span>
               </label>
