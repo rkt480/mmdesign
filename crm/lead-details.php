@@ -9,10 +9,43 @@ crm_require_login();
 $leadTags = $leadTags ?? crm_decode_lead_tags($lead);
 $visibleLeadTags = $visibleLeadTags ?? lead_visible_tags($lead, $leadTags);
 $hasVisibleEmail = false;
+$normalizeLeadAnswerKey = static function (string $key): string {
+  if (function_exists('iconv')) {
+    $transliterated = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $key);
+    if ($transliterated !== false) {
+      $key = $transliterated;
+    }
+  }
+
+  return strtolower((string) preg_replace('/[^a-zA-Z0-9]+/', '', $key));
+};
+$hiddenRdAnswerKeys = [
+  'rdorigin',
+  'rdeventidentifier',
+  'conversionurl',
+  'conversiondomain',
+  'conversionidentifier',
+  'origemrdstation',
+  'eventodeconversaordstation',
+];
+$isHiddenRdAnswer = static function (array $answer) use ($normalizeLeadAnswerKey, $hiddenRdAnswerKeys): bool {
+  foreach (['question_id', 'question'] as $key) {
+    $normalizedKey = $normalizeLeadAnswerKey((string) ($answer[$key] ?? ''));
+    if (in_array($normalizedKey, $hiddenRdAnswerKeys, true)) {
+      return true;
+    }
+  }
+
+  return false;
+};
 $leadFormAnswers = array_values(array_filter(
   crm_decode_lead_form_answers($lead),
-  static function (mixed $answer) use (&$hasVisibleEmail): bool {
+  static function (mixed $answer) use (&$hasVisibleEmail, $isHiddenRdAnswer): bool {
     if (!is_array($answer)) {
+      return false;
+    }
+
+    if ($isHiddenRdAnswer($answer)) {
       return false;
     }
 
