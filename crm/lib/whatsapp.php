@@ -450,7 +450,7 @@ function crm_whatsapp_send_rd_lead_template(array $lead, int $templateId): array
         $providerVariables,
         $lead
     );
-    $note = 'Template "' . $templateName . '" enviado automaticamente para lead do RD via ' . $providerLabel
+    $note = 'Template "' . $templateName . '" enviado via ' . $providerLabel
         . ' em ' . date('d/m/Y H:i:s') . ":\n" . $renderedBody;
     $sentMessageId = crm_whatsapp_response_message_id($result);
     if ($sentMessageId !== '') {

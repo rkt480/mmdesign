@@ -271,7 +271,7 @@ function whatsapp_page_is_outgoing_history_block(string $block): bool
 {
     return preg_match('/^(?:Mídia|Mensagem) enviada (?:via|pelo) /iu', $block) === 1
         || preg_match('/^Resposta automática fora do horário enviada via /iu', $block) === 1
-        || preg_match('/^Template ".+" enviado via /iu', $block) === 1
+        || preg_match('/^Template ".+" enviado(?: automaticamente para lead do RD)? via /iu', $block) === 1
         || (preg_match('/^Observação do CRM em /iu', $block) === 1
             && preg_match('/CRM message ID:/iu', $block) === 1);
 }
@@ -681,7 +681,7 @@ function whatsapp_page_is_technical_delivery_note(string $text): bool
  */
 function whatsapp_page_note_blocks(string $notes): array
 {
-    $recordStart = '(?:Resposta automática fora do horário enviada via|Observação do CRM em|Mensagem recebida pelo provedor anterior|Mensagem recebida pela Meta Cloud API|Mensagem recebida pela Pilot Status|Mídia recebida pela Pilot Status|Mídia enviada (?:via|pelo)|Mensagem enviada (?:via|pelo)|Template .+ enviado via|Falha ao enviar via|Pilot Status evento:)';
+    $recordStart = '(?:Resposta automática fora do horário enviada via|Observação do CRM em|Mensagem recebida pelo provedor anterior|Mensagem recebida pela Meta Cloud API|Mensagem recebida pela Pilot Status|Mídia recebida pela Pilot Status|Mídia enviada (?:via|pelo)|Mensagem enviada (?:via|pelo)|Template .+ enviado(?: automaticamente para lead do RD)? via|Falha ao enviar via|Pilot Status evento:)';
     $blocks = [];
 
     // A resposta fora do horário pode conter parágrafos separados por linhas
@@ -1022,7 +1022,7 @@ function whatsapp_page_messages_for_lead(array $lead): array
                 continue;
             }
 
-            if (preg_match('/^Template "([^"]+)" enviado via (.+) em ([0-9]{2}\/\d{2}\/\d{4} [0-9]{2}:[0-9]{2}(?::[0-9]{2})?):\R(.+)$/su', $block, $match) === 1) {
+            if (preg_match('/^Template "([^"]+)" enviado(?: automaticamente para lead do RD)? via (.+) em ([0-9]{2}\/\d{2}\/\d{4} [0-9]{2}:[0-9]{2}(?::[0-9]{2})?):\R(.+)$/su', $block, $match) === 1) {
                 $templateText = whatsapp_page_clean_sent_message_text(trim((string) $match[4]));
                 $messages[] = [
                     'direction' => 'outgoing',

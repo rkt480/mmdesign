@@ -80,7 +80,7 @@ function crm_whatsapp_last_template_sent_at(array $lead): ?int
 {
     $notes = (string) ($lead['notes'] ?? '');
     preg_match_all(
-        '/^Template "[^"]+" enviado via .* em (\d{2}\/\d{2}\/\d{4} \d{2}:\d{2}):/mu',
+        '/^Template "[^"]+" enviado(?: automaticamente para lead do RD)? via .* em (\d{2}\/\d{2}\/\d{4} \d{2}:\d{2}):/mu',
         $notes,
         $matches
     );
