@@ -355,5 +355,11 @@ function crm_prepare_form_submission(array $form, array $payload): array
 function crm_decode_lead_form_answers(array $lead): array
 {
     $decoded = json_decode((string) ($lead['form_answers'] ?? '[]'), true);
-    return is_array($decoded) ? $decoded : [];
+    if (!is_array($decoded)) {
+        return [];
+    }
+
+    return function_exists('crm_merge_lead_form_answers')
+        ? crm_merge_lead_form_answers([], $decoded)
+        : $decoded;
 }

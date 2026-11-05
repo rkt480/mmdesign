@@ -991,6 +991,92 @@ function crm_encode_tags(string $tags): string
     return json_encode(crm_parse_tags($tags), JSON_UNESCAPED_UNICODE) ?: '[]';
 }
 
+function crm_normalize_lead_answer_text(string $value): string
+{
+    // O RD usa Ω como separador em algumas respostas de múltipla seleção.
+    $value = str_replace(['Ω', 'ω'], ', ', $value);
+    $value = preg_replace('/\s*,\s*/u', ', ', $value) ?? $value;
+    $value = preg_replace('/(?:,\s*){2,}/u', ', ', $value) ?? $value;
+
+    return trim($value, " ,\t\n\r\0\x0B");
+}
+
+function crm_lead_answer_identities(array $answer): array
+{
+    $normalize = static function (mixed $value): string {
+        if (!is_scalar($value)) {
+            return '';
+        }
+
+        $value = trim((string) $value);
+        if (function_exists('iconv')) {
+            $ascii = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $value);
+            if (is_string($ascii)) {
+                $value = $ascii;
+            }
+        }
+
+        return strtolower((string) preg_replace('/[^a-zA-Z0-9]+/', '', $value));
+    };
+
+    $question = $normalize($answer['question'] ?? $answer['label'] ?? '');
+    $questionId = $normalize($answer['question_id'] ?? $answer['id'] ?? '');
+    $identities = [];
+
+    if ($question !== '') {
+        $identities[] = 'question:' . $question;
+    }
+    if ($questionId !== '' && !($question !== '' && preg_match('/^answer[0-9]+$/', $questionId))) {
+        $identities[] = 'id:' . $questionId;
+    }
+
+    return array_values(array_unique($identities));
+}
+
+function crm_merge_lead_form_answers(array $existingAnswers, array $incomingAnswers): array
+{
+    $merged = [];
+
+    foreach (array_merge($existingAnswers, $incomingAnswers) as $answer) {
+        if (!is_array($answer)) {
+            continue;
+        }
+
+        $answerText = $answer['answer'] ?? '';
+        $answerText = is_scalar($answerText) ? trim((string) $answerText) : '';
+        if ($answerText === '') {
+            $fallbackText = $answer['value'] ?? '';
+            $answerText = is_scalar($fallbackText) ? trim((string) $fallbackText) : '';
+        }
+        $answerText = crm_normalize_lead_answer_text($answerText);
+        $answer['answer'] = $answerText;
+        $answer['value'] = $answerText;
+
+        $identities = crm_lead_answer_identities($answer);
+        $matchingIndexes = [];
+        if ($identities !== []) {
+            foreach ($merged as $index => $storedAnswer) {
+                if (array_intersect($identities, crm_lead_answer_identities($storedAnswer)) !== []) {
+                    $matchingIndexes[] = $index;
+                }
+            }
+        }
+
+        if ($matchingIndexes === []) {
+            $merged[] = $answer;
+            continue;
+        }
+
+        $targetIndex = $matchingIndexes[0];
+        $merged[$targetIndex] = array_merge($merged[$targetIndex], $answer);
+        foreach (array_reverse(array_slice($matchingIndexes, 1)) as $duplicateIndex) {
+            array_splice($merged, $duplicateIndex, 1);
+        }
+    }
+
+    return array_values($merged);
+}
+
 function crm_is_technical_lead_answer(string $key, string $value = ''): bool
 {
     $normalizedKey = strtolower((string) preg_replace('/[^a-zA-Z0-9]+/', '', $key));
@@ -2305,7 +2391,13 @@ function crm_create_lead(array $payload): array
         'referrer' => trim((string) ($payload['referrer'] ?? '')),
         'landing_path' => trim((string) ($payload['landing_path'] ?? '')),
         'form_id' => trim((string) ($payload['form_id'] ?? '')) ?: null,
-        'form_answers' => json_encode($payload['form_answers'] ?? [], JSON_UNESCAPED_UNICODE) ?: '[]',
+        'form_answers' => json_encode(
+            crm_merge_lead_form_answers(
+                [],
+                is_array($payload['form_answers'] ?? null) ? $payload['form_answers'] : []
+            ),
+            JSON_UNESCAPED_UNICODE
+        ) ?: '[]',
         'lead_score' => isset($payload['lead_score']) ? max(0, min(100, (int) $payload['lead_score'])) : null,
         'lead_temperature' => trim((string) ($payload['lead_temperature'] ?? '')) ?: null,
         'score_reasons' => json_encode($payload['score_reasons'] ?? [], JSON_UNESCAPED_UNICODE) ?: '[]',
@@ -2438,14 +2530,14 @@ function crm_reactivate_lead_from_webhook(array $lead, array $payload, string $s
     $page = trim((string) ($payload['page'] ?? ''));
 
     if ($newAnswers !== []) {
-        $storedAnswers[] = [
+        array_unshift($newAnswers, [
             'question_id' => 'webhook_reentry',
             'question' => 'Nova inscrição (' . $sourceLabel . ')',
             'value' => date('d/m/Y H:i') . ($page !== '' ? ' · ' . $page : ''),
             'answer' => date('d/m/Y H:i') . ($page !== '' ? ' · ' . $page : ''),
-        ];
-        array_push($storedAnswers, ...$newAnswers);
+        ]);
     }
+    $storedAnswers = crm_merge_lead_form_answers($storedAnswers, $newAnswers);
 
     $fields = [
         'id' => $leadId,
