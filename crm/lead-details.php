@@ -25,6 +25,7 @@ $hiddenRdAnswerKeys = [
   'conversionurl',
   'conversiondomain',
   'conversionidentifier',
+  'identifier',
   'origemrdstation',
   'eventodeconversaordstation',
 ];
