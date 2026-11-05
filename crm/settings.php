@@ -53,6 +53,10 @@ $rdMarketingSettings = crm_rd_marketing_settings();
 $rdMarketingConfigured = crm_rd_marketing_is_configured();
 $rdMarketingConnected = crm_rd_marketing_is_connected();
 $rdMarketingSummary = crm_rd_marketing_queue_summary();
+$rdLeadAutoWhatsappTemplates = array_values(array_filter(
+    crm_read_whatsapp_templates(true),
+    static fn(array $template): bool => crm_whatsapp_template_is_sendable($template, $whatsappProvider)
+));
 $https = !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off';
 $host = (string) ($_SERVER['HTTP_HOST'] ?? '');
 $scriptDir = rtrim(str_replace('\\', '/', dirname((string) ($_SERVER['SCRIPT_NAME'] ?? '/crm/settings.php'))), '/');
@@ -177,6 +181,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $settings['lead_webhook_token'] = bin2hex(random_bytes(32));
             } catch (Throwable $tokenError) {
                 $error = 'Não foi possível gerar o link do webhook. Tente novamente.';
+            }
+        }
+    }
+
+    if ($settingsSection === 'rd_lead_automation') {
+        $rawTemplateId = trim((string) ($_POST['rd_lead_auto_whatsapp_template_id'] ?? '0'));
+        if ($rawTemplateId === '' || $rawTemplateId === '0') {
+            unset($settings['rd_lead_auto_whatsapp_template_id']);
+        } else {
+            $templateId = filter_var($rawTemplateId, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+            $template = $templateId !== false ? crm_find_whatsapp_template((int) $templateId) : null;
+
+            if (!is_array($template) || !crm_whatsapp_template_is_sendable($template, $whatsappProvider)) {
+                $error = 'Escolha um template ativo e aprovado para o provedor de WhatsApp configurado.';
+            } else {
+                $settings['rd_lead_auto_whatsapp_template_id'] = (int) $templateId;
             }
         }
     }
@@ -330,6 +350,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         crm_write_settings($settings);
         header('Location: settings.php?saved=1');
         exit;
+    }
+}
+
+$rdLeadAutoWhatsappTemplateId = (int) ($settings['rd_lead_auto_whatsapp_template_id'] ?? 0);
+$rdLeadAutoWhatsappTemplateAvailable = false;
+foreach ($rdLeadAutoWhatsappTemplates as $rdLeadAutoWhatsappTemplate) {
+    if ((int) ($rdLeadAutoWhatsappTemplate['id'] ?? 0) === $rdLeadAutoWhatsappTemplateId) {
+        $rdLeadAutoWhatsappTemplateAvailable = true;
+        break;
     }
 }
 ?>
@@ -648,6 +677,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     </div>
                   <?php endif; ?>
                 </div>
+              </section>
+
+              <section class="automation-card integration-card">
+                <header class="integration-card-header">
+                  <span class="integration-icon" aria-hidden="true">✉</span>
+                  <div>
+                    <p class="integration-kicker">Novos contatos do RD</p>
+                    <h2>Mensagem automática no WhatsApp</h2>
+                  </div>
+                  <span class="integration-status <?= $rdLeadAutoWhatsappTemplateId > 0 && $rdLeadAutoWhatsappTemplateAvailable ? 'is-active' : '' ?>">
+                    <?= $rdLeadAutoWhatsappTemplateId > 0 && $rdLeadAutoWhatsappTemplateAvailable ? 'Ativa' : 'Inativa' ?>
+                  </span>
+                </header>
+                <p class="integration-description">Escolha o template enviado quando o webhook do RD criar um lead novo no CRM. Reenvios da mesma conversão não disparam outra mensagem. A etiqueta <code>rd-station</code> é aplicada automaticamente aos leads recebidos do RD.</p>
+
+                <form class="flow-form" method="post">
+                  <input type="hidden" name="_csrf_token" value="<?= htmlspecialchars(crm_csrf_token()) ?>" />
+                  <input type="hidden" name="settings_section" value="rd_lead_automation" />
+                  <label>
+                    Template para novos leads do RD
+                    <select name="rd_lead_auto_whatsapp_template_id">
+                      <option value="0" <?= $rdLeadAutoWhatsappTemplateId === 0 ? 'selected' : '' ?>>Não enviar automaticamente</option>
+                      <?php if ($rdLeadAutoWhatsappTemplateId > 0 && !$rdLeadAutoWhatsappTemplateAvailable): ?>
+                        <option value="<?= $rdLeadAutoWhatsappTemplateId ?>" selected>Template configurado indisponível ou não aprovado</option>
+                      <?php endif; ?>
+                      <?php foreach ($rdLeadAutoWhatsappTemplates as $template): ?>
+                        <option value="<?= (int) $template['id'] ?>" <?= (int) $template['id'] === $rdLeadAutoWhatsappTemplateId ? 'selected' : '' ?>><?= htmlspecialchars((string) $template['name'], ENT_QUOTES, 'UTF-8') ?></option>
+                      <?php endforeach; ?>
+                    </select>
+                  </label>
+                  <?php if ($rdLeadAutoWhatsappTemplates === []): ?>
+                    <small class="settings-help">Não há templates ativos e aprovados para o provedor de WhatsApp configurado. Aprove um template na biblioteca para ativar o envio automático.</small>
+                  <?php else: ?>
+                    <small class="settings-help">As variáveis são preenchidas com os dados do lead: nome, empresa, segmento e mensagem. No template, use variáveis identificadas como <code>{{nome}}</code> ou, para o formato numérico, elas seguem essa mesma ordem.</small>
+                  <?php endif; ?>
+                  <button class="integration-save" type="submit">
+                    <span aria-hidden="true">✓</span>
+                    Salvar automação
+                  </button>
+                </form>
               </section>
 
               <section class="automation-card integration-card">

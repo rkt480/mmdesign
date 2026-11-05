@@ -382,6 +382,107 @@ function crm_record_followup_template_send(array $queueItem, array $template, ar
     }
 }
 
+function crm_whatsapp_send_rd_lead_template(array $lead, int $templateId): array
+{
+    $leadId = trim((string) ($lead['id'] ?? ''));
+    if ($leadId === '' || $templateId <= 0) {
+        return ['ok' => false, 'error' => 'Lead ou template automático do RD inválido.'];
+    }
+
+    $provider = crm_whatsapp_provider();
+    $providerLabel = crm_whatsapp_provider_label($provider);
+    $template = crm_find_whatsapp_template($templateId);
+    $templateName = trim((string) ($template['name'] ?? 'template configurado'));
+
+    $recordFailure = static function (string $error) use ($leadId, $templateName, $providerLabel): array {
+        $note = 'Falha no envio automático do template RD "' . $templateName . '" via ' . $providerLabel
+            . ' em ' . date('d/m/Y H:i:s') . ":\n" . $error;
+
+        try {
+            crm_append_lead_note($leadId, $note);
+            crm_update_whatsapp_status($leadId, 'falhou', $error);
+            crm_record_lead_timeline_event(
+                $leadId,
+                'whatsapp_template_failed',
+                'Falha no envio automático do template RD',
+                'Template ' . $templateName . ' via ' . $providerLabel . '. ' . $error,
+                'Sistema'
+            );
+        } catch (Throwable $recordError) {
+            error_log('Não foi possível registrar a falha do template RD no lead ' . $leadId . ': ' . $recordError->getMessage());
+        }
+
+        return ['ok' => false, 'error' => $error];
+    };
+
+    if (!is_array($template) || !crm_whatsapp_template_is_sendable($template, $provider)) {
+        return $recordFailure('O template selecionado não está ativo e aprovado para o provedor configurado.');
+    }
+
+    $number = crm_normalize_lead_whatsapp((string) ($lead['whatsapp'] ?? ''));
+    if ($number === '') {
+        return $recordFailure('O lead não tem um número de WhatsApp válido.');
+    }
+
+    $queueItem = $lead;
+    $queueItem['lead_id'] = $leadId;
+    $queueItem['lead_message'] = (string) ($lead['message'] ?? '');
+    $variables = crm_whatsapp_followup_template_variables($queueItem, $template);
+    if (($variables['ok'] ?? false) !== true) {
+        return $recordFailure((string) ($variables['error'] ?? 'Não foi possível preencher as variáveis do template.'));
+    }
+
+    $providerVariables = $variables['values'];
+    try {
+        $result = $provider === 'pilot_status'
+            ? pilot_status_send_template($number, $template, $providerVariables)
+            : meta_whatsapp_send_template($number, $template, array_values($providerVariables));
+    } catch (Throwable $error) {
+        return $recordFailure($error->getMessage());
+    }
+
+    if (($result['ok'] ?? false) !== true) {
+        return $recordFailure((string) ($result['error'] ?? 'Erro desconhecido ao enviar o template.'));
+    }
+
+    $renderedBody = crm_whatsapp_template_render(
+        (string) ($template['body_text'] ?? ''),
+        $providerVariables,
+        $lead
+    );
+    $note = 'Template "' . $templateName . '" enviado automaticamente para lead do RD via ' . $providerLabel
+        . ' em ' . date('d/m/Y H:i:s') . ":\n" . $renderedBody;
+    $sentMessageId = crm_whatsapp_response_message_id($result);
+    if ($sentMessageId !== '') {
+        $note .= "\nCRM message ID: " . $sentMessageId;
+    }
+
+    try {
+        crm_append_lead_note($leadId, $note);
+        crm_update_whatsapp_status($leadId, $provider === 'pilot_status' ? 'aguardando' : 'enviado');
+        if (trim((string) ($lead['first_contact_at'] ?? '')) === '') {
+            crm_record_lead_timeline_event(
+                $leadId,
+                'first_contact',
+                'Atendimento iniciado',
+                'Primeiro contato automático enviado pelo WhatsApp.',
+                'Sistema'
+            );
+        }
+        crm_record_lead_timeline_event(
+            $leadId,
+            'whatsapp_template_sent',
+            'Template automático enviado pelo WhatsApp',
+            'Template ' . $templateName . ' enviado via ' . $providerLabel . '.',
+            'Sistema'
+        );
+    } catch (Throwable $recordError) {
+        error_log('Template RD enviado, mas não foi possível registrar o histórico do lead ' . $leadId . ': ' . $recordError->getMessage());
+    }
+
+    return $result;
+}
+
 function crm_record_followup_text_send(array $queueItem, array $result = []): void
 {
     $provider = crm_whatsapp_provider();

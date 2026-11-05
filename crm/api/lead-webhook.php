@@ -16,6 +16,7 @@ register_shutdown_function(static function (): void {
 require_once dirname(__DIR__) . '/lib/storage.php';
 require_once dirname(__DIR__) . '/lib/email.php';
 require_once dirname(__DIR__) . '/lib/meta-capi.php';
+require_once dirname(__DIR__) . '/lib/whatsapp.php';
 require_once dirname(__DIR__) . '/lib/security.php';
 
 header('Content-Type: application/json; charset=utf-8');
@@ -520,6 +521,22 @@ $leadPayload = [
     'tags' => lead_webhook_truncate((string) ($values['tags'] ?? ''), $lengthLimits['tags']),
 ];
 
+if ($isRdStationWebhook) {
+    $leadTags = crm_parse_tags((string) ($leadPayload['tags'] ?? ''));
+    $hasRdStationTag = false;
+    foreach ($leadTags as $index => $tag) {
+        $normalizedTag = function_exists('mb_strtolower') ? mb_strtolower($tag, 'UTF-8') : strtolower($tag);
+        if ($normalizedTag === 'rd-station') {
+            $leadTags[$index] = 'rd-station';
+            $hasRdStationTag = true;
+        }
+    }
+    if (!$hasRdStationTag) {
+        $leadTags[] = 'rd-station';
+    }
+    $leadPayload['tags'] = lead_webhook_truncate(implode(', ', $leadTags), $lengthLimits['tags']);
+}
+
 foreach (['cpf', 'company', 'segment', 'advertises', 'message', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'referrer', 'landing_path'] as $field) {
     $leadPayload[$field] = lead_webhook_truncate((string) ($values[$field] ?? ''), $lengthLimits[$field]);
 }
@@ -639,6 +656,20 @@ if (($leadResult['created'] ?? false) === true || ($leadResult['reactivated'] ??
             }
         } catch (Throwable $error) {
             error_log('Erro Meta CAPI Lead ' . (string) $lead['id'] . ': ' . $error->getMessage());
+        }
+    }
+
+    if ($isRdStationWebhook && ($leadResult['created'] ?? false) === true) {
+        $autoTemplateId = (int) ($settings['rd_lead_auto_whatsapp_template_id'] ?? 0);
+        if ($autoTemplateId > 0) {
+            try {
+                $whatsappResult = crm_whatsapp_send_rd_lead_template($lead, $autoTemplateId);
+                if (($whatsappResult['ok'] ?? false) !== true && ($whatsappResult['skipped'] ?? false) !== true) {
+                    error_log('Erro no envio automático do template RD para lead ' . (string) ($lead['id'] ?? '') . ': ' . (string) ($whatsappResult['error'] ?? 'Erro desconhecido.'));
+                }
+            } catch (Throwable $error) {
+                error_log('Erro no envio automático do template RD para lead ' . (string) ($lead['id'] ?? '') . ': ' . $error->getMessage());
+            }
         }
     }
 
