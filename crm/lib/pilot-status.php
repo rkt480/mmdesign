@@ -696,7 +696,7 @@ function pilot_status_send_template(string $number, array $template, array $vari
     return pilot_status_request('/messages/send', [
         'templateId' => $templateId,
         'destinationNumber' => $to,
-        'variables' => $variables,
+        'variables' => (object) $variables,
     ], 60);
 }
 
