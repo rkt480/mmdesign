@@ -690,13 +690,13 @@ foreach ($rdLeadAutoWhatsappTemplates as $rdLeadAutoWhatsappTemplate) {
                     <?= $rdLeadAutoWhatsappTemplateId > 0 && $rdLeadAutoWhatsappTemplateAvailable ? 'Ativa' : 'Inativa' ?>
                   </span>
                 </header>
-                <p class="integration-description">Escolha o template enviado quando o webhook do RD criar um lead novo no CRM. Reenvios da mesma conversão não disparam outra mensagem. A etiqueta <code>rd-station</code> é aplicada automaticamente aos leads recebidos do RD.</p>
+                <p class="integration-description">Escolha o template enviado a cada nova inscrição ou conversão recebida do RD, mesmo quando o contato já existe no CRM. Reenvios da mesma conversão não disparam outra mensagem. A etiqueta <code>rd-station</code> é aplicada automaticamente aos leads recebidos do RD.</p>
 
                 <form class="flow-form" method="post">
                   <input type="hidden" name="_csrf_token" value="<?= htmlspecialchars(crm_csrf_token()) ?>" />
                   <input type="hidden" name="settings_section" value="rd_lead_automation" />
                   <label>
-                    Template para novos leads do RD
+                    Template para novas inscrições do RD
                     <select name="rd_lead_auto_whatsapp_template_id">
                       <option value="0" <?= $rdLeadAutoWhatsappTemplateId === 0 ? 'selected' : '' ?>>Não enviar automaticamente</option>
                       <?php if ($rdLeadAutoWhatsappTemplateId > 0 && !$rdLeadAutoWhatsappTemplateAvailable): ?>

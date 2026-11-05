@@ -659,7 +659,10 @@ if (($leadResult['created'] ?? false) === true || ($leadResult['reactivated'] ??
         }
     }
 
-    if ($isRdStationWebhook && ($leadResult['created'] ?? false) === true) {
+    if (
+        $isRdStationWebhook
+        && (($leadResult['created'] ?? false) === true || ($leadResult['reactivated'] ?? false) === true)
+    ) {
         $autoTemplateId = (int) ($settings['rd_lead_auto_whatsapp_template_id'] ?? 0);
         if ($autoTemplateId > 0) {
             try {
