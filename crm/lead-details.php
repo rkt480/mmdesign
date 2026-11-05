@@ -26,8 +26,10 @@ $hiddenRdAnswerKeys = [
   'conversiondomain',
   'conversionidentifier',
   'identifier',
+  'identificador',
   'origemrdstation',
   'eventodeconversaordstation',
+  'novainscricaordstation',
 ];
 $isHiddenRdAnswer = static function (array $answer) use ($normalizeLeadAnswerKey, $hiddenRdAnswerKeys): bool {
   foreach (['question_id', 'question'] as $key) {
