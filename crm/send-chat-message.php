@@ -225,6 +225,8 @@ $result = $hasMedia
 
 if (($result['ok'] ?? false) === true) {
     $sentMessageIds = crm_whatsapp_response_message_ids($result);
+    $sentCorrelationIds = crm_whatsapp_response_correlation_ids($result);
+    $replyIdentifiers = array_values(array_unique(array_merge($sentMessageIds, $sentCorrelationIds)));
     $sentMessageId = $sentMessageIds[0] ?? '';
     $pilotStatusMessageId = crm_whatsapp_provider() === 'pilot_status' ? $sentMessageId : '';
     $pilotStatusQueued = crm_whatsapp_provider() === 'pilot_status';
@@ -245,11 +247,13 @@ if (($result['ok'] ?? false) === true) {
         error_log('Não foi possível preservar a mídia enviada no histórico do CRM: ' . (string) ($storedMedia['error'] ?? 'erro desconhecido.'));
     }
 
-    if ($sentMessageId !== '' && is_array($mediaForHistory)) {
-        $mediaForHistory['crm_message_id'] = $sentMessageId;
+    if (is_array($mediaForHistory)) {
+        if ($sentMessageId !== '') {
+            $mediaForHistory['crm_message_id'] = $sentMessageId;
+        }
 
-        if (count($sentMessageIds) > 1) {
-            $mediaForHistory['crm_message_id_aliases'] = $sentMessageIds;
+        if (count($replyIdentifiers) > 1 || ($sentMessageId === '' && $replyIdentifiers !== [])) {
+            $mediaForHistory['crm_message_id_aliases'] = $replyIdentifiers;
         }
     }
 

@@ -716,6 +716,14 @@ function pilot_status_extract_delivery_event(array $payload): array
         $data = is_array($payload['data'] ?? null) ? $payload['data'] : $payload;
         $internalMessageId = '';
         $whatsappMessageId = '';
+        $correlationId = trim((string) pilot_status_first_payload_value($data, [
+            ['correlationId'],
+            ['correlation_id'],
+            ['message', 'correlationId'],
+            ['message', 'correlation_id'],
+            ['response', 'correlationId'],
+            ['response', 'correlation_id'],
+        ]));
 
         foreach (['internalMessageId', 'internal_message_id'] as $key) {
             if (is_scalar($data[$key] ?? null) && trim((string) $data[$key]) !== '') {
@@ -818,6 +826,7 @@ function pilot_status_extract_delivery_event(array $payload): array
             'event' => $event,
             'id' => $messageId,
             'whatsapp_id' => $whatsappMessageId,
+            'correlation_id' => $correlationId,
             'destination' => $destination,
             'error' => implode(' | ', array_values(array_unique($errorParts))),
         ];
@@ -864,6 +873,7 @@ function pilot_status_extract_delivery_event(array $payload): array
                     'event' => $mappedEvent,
                     'id' => trim((string) ($status['id'] ?? '')),
                     'whatsapp_id' => trim((string) ($status['id'] ?? '')),
+                    'correlation_id' => '',
                     'destination' => trim((string) ($status['recipient_id'] ?? '')),
                     'error' => implode(' | ', array_values(array_unique($errorParts))),
                 ];
@@ -871,7 +881,7 @@ function pilot_status_extract_delivery_event(array $payload): array
         }
     }
 
-    return ['event' => '', 'id' => '', 'whatsapp_id' => '', 'destination' => '', 'error' => ''];
+    return ['event' => '', 'id' => '', 'whatsapp_id' => '', 'correlation_id' => '', 'destination' => '', 'error' => ''];
 }
 
 function pilot_status_send_text(string $number, string $text): array

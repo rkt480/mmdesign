@@ -102,6 +102,12 @@ if ($delivery['event'] !== '' && $outgoingMessages === []) {
         $eventMarker .= ' | WhatsApp ID: ' . $whatsappMessageId;
     }
 
+    $correlationId = trim((string) ($delivery['correlation_id'] ?? ''));
+
+    if ($correlationId !== '' && $correlationId !== $messageId && $correlationId !== $whatsappMessageId) {
+        $eventMarker .= ' | Correlation ID: ' . $correlationId;
+    }
+
     if (str_contains($notes, $eventMarker)) {
         echo json_encode(['ok' => true, 'processed' => false, 'duplicate' => true]);
         exit;

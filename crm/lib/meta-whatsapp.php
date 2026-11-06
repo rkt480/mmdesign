@@ -594,6 +594,15 @@ function meta_whatsapp_normalize_reply_context(mixed $context): array
         }
     }
 
+    $correlationId = '';
+
+    foreach (['correlationId', 'correlation_id', 'replyCorrelationId', 'reply_correlation_id'] as $key) {
+        if (is_scalar($context[$key] ?? null) && trim((string) $context[$key]) !== '') {
+            $correlationId = trim((string) $context[$key]);
+            break;
+        }
+    }
+
     if ($id === '' && $quotedMessage !== []) {
         foreach (['id', 'messageId', 'message_id', 'stanzaId', 'stanza_id'] as $key) {
             if (is_scalar($quotedMessage[$key] ?? null) && trim((string) $quotedMessage[$key]) !== '') {
@@ -719,6 +728,10 @@ function meta_whatsapp_normalize_reply_context(mixed $context): array
         $result['id'] = $id;
     }
 
+    if ($correlationId !== '') {
+        $result['correlation_id'] = $correlationId;
+    }
+
     if ($text !== '') {
         $result['text'] = $text;
     }
@@ -780,7 +793,41 @@ function meta_whatsapp_extract_reply_context(array $message): array
         return [];
     };
 
-    return $find($message);
+    $context = $find($message);
+
+    $findCorrelationId = static function (mixed $value, int $depth = 0) use (&$findCorrelationId): string {
+        if ($depth > 7 || !is_array($value)) {
+            return '';
+        }
+
+        foreach (['correlationId', 'correlation_id', 'replyCorrelationId', 'reply_correlation_id'] as $key) {
+            if (is_scalar($value[$key] ?? null) && trim((string) $value[$key]) !== '') {
+                return trim((string) $value[$key]);
+            }
+        }
+
+        foreach ($value as $child) {
+            if (!is_array($child)) {
+                continue;
+            }
+
+            $correlationId = $findCorrelationId($child, $depth + 1);
+
+            if ($correlationId !== '') {
+                return $correlationId;
+            }
+        }
+
+        return '';
+    };
+
+    $correlationId = $findCorrelationId($message);
+
+    if ($correlationId !== '') {
+        $context['correlation_id'] = $correlationId;
+    }
+
+    return $context;
 }
 
 /**

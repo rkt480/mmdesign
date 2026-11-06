@@ -22,7 +22,7 @@ function crm_whatsapp_reply_context_note(array $context): string
 {
     $stored = [];
 
-    foreach (['id', 'text', 'type', 'url'] as $key) {
+    foreach (['id', 'correlation_id', 'text', 'type', 'url'] as $key) {
         $value = trim((string) ($context[$key] ?? ''));
 
         if ($value !== '') {
@@ -107,6 +107,60 @@ function crm_whatsapp_response_message_ids(array $result): array
     }
 
     return $messageIds;
+}
+
+function crm_whatsapp_response_correlation_ids(array $result): array
+{
+    $response = $result['response'] ?? null;
+
+    if (!is_array($response)) {
+        return [];
+    }
+
+    $paths = [
+        ['correlationId'],
+        ['correlation_id'],
+        ['data', 'correlationId'],
+        ['data', 'correlation_id'],
+        ['result', 'correlationId'],
+        ['result', 'correlation_id'],
+        ['data', 'result', 'correlationId'],
+        ['data', 'result', 'correlation_id'],
+        ['messages', 0, 'correlationId'],
+        ['messages', 0, 'correlation_id'],
+        ['data', 'messages', 0, 'correlationId'],
+        ['data', 'messages', 0, 'correlation_id'],
+        ['message', 'correlationId'],
+        ['message', 'correlation_id'],
+        ['data', 'message', 'correlationId'],
+        ['data', 'message', 'correlation_id'],
+    ];
+    $correlationIds = [];
+
+    foreach ($paths as $path) {
+        $candidate = $response;
+
+        foreach ($path as $segment) {
+            if (!is_array($candidate) || !array_key_exists($segment, $candidate)) {
+                $candidate = null;
+                break;
+            }
+
+            $candidate = $candidate[$segment];
+        }
+
+        if (!is_scalar($candidate)) {
+            continue;
+        }
+
+        $correlationId = trim((string) $candidate);
+
+        if ($correlationId !== '' && !in_array($correlationId, $correlationIds, true)) {
+            $correlationIds[] = $correlationId;
+        }
+    }
+
+    return $correlationIds;
 }
 
 function crm_whatsapp_response_message_id(array $result): string

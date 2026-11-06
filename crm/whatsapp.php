@@ -399,7 +399,7 @@ function whatsapp_page_extract_reply_context_from_text(string &$text): array
 
     $normalized = [];
 
-    foreach (['id', 'text', 'type', 'url'] as $key) {
+    foreach (['id', 'correlation_id', 'text', 'type', 'url'] as $key) {
         $value = trim((string) ($context[$key] ?? ''));
 
         if ($value !== '') {
@@ -525,10 +525,17 @@ function whatsapp_page_attach_reply_contexts(array &$messages): void
         $quoted = null;
         $replyId = trim((string) ($replyContext['id'] ?? ''));
 
-        foreach (whatsapp_page_message_id_variants($replyId) as $replyIdVariant) {
-            if (isset($messagesById[$replyIdVariant])) {
-                $quoted = $messagesById[$replyIdVariant];
-                break;
+        $replyIds = array_filter([
+            $replyId,
+            trim((string) ($replyContext['correlation_id'] ?? '')),
+        ], static fn(string $candidate): bool => $candidate !== '');
+
+        foreach ($replyIds as $candidateReplyId) {
+            foreach (whatsapp_page_message_id_variants($candidateReplyId) as $replyIdVariant) {
+                if (isset($messagesById[$replyIdVariant])) {
+                    $quoted = $messagesById[$replyIdVariant];
+                    break 2;
+                }
             }
         }
 
@@ -898,18 +905,23 @@ function whatsapp_page_messages_for_lead(array $lead): array
         foreach ($noteBlocks as $block) {
             $block = trim($block);
 
-            if (preg_match('/^Pilot Status evento: [^\r\n]*?\|\s*ID:\s*([^\s|]+)(?:\s*\|\s*WhatsApp ID:\s*([^\s|]+))?/iu', $block, $eventMatch) === 1) {
+            if (preg_match('/^Pilot Status evento: [^\r\n]*?\|\s*ID:\s*([^\s|]+)(?:\s*\|\s*WhatsApp ID:\s*([^\s|]+))?(?:\s*\|\s*Correlation ID:\s*([^\s|]+))?/iu', $block, $eventMatch) === 1) {
                 $internalId = trim((string) ($eventMatch[1] ?? ''));
-                $whatsappId = trim((string) ($eventMatch[2] ?? ''));
+                $aliasIds = array_filter([
+                    trim((string) ($eventMatch[2] ?? '')),
+                    trim((string) ($eventMatch[3] ?? '')),
+                ], static fn(string $alias): bool => $alias !== '');
 
-                if ($internalId !== '' && $whatsappId !== '' && $internalId !== $whatsappId) {
+                if ($internalId !== '' && $aliasIds !== []) {
                     foreach (whatsapp_page_message_id_variants($internalId) as $internalIdVariant) {
                         if (!isset($replyMessageIdAliasesById[$internalIdVariant])) {
                             $replyMessageIdAliasesById[$internalIdVariant] = [];
                         }
 
-                        if (!in_array($whatsappId, $replyMessageIdAliasesById[$internalIdVariant], true)) {
-                            $replyMessageIdAliasesById[$internalIdVariant][] = $whatsappId;
+                        foreach ($aliasIds as $aliasId) {
+                            if ($aliasId !== $internalId && !in_array($aliasId, $replyMessageIdAliasesById[$internalIdVariant], true)) {
+                                $replyMessageIdAliasesById[$internalIdVariant][] = $aliasId;
+                            }
                         }
                     }
                 }
