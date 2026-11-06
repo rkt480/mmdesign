@@ -39,31 +39,79 @@ function crm_whatsapp_reply_context_note(array $context): string
     return is_string($json) && $json !== '' ? "\n[crm_reply]" . $json : '';
 }
 
-function crm_whatsapp_response_message_id(array $result): string
+function crm_whatsapp_response_message_ids(array $result): array
 {
     $response = $result['response'] ?? null;
-    $candidates = [];
+    $paths = [
+        ['id'],
+        ['message_id'],
+        ['messageId'],
+        ['messages', 0, 'id'],
+        ['data', 'id'],
+        ['data', 'messages', 0, 'id'],
+        ['key', 'id'],
+        ['messages', 0, 'message_id'],
+        ['messages', 0, 'messageId'],
+        ['messages', 0, 'key', 'id'],
+        ['data', 'message_id'],
+        ['data', 'messageId'],
+        ['data', 'key', 'id'],
+        ['data', 'messages', 0, 'message_id'],
+        ['data', 'messages', 0, 'messageId'],
+        ['data', 'messages', 0, 'key', 'id'],
+        ['message', 'id'],
+        ['message', 'message_id'],
+        ['message', 'messageId'],
+        ['message', 'key', 'id'],
+        ['data', 'message', 'id'],
+        ['data', 'message', 'message_id'],
+        ['data', 'message', 'messageId'],
+        ['data', 'message', 'key', 'id'],
+        ['result', 'id'],
+        ['result', 'message_id'],
+        ['result', 'messageId'],
+        ['result', 'message', 'id'],
+        ['data', 'result', 'id'],
+        ['data', 'result', 'message_id'],
+        ['data', 'result', 'messageId'],
+        ['data', 'result', 'message', 'id'],
+    ];
 
-    if (is_array($response)) {
-        $candidates = [
-            $response['id'] ?? null,
-            $response['message_id'] ?? null,
-            $response['messageId'] ?? null,
-            is_array($response['messages'] ?? null) ? ($response['messages'][0]['id'] ?? null) : null,
-            is_array($response['data'] ?? null) ? ($response['data']['id'] ?? null) : null,
-            is_array($response['data'] ?? null) && is_array($response['data']['messages'] ?? null)
-                ? ($response['data']['messages'][0]['id'] ?? null)
-                : null,
-        ];
+    if (!is_array($response)) {
+        return [];
     }
 
-    foreach ($candidates as $candidate) {
-        if (is_scalar($candidate) && trim((string) $candidate) !== '') {
-            return trim((string) $candidate);
+    $messageIds = [];
+
+    foreach ($paths as $path) {
+        $candidate = $response;
+
+        foreach ($path as $segment) {
+            if (!is_array($candidate) || !array_key_exists($segment, $candidate)) {
+                $candidate = null;
+                break;
+            }
+
+            $candidate = $candidate[$segment];
+        }
+
+        if (!is_scalar($candidate)) {
+            continue;
+        }
+
+        $messageId = trim((string) $candidate);
+
+        if ($messageId !== '' && !in_array($messageId, $messageIds, true)) {
+            $messageIds[] = $messageId;
         }
     }
 
-    return '';
+    return $messageIds;
+}
+
+function crm_whatsapp_response_message_id(array $result): string
+{
+    return crm_whatsapp_response_message_ids($result)[0] ?? '';
 }
 
 function crm_whatsapp_after_hours_settings(): array

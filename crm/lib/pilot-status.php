@@ -714,25 +714,78 @@ function pilot_status_extract_delivery_event(array $payload): array
 
     if (in_array($event, $deliveryEvents, true)) {
         $data = is_array($payload['data'] ?? null) ? $payload['data'] : $payload;
-        $messageId = '';
+        $internalMessageId = '';
+        $whatsappMessageId = '';
 
-        foreach (['id', 'internalMessageId', 'message_id', 'messageId'] as $key) {
+        foreach (['internalMessageId', 'internal_message_id'] as $key) {
             if (is_scalar($data[$key] ?? null) && trim((string) $data[$key]) !== '') {
-                $messageId = trim((string) $data[$key]);
+                $internalMessageId = trim((string) $data[$key]);
                 break;
             }
         }
 
-        if ($messageId === '') {
-            $messageId = trim((string) pilot_status_first_payload_value($data, [
+        foreach (['messageId', 'whatsappMessageId', 'whatsapp_message_id', 'wamid'] as $key) {
+            if (is_scalar($data[$key] ?? null) && trim((string) $data[$key]) !== '') {
+                $whatsappMessageId = trim((string) $data[$key]);
+                break;
+            }
+        }
+
+        $topLevelId = trim((string) pilot_status_first_payload_value($data, [
+            ['id'],
+            ['message_id'],
+            ['message', 'id'],
+            ['message', 'message_id'],
+            ['message', 'messageId'],
+            ['key', 'id'],
+        ]));
+
+        if (preg_match('/^wamid\./i', $whatsappMessageId) !== 1) {
+            foreach ([
+                ['id'],
+                ['message_id'],
+                ['message', 'id'],
+                ['message', 'message_id'],
+                ['message', 'messageId'],
+                ['message', 'key', 'id'],
+                ['key', 'id'],
+            ] as $path) {
+                $candidateId = trim((string) pilot_status_first_payload_value($data, [$path]));
+
+                if (preg_match('/^wamid\./i', $candidateId) === 1) {
+                    $whatsappMessageId = $candidateId;
+                    break;
+                }
+            }
+        }
+
+        if ($whatsappMessageId === '' && preg_match('/^wamid\./i', $topLevelId) === 1) {
+            $whatsappMessageId = $topLevelId;
+        }
+
+        if ($internalMessageId === '' && $topLevelId !== '' && $topLevelId !== $whatsappMessageId) {
+            $internalMessageId = $topLevelId;
+        }
+
+        $messageId = $internalMessageId !== ''
+            ? $internalMessageId
+            : trim((string) pilot_status_first_payload_value($data, [
+                ['id'],
+                ['internalMessageId'],
+                ['internal_message_id'],
+                ['message_id'],
+                ['messageId'],
                 ['message', 'id'],
                 ['message', 'messageId'],
                 ['key', 'id'],
             ]));
-        }
 
         if ($messageId === '' && is_scalar($payload['id'] ?? null)) {
             $messageId = trim((string) $payload['id']);
+        }
+
+        if ($whatsappMessageId === '' && preg_match('/^wamid\./i', $messageId) === 1) {
+            $whatsappMessageId = $messageId;
         }
 
         $errorParts = [];
@@ -764,6 +817,7 @@ function pilot_status_extract_delivery_event(array $payload): array
         return [
             'event' => $event,
             'id' => $messageId,
+            'whatsapp_id' => $whatsappMessageId,
             'destination' => $destination,
             'error' => implode(' | ', array_values(array_unique($errorParts))),
         ];
@@ -809,6 +863,7 @@ function pilot_status_extract_delivery_event(array $payload): array
                 return [
                     'event' => $mappedEvent,
                     'id' => trim((string) ($status['id'] ?? '')),
+                    'whatsapp_id' => trim((string) ($status['id'] ?? '')),
                     'destination' => trim((string) ($status['recipient_id'] ?? '')),
                     'error' => implode(' | ', array_values(array_unique($errorParts))),
                 ];
@@ -816,7 +871,7 @@ function pilot_status_extract_delivery_event(array $payload): array
         }
     }
 
-    return ['event' => '', 'id' => '', 'destination' => '', 'error' => ''];
+    return ['event' => '', 'id' => '', 'whatsapp_id' => '', 'destination' => '', 'error' => ''];
 }
 
 function pilot_status_send_text(string $number, string $text): array

@@ -73,7 +73,13 @@ $outgoingMessages = pilot_status_extract_outgoing_messages($payload);
 $delivery = pilot_status_extract_delivery_event($payload);
 
 if ($delivery['event'] !== '' && $outgoingMessages === []) {
-    $messageId = (string) $delivery['id'];
+    $messageId = trim((string) ($delivery['id'] ?? ''));
+    $whatsappMessageId = trim((string) ($delivery['whatsapp_id'] ?? ''));
+
+    if ($messageId === '') {
+        $messageId = $whatsappMessageId;
+    }
+
     $lead = $messageId !== '' ? crm_find_lead_by_pilot_status_message_id($messageId) : null;
 
     // Official Meta status payloads identify the message with a WhatsApp
@@ -91,6 +97,10 @@ if ($delivery['event'] !== '' && $outgoingMessages === []) {
 
     $notes = (string) ($lead['notes'] ?? '');
     $eventMarker = 'Pilot Status evento: ' . $delivery['event'] . ' | ID: ' . $messageId;
+
+    if ($whatsappMessageId !== '' && $whatsappMessageId !== $messageId) {
+        $eventMarker .= ' | WhatsApp ID: ' . $whatsappMessageId;
+    }
 
     if (str_contains($notes, $eventMarker)) {
         echo json_encode(['ok' => true, 'processed' => false, 'duplicate' => true]);

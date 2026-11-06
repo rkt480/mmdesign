@@ -224,7 +224,8 @@ $result = $hasMedia
     : crm_whatsapp_send_text($number, $messageWithSender, false);
 
 if (($result['ok'] ?? false) === true) {
-    $sentMessageId = crm_whatsapp_response_message_id($result);
+    $sentMessageIds = crm_whatsapp_response_message_ids($result);
+    $sentMessageId = $sentMessageIds[0] ?? '';
     $pilotStatusMessageId = crm_whatsapp_provider() === 'pilot_status' ? $sentMessageId : '';
     $pilotStatusQueued = crm_whatsapp_provider() === 'pilot_status';
     $storedMedia = $hasMedia
@@ -246,6 +247,10 @@ if (($result['ok'] ?? false) === true) {
 
     if ($sentMessageId !== '' && is_array($mediaForHistory)) {
         $mediaForHistory['crm_message_id'] = $sentMessageId;
+
+        if (count($sentMessageIds) > 1) {
+            $mediaForHistory['crm_message_id_aliases'] = $sentMessageIds;
+        }
     }
 
     $sentDescription = !$hasMedia

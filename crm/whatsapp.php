@@ -414,14 +414,29 @@ function whatsapp_page_message_id_candidates(array $message): array
 {
     $ids = [];
     $media = is_array($message['media'] ?? null) ? $message['media'] : [];
-
-    foreach ([
+    $candidates = [
         $message['message_id'] ?? '',
         $message['crm_message_id'] ?? '',
         $media['crm_message_id'] ?? '',
         $media['message_id'] ?? '',
         $media['id'] ?? '',
-    ] as $candidate) {
+    ];
+
+    foreach ([$message['message_id_aliases'] ?? [], $media['crm_message_id_aliases'] ?? []] as $aliases) {
+        if (!is_array($aliases)) {
+            continue;
+        }
+
+        foreach ($aliases as $alias) {
+            $candidates[] = $alias;
+        }
+    }
+
+    foreach ($candidates as $candidate) {
+        if (!is_scalar($candidate)) {
+            continue;
+        }
+
         $candidate = trim((string) $candidate);
 
         if ($candidate !== '' && !in_array($candidate, $ids, true)) {
@@ -520,17 +535,15 @@ function whatsapp_page_attach_reply_contexts(array &$messages): void
         if (!is_array($quoted)) {
             $replyType = whatsapp_page_normalize_media_type((string) ($replyContext['type'] ?? ''));
             $replyText = strtolower(trim((string) ($replyContext['text'] ?? '')));
-            $nearestOutgoing = null;
+            $replyUrl = trim((string) ($replyContext['url'] ?? ''));
+            $matches = [];
+            $bestScore = 0;
 
             for ($candidateIndex = $messageIndex - 1; $candidateIndex >= 0; $candidateIndex--) {
                 $candidate = $messages[$candidateIndex] ?? [];
 
                 if (!is_array($candidate) || ($candidate['direction'] ?? '') !== 'outgoing') {
                     continue;
-                }
-
-                if (!is_array($nearestOutgoing)) {
-                    $nearestOutgoing = $candidate;
                 }
 
                 $candidateMedia = is_array($candidate['media'] ?? null) ? $candidate['media'] : [];
@@ -547,18 +560,23 @@ function whatsapp_page_attach_reply_contexts(array &$messages): void
                     $typeMatches = $replyType !== '' && $candidateType === $replyType;
                 }
 
-                if ($textMatches || $typeMatches) {
-                    $quoted = $candidate;
-                    break;
-                }
+                $candidateUrl = trim((string) ($candidateMedia['url'] ?? ''));
+                $urlMatches = $replyUrl !== '' && $candidateUrl !== '' && $replyUrl === $candidateUrl;
+                $score = $urlMatches ? 3 : ($textMatches ? 2 : ($typeMatches ? 1 : 0));
 
+                if ($score > $bestScore) {
+                    $bestScore = $score;
+                    $matches = [$candidate];
+                } elseif ($score > 0 && $score === $bestScore) {
+                    $matches[] = $candidate;
+                }
             }
 
-            // Some provider payloads expose a quoted ID that differs from the
-            // ID saved in the CRM. The nearest outgoing message is the best
-            // available match when the provider omits the quoted snapshot.
-            if (!is_array($quoted) && is_array($nearestOutgoing)) {
-                $quoted = $nearestOutgoing;
+            // A media-type-only match cannot distinguish two consecutive
+            // images (or other repeated media types). Only attach a quote
+            // when the provider data identifies a single outgoing message.
+            if (!is_array($quoted) && count($matches) === 1) {
+                $quoted = $matches[0];
             }
         }
 
@@ -871,6 +889,7 @@ function whatsapp_page_messages_for_lead(array $lead): array
     }
 
     $notes = trim((string) ($lead['notes'] ?? ''));
+    $replyMessageIdAliasesById = [];
 
     if ($notes !== '') {
         $noteBlocks = whatsapp_page_note_blocks($notes);
@@ -878,6 +897,23 @@ function whatsapp_page_messages_for_lead(array $lead): array
 
         foreach ($noteBlocks as $block) {
             $block = trim($block);
+
+            if (preg_match('/^Pilot Status evento: [^\r\n]*?\|\s*ID:\s*([^\s|]+)(?:\s*\|\s*WhatsApp ID:\s*([^\s|]+))?/iu', $block, $eventMatch) === 1) {
+                $internalId = trim((string) ($eventMatch[1] ?? ''));
+                $whatsappId = trim((string) ($eventMatch[2] ?? ''));
+
+                if ($internalId !== '' && $whatsappId !== '' && $internalId !== $whatsappId) {
+                    foreach (whatsapp_page_message_id_variants($internalId) as $internalIdVariant) {
+                        if (!isset($replyMessageIdAliasesById[$internalIdVariant])) {
+                            $replyMessageIdAliasesById[$internalIdVariant] = [];
+                        }
+
+                        if (!in_array($whatsappId, $replyMessageIdAliasesById[$internalIdVariant], true)) {
+                            $replyMessageIdAliasesById[$internalIdVariant][] = $whatsappId;
+                        }
+                    }
+                }
+            }
 
             if ($block === '') {
                 continue;
@@ -1145,6 +1181,31 @@ function whatsapp_page_messages_for_lead(array $lead): array
             $message['direction'] = 'outgoing';
             $message['provider'] = $provider;
             $message['label'] = 'Enviada';
+        }
+    }
+    unset($message);
+
+    foreach ($messages as &$message) {
+        if (($message['direction'] ?? '') !== 'outgoing') {
+            continue;
+        }
+
+        $aliases = is_array($message['message_id_aliases'] ?? null)
+            ? $message['message_id_aliases']
+            : [];
+
+        foreach (whatsapp_page_message_id_candidates($message) as $messageId) {
+            foreach (whatsapp_page_message_id_variants($messageId) as $messageIdVariant) {
+                foreach ($replyMessageIdAliasesById[$messageIdVariant] ?? [] as $alias) {
+                    if (!in_array($alias, $aliases, true)) {
+                        $aliases[] = $alias;
+                    }
+                }
+            }
+        }
+
+        if ($aliases !== []) {
+            $message['message_id_aliases'] = $aliases;
         }
     }
     unset($message);
