@@ -134,6 +134,14 @@ function crm_whatsapp_response_correlation_ids(array $result): array
         ['message', 'correlation_id'],
         ['data', 'message', 'correlationId'],
         ['data', 'message', 'correlation_id'],
+        ['biz_opaque_callback_data'],
+        ['bizOpaqueCallbackData'],
+        ['data', 'biz_opaque_callback_data'],
+        ['data', 'bizOpaqueCallbackData'],
+        ['messages', 0, 'biz_opaque_callback_data'],
+        ['data', 'messages', 0, 'biz_opaque_callback_data'],
+        ['message', 'biz_opaque_callback_data'],
+        ['data', 'message', 'biz_opaque_callback_data'],
     ];
     $correlationIds = [];
 

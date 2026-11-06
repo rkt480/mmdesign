@@ -724,6 +724,16 @@ function pilot_status_extract_delivery_event(array $payload): array
             ['response', 'correlationId'],
             ['response', 'correlation_id'],
         ]));
+        $opaqueCallbackData = trim((string) pilot_status_first_payload_value($data, [
+            ['biz_opaque_callback_data'],
+            ['bizOpaqueCallbackData'],
+            ['message', 'biz_opaque_callback_data'],
+            ['status', 'biz_opaque_callback_data'],
+        ]));
+
+        if ($correlationId === '') {
+            $correlationId = $opaqueCallbackData;
+        }
 
         foreach (['internalMessageId', 'internal_message_id'] as $key) {
             if (is_scalar($data[$key] ?? null) && trim((string) $data[$key]) !== '') {
@@ -773,6 +783,10 @@ function pilot_status_extract_delivery_event(array $payload): array
 
         if ($internalMessageId === '' && $topLevelId !== '' && $topLevelId !== $whatsappMessageId) {
             $internalMessageId = $topLevelId;
+        }
+
+        if ($internalMessageId === '' && $opaqueCallbackData !== '') {
+            $internalMessageId = $opaqueCallbackData;
         }
 
         $messageId = $internalMessageId !== ''
@@ -834,7 +848,9 @@ function pilot_status_extract_delivery_event(array $payload): array
 
     // Pilot Status forwards official Meta delivery notifications in the native
     // WhatsApp webhook envelope, where the state lives in entry[].changes[].
-    // value.statuses[] rather than in a top-level `event` field.
+    // value.statuses[] rather than in a top-level `event` field. Keep Meta's
+    // WAMID and biz_opaque_callback_data together to match a later reply to the
+    // CRM message ID associated with that callback.
     foreach ($payload['entry'] ?? [] as $entry) {
         foreach (is_array($entry['changes'] ?? null) ? $entry['changes'] : [] as $change) {
             $value = is_array($change['value'] ?? null) ? $change['value'] : [];
@@ -869,11 +885,14 @@ function pilot_status_extract_delivery_event(array $payload): array
                     }
                 }
 
+                $whatsappMessageId = trim((string) ($status['id'] ?? ''));
+                $opaqueCallbackData = trim((string) ($status['biz_opaque_callback_data'] ?? ''));
+
                 return [
                     'event' => $mappedEvent,
-                    'id' => trim((string) ($status['id'] ?? '')),
-                    'whatsapp_id' => trim((string) ($status['id'] ?? '')),
-                    'correlation_id' => '',
+                    'id' => $opaqueCallbackData !== '' ? $opaqueCallbackData : $whatsappMessageId,
+                    'whatsapp_id' => $whatsappMessageId,
+                    'correlation_id' => $opaqueCallbackData,
                     'destination' => trim((string) ($status['recipient_id'] ?? '')),
                     'error' => implode(' | ', array_values(array_unique($errorParts))),
                 ];
