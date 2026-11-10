@@ -14,13 +14,23 @@ header('Content-Type: text/csv; charset=utf-8');
 header('Content-Disposition: attachment; filename="leads-publi-ai.csv"');
 
 $output = fopen('php://output', 'w');
-fputcsv($output, ['Nome', 'WhatsApp', 'CPF', 'Lead Score', 'Temperatura', 'Respostas do formulário', 'Status', 'Tags', 'Observações', 'Recebido em']);
+fputcsv($output, ['Nome', 'WhatsApp', 'E-mail', 'CPF', 'Lead Score', 'Temperatura', 'Respostas do formulário', 'Status', 'Tags', 'Observações', 'Recebido em']);
 
 foreach ($leads as $lead) {
+    $formAnswers = crm_decode_lead_form_answers($lead);
+    $email = '';
+    foreach ($formAnswers as $answer) {
+        $value = trim((string) ($answer['answer'] ?? $answer['value'] ?? ''));
+        if (filter_var($value, FILTER_VALIDATE_EMAIL) !== false) {
+            $email = $value;
+            break;
+        }
+    }
+
     $answers = array_map(
         static fn(array $answer): string => (string) ($answer['question'] ?? 'Pergunta') . ': ' . (string) ($answer['answer'] ?? ''),
         array_values(array_filter(
-            crm_decode_lead_form_answers($lead),
+            $formAnswers,
             static fn(array $answer): bool => (string) ($answer['question_id'] ?? '') !== 'segment'
         ))
     );
@@ -28,6 +38,7 @@ foreach ($leads as $lead) {
     fputcsv($output, [
         $lead['name'] ?? '',
         $lead['whatsapp'] ?? '',
+        $email,
         crm_format_cpf((string) ($lead['cpf'] ?? '')),
         $lead['lead_score'] ?? '',
         $lead['lead_temperature'] ?? '',
