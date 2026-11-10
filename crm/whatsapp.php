@@ -709,15 +709,14 @@ function whatsapp_page_note_blocks(string $notes): array
     $recordStart = '(?:Resposta automática fora do horário enviada via|Observação do CRM em|Mensagem recebida pelo provedor anterior|Mensagem recebida pela Meta Cloud API|Mensagem recebida pela Pilot Status|Mídia recebida pela Pilot Status|Mídia enviada (?:via|pelo)|Mensagem enviada (?:via|pelo)|Template .+ enviado(?: automaticamente para lead do RD)? via|Falha ao enviar via|Pilot Status evento:)';
     $blocks = [];
 
-    // A resposta fora do horário pode conter parágrafos separados por linhas
-    // em branco. Só considere uma linha em branco como separador quando o
-    // próximo bloco começar com um marcador conhecido do CRM.
-    $groups = preg_split('/(?:\R){2,}(?=^' . $recordStart . ')/mu', trim($notes)) ?: [];
+    // Record headers identify boundaries even in older notes whose blank-line
+    // separators were removed. Blank lines inside a record belong to its text.
+    $groups = preg_split('/(?=^' . $recordStart . ')/mu', trim($notes)) ?: [];
 
     foreach ($groups as $group) {
         $group = trim($group);
 
-        if (preg_match('/^Resposta automática fora do horário enviada via /iu', $group) === 1) {
+        if (preg_match('/^' . $recordStart . '/iu', $group) === 1) {
             if ($group !== '') {
                 $blocks[] = $group;
             }
@@ -725,19 +724,13 @@ function whatsapp_page_note_blocks(string $notes): array
             continue;
         }
 
-        foreach (preg_split('/(?:\R){2,}/u', $group) ?: [] as $legacyGroup) {
-            $legacyGroup = trim($legacyGroup);
+        // Unmarked legacy CRM observations still use blank lines as their
+        // record separator; they have no header to distinguish paragraphs.
+        foreach (preg_split('/(?:\R){2,}/u', $group) ?: [] as $block) {
+            $block = trim($block);
 
-            if ($legacyGroup === '') {
-                continue;
-            }
-
-            foreach (preg_split('/(?=^' . $recordStart . ')/mu', $legacyGroup) ?: [] as $block) {
-                $block = trim($block);
-
-                if ($block !== '') {
-                    $blocks[] = $block;
-                }
+            if ($block !== '') {
+                $blocks[] = $block;
             }
         }
     }
