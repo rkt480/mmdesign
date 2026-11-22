@@ -40,9 +40,9 @@ crm_require_login();
           $messageMediaType = is_array($message['media'] ?? null) ? (string) ($message['media']['type'] ?? '') : '';
           $messageMediaType = in_array($messageMediaType, ['image', 'sticker', 'audio', 'video', 'document'], true) ? $messageMediaType : 'file';
           $messageDomId = whatsapp_page_message_dom_id($message);
-          $replyMessageId = $activeProvider === 'meta_cloud' && $wa24hOpen && !$isAgency
+          $replyMessageId = $wa24hOpen && !$isAgency
             && (string) ($message['_lead_id'] ?? '') === (string) ($activeLead['id'] ?? '')
-            ? trim((string) ($message['message_id'] ?? '')) : '';
+            ? trim((string) ($message['message_id'] ?? ($message['media']['crm_message_id'] ?? ''))) : '';
         ?>
         <article<?= $messageDomId !== '' ? ' id="' . htmlspecialchars($messageDomId, ENT_QUOTES, 'UTF-8') . '"' : '' ?> class="wa-message wa-message-<?= htmlspecialchars((string) $message['direction']) ?>"<?= $replyMessageId !== '' ? ' data-wa-reply-id="' . htmlspecialchars($replyMessageId, ENT_QUOTES, 'UTF-8') . '"' : '' ?> data-wa-reply-author="<?= htmlspecialchars(whatsapp_page_reply_context_label($message), ENT_QUOTES, 'UTF-8') ?>">
           <?php if (is_array($message['reply_to'] ?? null)): ?>

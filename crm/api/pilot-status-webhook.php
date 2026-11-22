@@ -225,6 +225,9 @@ foreach ($incomingMessages as $incoming) {
     try {
         $leadResult = crm_create_lead_once($leadPayload);
         $lead = $leadResult['lead'];
+        if (($leadResult['created'] ?? false) === true && $mediaUrl === '' && $incomingMessageId !== '') {
+            crm_append_lead_note((string) $lead['id'], 'CRM initial message ID: ' . $incomingMessageId);
+        }
         $followupAutomation = ['stopped' => false, 'cancelled' => 0];
 
         if (($leadResult['created'] ?? false) === false) {
@@ -320,6 +323,9 @@ foreach ($incomingMessages as $incoming) {
         } elseif (($leadResult['created'] ?? false) === false && $message !== '') {
             $followupAutomation = crm_stop_followup_after_incoming_reply((string) $lead['id']);
             $incomingNote = 'Mensagem recebida pela Pilot Status em ' . date('d/m/Y H:i:s') . ":\n" . $message;
+            if ($incomingMessageId !== '') {
+                $incomingNote .= "\nCRM message ID: " . $incomingMessageId;
+            }
             $incomingNote .= crm_whatsapp_reply_context_note($replyContext);
             crm_append_lead_note(
                 (string) $lead['id'],

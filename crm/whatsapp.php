@@ -966,6 +966,7 @@ function whatsapp_page_messages_for_lead(array $lead): array
             if (preg_match('/^Mensagem recebida pela Pilot Status em ([0-9]{2}\/[0-9]{2}\/[0-9]{4} [0-9]{2}:[0-9]{2}(?::[0-9]{2})?):\R(.+)$/su', $block, $match) === 1) {
                 $incomingText = trim((string) $match[2]);
                 $replyContext = whatsapp_page_extract_reply_context_from_text($incomingText);
+                $incomingText = trim((string) (preg_replace('/(?:\R)?CRM message ID:\s*[^\r\n]+/iu', '', $incomingText) ?? $incomingText));
                 $messages[] = [
                     'direction' => 'incoming',
                     'provider' => 'pilot_status',
@@ -973,6 +974,7 @@ function whatsapp_page_messages_for_lead(array $lead): array
                     'text' => $incomingText,
                     'label' => 'Recebida',
                     'reply_context' => $replyContext,
+                    'message_id' => $blockMessageId,
                 ];
                 continue;
             }
@@ -988,6 +990,7 @@ function whatsapp_page_messages_for_lead(array $lead): array
                         'at' => whatsapp_page_parse_br_datetime((string) $match[1]),
                         'text' => $caption !== '' ? $caption : whatsapp_page_media_label($media),
                         'label' => 'Recebida',
+                        'message_id' => trim((string) ($media['crm_message_id'] ?? '')),
                     ];
 
                     if (is_array($media['reply_context'] ?? null)) {
@@ -1705,9 +1708,9 @@ if ($isWaConversationFragment) {
                 $messageMediaType = is_array($message['media'] ?? null) ? (string) ($message['media']['type'] ?? '') : '';
                 $messageMediaType = in_array($messageMediaType, ['image', 'sticker', 'audio', 'video', 'document'], true) ? $messageMediaType : 'file';
                 $messageDomId = whatsapp_page_message_dom_id($message);
-                $replyMessageId = $activeProvider === 'meta_cloud' && $wa24hOpen && !$isAgency
+                $replyMessageId = $wa24hOpen && !$isAgency
                   && (string) ($message['_lead_id'] ?? '') === (string) ($activeLead['id'] ?? '')
-                  ? trim((string) ($message['message_id'] ?? '')) : '';
+                  ? trim((string) ($message['message_id'] ?? ($message['media']['crm_message_id'] ?? ''))) : '';
               ?>
               <article<?= $messageDomId !== '' ? ' id="' . htmlspecialchars($messageDomId, ENT_QUOTES, 'UTF-8') . '"' : '' ?> class="wa-message wa-message-<?= htmlspecialchars((string) $message['direction']) ?>"<?= $replyMessageId !== '' ? ' data-wa-reply-id="' . htmlspecialchars($replyMessageId, ENT_QUOTES, 'UTF-8') . '"' : '' ?> data-wa-reply-author="<?= htmlspecialchars(whatsapp_page_reply_context_label($message), ENT_QUOTES, 'UTF-8') ?>">
                 <?php if (is_array($message['reply_to'] ?? null)): ?>
@@ -3810,9 +3813,9 @@ if ($isWaConversationFragment) {
         if (!message || message.classList.contains('wa-message-note')) return;
         replyTarget = message;
         const available = Boolean(message.dataset.waReplyId && composer && !composer.hidden);
-        const reason = composer?.dataset.waProvider === 'pilot_status'
-          ? 'Resposta citada indisponível na Pilot Status até confirmar a API.'
-          : (!composer || composer.hidden ? 'Resposta livre indisponível nesta conversa.' : 'Esta mensagem não possui identificador para resposta.');
+        const reason = !composer || composer.hidden
+          ? 'Resposta livre indisponível nesta conversa.'
+          : 'Esta mensagem não possui identificador para resposta.';
         replyMenu.replaceChildren();
         const button = document.createElement('button');
         button.type = 'button';

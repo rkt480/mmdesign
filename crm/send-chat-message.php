@@ -56,8 +56,11 @@ if ($replyToMessageId !== '') {
     $leadNotes = (string) ($lead['notes'] ?? '');
     $replyIdIsValid = strlen($replyToMessageId) <= 255
         && preg_match('/^[A-Za-z0-9._:\-]+$/D', $replyToMessageId) === 1
-        && preg_match('/^CRM (?:initial message ID|message ID):\s*' . preg_quote($replyToMessageId, '/') . '\s*$/mi', $leadNotes) === 1;
-    if (crm_whatsapp_provider() !== 'meta_cloud' || !$replyIdIsValid) {
+        && (
+            preg_match('/^CRM (?:initial message ID|message ID):\s*' . preg_quote($replyToMessageId, '/') . '\s*$/mi', $leadNotes) === 1
+            || str_contains($leadNotes, '"crm_message_id":' . json_encode($replyToMessageId, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE))
+        );
+    if (!$replyIdIsValid) {
         header('Location: ' . $redirect . '&send_error=' . rawurlencode('Não foi possível responder à mensagem selecionada. Selecione uma mensagem válida da conversa.'));
         exit;
     }

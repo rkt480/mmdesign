@@ -320,11 +320,7 @@ function crm_whatsapp_send_text(string $number, string $text, bool $usePresence 
         return meta_whatsapp_send_text($number, $text, $replyToMessageId);
     }
 
-    if ($replyToMessageId !== '') {
-        return ['ok' => false, 'error' => 'Resposta citada indisponível na Pilot Status.'];
-    }
-
-    return pilot_status_send_text($number, $text);
+    return pilot_status_send_text($number, $text, $replyToMessageId);
 }
 
 function crm_whatsapp_send_media(
@@ -340,11 +336,7 @@ function crm_whatsapp_send_media(
         return meta_whatsapp_send_media($number, $filePath, $mimeType, $mediaType, $caption, $fileName, $replyToMessageId);
     }
 
-    if ($replyToMessageId !== '') {
-        return ['ok' => false, 'error' => 'Resposta citada indisponível na Pilot Status.'];
-    }
-
-    return pilot_status_send_media($number, $filePath, $mimeType, $mediaType, $caption, $fileName);
+    return pilot_status_send_media($number, $filePath, $mimeType, $mediaType, $caption, $fileName, $replyToMessageId);
 }
 
 function crm_whatsapp_send_followup(array $queueItem): array
