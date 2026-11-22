@@ -3885,6 +3885,7 @@ textarea:focus {
 .wa-reply-menu button {
   width: 100%;
   padding: 9px 12px;
+  font-weight: 400 !important;
   text-align: left;
   border: 0;
   border-radius: 6px;
