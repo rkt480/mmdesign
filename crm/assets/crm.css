@@ -3883,14 +3883,20 @@ textarea:focus {
 .wa-message-surface .wa-message { -webkit-touch-callout: none; }
 .wa-reply-menu[hidden], .wa-reply-preview[hidden] { display: none !important; }
 .wa-reply-menu button {
+  display: inline-flex;
   width: 100%;
-  padding: 9px 12px;
-  font-weight: 400 !important;
-  text-align: left;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: #172b31;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 16px;
+  border: 1px solid #d9e3df;
+  border-radius: 8px;
+  background: #fff;
+  color: #174b3a;
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 400;
+  box-shadow: 0 5px 20px #0002;
   cursor: pointer;
 }
 .wa-reply-menu button:disabled { color: #94a3b8; cursor: default; }
