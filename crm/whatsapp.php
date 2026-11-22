@@ -876,6 +876,8 @@ function whatsapp_page_messages_for_lead(array $lead): array
     $messages = [];
     $initialMessage = trim((string) ($lead['message'] ?? ''));
     $initialReplyContext = whatsapp_page_extract_reply_context_from_text($initialMessage);
+    $initialMessageId = preg_match('/^CRM initial message ID:\s*([^\r\n]+)/mi', (string) ($lead['notes'] ?? ''), $initialIdMatch) === 1
+        ? trim((string) $initialIdMatch[1]) : '';
 
     if ($initialMessage !== '') {
         $messages[] = [
@@ -885,6 +887,7 @@ function whatsapp_page_messages_for_lead(array $lead): array
             'text' => $initialMessage,
             'label' => 'Mensagem recebida',
             'reply_context' => $initialReplyContext,
+            'message_id' => $initialMessageId,
         ];
     }
 
@@ -924,6 +927,10 @@ function whatsapp_page_messages_for_lead(array $lead): array
                 continue;
             }
 
+            if (str_starts_with($block, 'CRM initial message ID:')) {
+                continue;
+            }
+
             $blockMessageId = whatsapp_page_message_id_from_text($block);
 
             if (preg_match('/^Mensagem recebida pelo provedor anterior em ([0-9]{2}\/[0-9]{2}\/[0-9]{4} [0-9]{2}:[0-9]{2}(?::[0-9]{2})?):\R(.+)$/su', $block, $match) === 1) {
@@ -943,6 +950,7 @@ function whatsapp_page_messages_for_lead(array $lead): array
             if (preg_match('/^Mensagem recebida pela Meta Cloud API em ([0-9]{2}\/[0-9]{2}\/[0-9]{4} [0-9]{2}:[0-9]{2}(?::[0-9]{2})?):\R(.+)$/su', $block, $match) === 1) {
                 $incomingText = trim((string) $match[2]);
                 $replyContext = whatsapp_page_extract_reply_context_from_text($incomingText);
+                $incomingText = trim((string) (preg_replace('/(?:\R)?CRM message ID:\s*[^\r\n]+/iu', '', $incomingText) ?? $incomingText));
                 $messages[] = [
                     'direction' => 'incoming',
                     'provider' => 'meta_cloud',
@@ -950,6 +958,7 @@ function whatsapp_page_messages_for_lead(array $lead): array
                     'text' => $incomingText,
                     'label' => 'Recebida',
                     'reply_context' => $replyContext,
+                    'message_id' => $blockMessageId,
                 ];
                 continue;
             }
@@ -999,7 +1008,9 @@ function whatsapp_page_messages_for_lead(array $lead): array
 
                 if (is_array($media) && whatsapp_page_media_url((string) ($media['url'] ?? '')) !== '') {
                     $sentProviderLabel = strtolower((string) $match[1]);
-                    $caption = whatsapp_page_clean_sent_message_text(trim((string) ($match[4] ?? '')));
+                    $rawCaption = trim((string) ($match[4] ?? ''));
+                    $replyContext = whatsapp_page_extract_reply_context_from_text($rawCaption);
+                    $caption = whatsapp_page_clean_sent_message_text($rawCaption);
                     $messages[] = [
                         'direction' => 'outgoing',
                         'provider' => whatsapp_page_message_provider($sentProviderLabel),
@@ -1010,6 +1021,7 @@ function whatsapp_page_messages_for_lead(array $lead): array
                         'message_id' => $blockMessageId !== ''
                             ? $blockMessageId
                             : trim((string) ($media['crm_message_id'] ?? ($media['message_id'] ?? ''))),
+                        'reply_context' => $replyContext,
                     ];
                     continue;
                 }
@@ -1017,7 +1029,9 @@ function whatsapp_page_messages_for_lead(array $lead): array
 
             if (preg_match('/^(?:Mensagem|Mídia) enviada (?:via|pelo) (.+) em ([0-9]{2}\/[0-9]{2}\/[0-9]{4} [0-9]{2}:[0-9]{2}(?::[0-9]{2})?):\R(.+)$/su', $block, $match) === 1) {
                 $sentProviderLabel = strtolower((string) $match[1]);
-                $sentText = whatsapp_page_clean_sent_message_text(trim((string) $match[3]));
+                $rawSentText = trim((string) $match[3]);
+                $replyContext = whatsapp_page_extract_reply_context_from_text($rawSentText);
+                $sentText = whatsapp_page_clean_sent_message_text($rawSentText);
                 $sentMessage = [
                     'direction' => 'outgoing',
                     'provider' => whatsapp_page_message_provider($sentProviderLabel),
@@ -1025,6 +1039,7 @@ function whatsapp_page_messages_for_lead(array $lead): array
                     'text' => $sentText,
                     'label' => whatsapp_page_delivery_label($lead, $blockMessageId, $block),
                     'message_id' => $blockMessageId,
+                    'reply_context' => $replyContext,
                 ];
 
                 $sentMediaType = whatsapp_page_infer_media_type_from_text($sentText);
@@ -1690,8 +1705,11 @@ if ($isWaConversationFragment) {
                 $messageMediaType = is_array($message['media'] ?? null) ? (string) ($message['media']['type'] ?? '') : '';
                 $messageMediaType = in_array($messageMediaType, ['image', 'sticker', 'audio', 'video', 'document'], true) ? $messageMediaType : 'file';
                 $messageDomId = whatsapp_page_message_dom_id($message);
+                $replyMessageId = $activeProvider === 'meta_cloud' && $wa24hOpen && !$isAgency
+                  && (string) ($message['_lead_id'] ?? '') === (string) ($activeLead['id'] ?? '')
+                  ? trim((string) ($message['message_id'] ?? '')) : '';
               ?>
-              <article<?= $messageDomId !== '' ? ' id="' . htmlspecialchars($messageDomId, ENT_QUOTES, 'UTF-8') . '"' : '' ?> class="wa-message wa-message-<?= htmlspecialchars((string) $message['direction']) ?>">
+              <article<?= $messageDomId !== '' ? ' id="' . htmlspecialchars($messageDomId, ENT_QUOTES, 'UTF-8') . '"' : '' ?> class="wa-message wa-message-<?= htmlspecialchars((string) $message['direction']) ?>"<?= $replyMessageId !== '' ? ' data-wa-reply-id="' . htmlspecialchars($replyMessageId, ENT_QUOTES, 'UTF-8') . '"' : '' ?> data-wa-reply-author="<?= htmlspecialchars(whatsapp_page_reply_context_label($message), ENT_QUOTES, 'UTF-8') ?>">
                 <?php if (is_array($message['reply_to'] ?? null)): ?>
                   <?= whatsapp_page_quoted_message_markup($message['reply_to']) ?>
                 <?php endif; ?>
@@ -1731,7 +1749,7 @@ if ($isWaConversationFragment) {
               </section>
             <?php endif; ?>
 
-            <form class="wa-composer <?= $wa24hOpen ? '' : 'is-locked' ?>" method="post" action="send-chat-message.php" enctype="multipart/form-data" data-wa-composer <?= $wa24hOpen ? '' : 'aria-disabled="true"' ?> <?= $wa24hOpen ? '' : 'hidden' ?>>
+            <form class="wa-composer <?= $wa24hOpen ? '' : 'is-locked' ?>" method="post" action="send-chat-message.php" enctype="multipart/form-data" data-wa-composer data-wa-provider="<?= htmlspecialchars($activeProvider) ?>" <?= $wa24hOpen ? '' : 'aria-disabled="true"' ?> <?= $wa24hOpen ? '' : 'hidden' ?>>
             <div class="wa-composer-tools">
               <label class="wa-tool-button" for="wa-media-input" title="Anexar imagem, áudio, vídeo ou documento" data-wa-attach aria-label="Anexar imagem, áudio, vídeo ou documento" tabindex="0">
                 <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -1758,7 +1776,9 @@ if ($isWaConversationFragment) {
             <input type="hidden" name="_csrf_token" value="<?= htmlspecialchars($csrfToken) ?>" />
             <input type="hidden" name="lead_id" value="<?= htmlspecialchars((string) ($activeLead['id'] ?? '')) ?>" />
             <input type="hidden" name="provider_filter" value="<?= htmlspecialchars($providerFilter) ?>" />
+            <input type="hidden" name="reply_to_message_id" value="" data-wa-reply-input />
             <div class="wa-composer-main">
+              <div class="wa-reply-preview" data-wa-reply-preview hidden><div><strong data-wa-reply-author></strong><span data-wa-reply-text></span></div><button type="button" data-wa-reply-cancel aria-label="Cancelar resposta citada" title="Cancelar resposta citada">×</button></div>
               <div class="wa-media-preview" data-wa-preview hidden></div>
               <div class="wa-recording-preview" data-wa-recording-preview hidden aria-live="polite">
                 <button class="wa-recording-discard" type="button" title="Descartar gravação" aria-label="Descartar gravação" data-wa-record-discard>
@@ -2429,6 +2449,7 @@ if ($isWaConversationFragment) {
           isRecording
           || messageInput?.value.trim()
           || mediaInput?.files?.length
+          || composer?.querySelector('[data-wa-reply-input]')?.value
           || templateSelect?.value
         );
       };
@@ -3774,7 +3795,98 @@ if ($isWaConversationFragment) {
         }
       };
 
-      document.addEventListener("click", (event) => {
+      const replyMenu = document.createElement('div');
+      replyMenu.className = 'wa-reply-menu';
+      replyMenu.hidden = true;
+      replyMenu.setAttribute('role', 'menu');
+      document.body.appendChild(replyMenu);
+      let replyTarget = null;
+      let longPressTimer = null;
+      let touchStart = null;
+      let suppressTouchClickUntil = 0;
+      const closeReplyMenu = () => { replyMenu.hidden = true; replyTarget = null; };
+      const showReplyMenu = (message, x, y) => {
+        const composer = document.querySelector('[data-wa-composer]');
+        if (!message || message.classList.contains('wa-message-note')) return;
+        replyTarget = message;
+        const available = Boolean(message.dataset.waReplyId && composer && !composer.hidden);
+        const reason = composer?.dataset.waProvider === 'pilot_status'
+          ? 'Resposta citada indisponível na Pilot Status até confirmar a API.'
+          : (!composer || composer.hidden ? 'Resposta livre indisponível nesta conversa.' : 'Esta mensagem não possui identificador para resposta.');
+        replyMenu.replaceChildren();
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = 'Responder';
+        button.disabled = !available;
+        button.setAttribute('role', 'menuitem');
+        replyMenu.appendChild(button);
+        if (!available) {
+          const note = document.createElement('small');
+          note.textContent = reason;
+          replyMenu.appendChild(note);
+        }
+        replyMenu.hidden = false;
+        replyMenu.style.left = `${Math.max(8, Math.min(x, window.innerWidth - replyMenu.offsetWidth - 8))}px`;
+        replyMenu.style.top = `${Math.max(8, Math.min(y, window.innerHeight - replyMenu.offsetHeight - 8))}px`;
+      };
+      replyMenu.addEventListener('click', (event) => {
+        if (event.target.closest('button')?.disabled || !replyTarget) return;
+        const composer = document.querySelector('[data-wa-composer]');
+        const preview = composer?.querySelector('[data-wa-reply-preview]');
+        const input = composer?.querySelector('[data-wa-reply-input]');
+        if (!preview || !input || !replyTarget.dataset.waReplyId) return;
+        input.value = replyTarget.dataset.waReplyId;
+        preview.querySelector('[data-wa-reply-author]').textContent = replyTarget.dataset.waReplyAuthor || 'Mensagem';
+        preview.querySelector('[data-wa-reply-text]').textContent = replyTarget.querySelector('p')?.textContent?.trim()
+          || replyTarget.querySelector('.wa-message-media')?.textContent?.trim() || 'Mídia';
+        preview.hidden = false;
+        closeReplyMenu();
+        composer.querySelector('[data-wa-message]')?.focus();
+      });
+      document.addEventListener('contextmenu', (event) => {
+        const message = event.target.closest?.('.wa-message-surface .wa-message');
+        if (!message || message.classList.contains('wa-message-note')) return;
+        event.preventDefault();
+        showReplyMenu(message, event.clientX, event.clientY);
+      });
+      document.addEventListener('pointerdown', (event) => {
+        if (event.pointerType !== 'touch') return;
+        const message = event.target.closest?.('.wa-message-surface .wa-message');
+        if (!message || message.classList.contains('wa-message-note')) return;
+        touchStart = { x: event.clientX, y: event.clientY };
+        clearTimeout(longPressTimer);
+        longPressTimer = window.setTimeout(() => {
+          longPressTimer = null;
+          showReplyMenu(message, touchStart.x, touchStart.y);
+          suppressTouchClickUntil = Date.now() + 700;
+        }, 550);
+      });
+      document.addEventListener('pointermove', (event) => {
+        if (touchStart && Math.hypot(event.clientX - touchStart.x, event.clientY - touchStart.y) > 10) {
+          clearTimeout(longPressTimer);
+          longPressTimer = null;
+          touchStart = null;
+        }
+      });
+      ['pointerup', 'pointercancel'].forEach((name) => document.addEventListener(name, () => {
+        clearTimeout(longPressTimer);
+        longPressTimer = null;
+        touchStart = null;
+      }));
+      document.addEventListener('click', (event) => {
+        if (Date.now() < suppressTouchClickUntil && event.target.closest?.('.wa-message-surface .wa-message')) {
+          event.preventDefault();
+          event.stopPropagation();
+          suppressTouchClickUntil = 0;
+          return;
+        }
+        if (event.target.closest?.('[data-wa-reply-cancel]')) {
+          const composer = event.target.closest('[data-wa-composer]');
+          composer.querySelector('[data-wa-reply-input]').value = '';
+          composer.querySelector('[data-wa-reply-preview]').hidden = true;
+          return;
+        }
+        if (!event.target.closest?.('.wa-reply-menu')) closeReplyMenu();
         const quote = event.target.closest?.("[data-wa-quote-target]");
 
         if (quote) {

@@ -304,7 +304,7 @@ function meta_whatsapp_upload_media(string $filePath, string $mimeType): array
     return ['ok' => true, 'response' => $decoded];
 }
 
-function meta_whatsapp_send_text(string $number, string $text): array
+function meta_whatsapp_send_text(string $number, string $text, string $replyToMessageId = ''): array
 {
     $settings = meta_whatsapp_settings();
     $phoneNumberId = trim((string) $settings['phone_number_id']);
@@ -318,7 +318,7 @@ function meta_whatsapp_send_text(string $number, string $text): array
         return ['ok' => false, 'error' => 'WhatsApp inválido.'];
     }
 
-    return meta_whatsapp_request($phoneNumberId . '/messages', [
+    $payload = [
         'messaging_product' => 'whatsapp',
         'recipient_type' => 'individual',
         'to' => $to,
@@ -327,7 +327,11 @@ function meta_whatsapp_send_text(string $number, string $text): array
             'preview_url' => false,
             'body' => $text,
         ],
-    ]);
+    ];
+    if ($replyToMessageId !== '') {
+        $payload['context'] = ['message_id' => $replyToMessageId];
+    }
+    return meta_whatsapp_request($phoneNumberId . '/messages', $payload);
 }
 
 function meta_whatsapp_send_template(string $number, array $template, array $variables = []): array
@@ -380,7 +384,8 @@ function meta_whatsapp_send_media(
     string $mimeType,
     string $mediaType,
     string $caption = '',
-    string $fileName = ''
+    string $fileName = '',
+    string $replyToMessageId = ''
 ): array {
     $settings = meta_whatsapp_settings();
     $to = crm_normalize_whatsapp_number($number);
@@ -416,13 +421,17 @@ function meta_whatsapp_send_media(
         }
     }
 
-    return meta_whatsapp_request($settings['phone_number_id'] . '/messages', [
+    $payload = [
         'messaging_product' => 'whatsapp',
         'recipient_type' => 'individual',
         'to' => $to,
         'type' => $mediaType,
         $mediaType => $mediaPayload,
-    ]);
+    ];
+    if ($replyToMessageId !== '') {
+        $payload['context'] = ['message_id' => $replyToMessageId];
+    }
+    return meta_whatsapp_request($settings['phone_number_id'] . '/messages', $payload);
 }
 
 function meta_whatsapp_render_custom_message(string $message, array $lead): string

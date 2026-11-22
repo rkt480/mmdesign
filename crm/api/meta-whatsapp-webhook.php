@@ -138,6 +138,9 @@ foreach ($incomingMessages as $incoming) {
     try {
         $leadResult = crm_create_lead_once($leadPayload);
         $lead = $leadResult['lead'];
+        if (($leadResult['created'] ?? false) === true && (string) ($incoming['id'] ?? '') !== '') {
+            crm_append_lead_note((string) $lead['id'], 'CRM initial message ID: ' . (string) $incoming['id']);
+        }
         $followupAutomation = ($leadResult['created'] ?? false) === false
             ? crm_stop_followup_after_incoming_reply((string) $lead['id'])
             : ['stopped' => false, 'cancelled' => 0];
@@ -148,6 +151,9 @@ foreach ($incomingMessages as $incoming) {
 
         if (($leadResult['created'] ?? false) === false && $message !== '') {
             $incomingNote = 'Mensagem recebida pela Meta Cloud API em ' . date('d/m/Y H:i') . ":\n" . $message;
+            if ((string) ($incoming['id'] ?? '') !== '') {
+                $incomingNote .= "\nCRM message ID: " . (string) $incoming['id'];
+            }
             $incomingNote .= crm_whatsapp_reply_context_note($replyContext);
             crm_append_lead_note(
                 (string) $lead['id'],

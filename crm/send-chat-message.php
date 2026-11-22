@@ -18,6 +18,7 @@ crm_require_valid_csrf();
 
 $leadId = trim((string) ($_POST['lead_id'] ?? ''));
 $message = trim((string) ($_POST['message'] ?? ''));
+$replyToMessageId = trim((string) ($_POST['reply_to_message_id'] ?? ''));
 $providerFilter = trim((string) ($_POST['provider_filter'] ?? 'all'));
 $currentUser = crm_current_user();
 $senderName = crm_user_label($currentUser);
@@ -49,6 +50,17 @@ $lead = crm_find_lead($leadId);
 if ($lead === null) {
     header('Location: whatsapp.php?send_error=' . rawurlencode('Contato não encontrado.'));
     exit;
+}
+
+if ($replyToMessageId !== '') {
+    $leadNotes = (string) ($lead['notes'] ?? '');
+    $replyIdIsValid = strlen($replyToMessageId) <= 255
+        && preg_match('/^[A-Za-z0-9._:\-]+$/D', $replyToMessageId) === 1
+        && preg_match('/^CRM (?:initial message ID|message ID):\s*' . preg_quote($replyToMessageId, '/') . '\s*$/mi', $leadNotes) === 1;
+    if (crm_whatsapp_provider() !== 'meta_cloud' || !$replyIdIsValid) {
+        header('Location: ' . $redirect . '&send_error=' . rawurlencode('Não foi possível responder à mensagem selecionada. Selecione uma mensagem válida da conversa.'));
+        exit;
+    }
 }
 
 if (crm_whatsapp_provider() === 'meta_cloud' && !crm_whatsapp_is_in_24h_window($lead)) {
@@ -220,8 +232,8 @@ if ($hasMedia) {
 }
 
 $result = $hasMedia
-    ? crm_whatsapp_send_media($number, $mediaPath, $mimeType, $mediaType, $messageWithSender, $fileName)
-    : crm_whatsapp_send_text($number, $messageWithSender, false);
+    ? crm_whatsapp_send_media($number, $mediaPath, $mimeType, $mediaType, $messageWithSender, $fileName, $replyToMessageId)
+    : crm_whatsapp_send_text($number, $messageWithSender, false, $replyToMessageId);
 
 if (($result['ok'] ?? false) === true) {
     $sentMessageIds = crm_whatsapp_response_message_ids($result);
@@ -273,6 +285,9 @@ if (($result['ok'] ?? false) === true) {
 
     if ($sentMessageId !== '') {
         $sentDescription .= "\nCRM message ID: " . $sentMessageId;
+    }
+    if ($replyToMessageId !== '') {
+        $sentDescription .= crm_whatsapp_reply_context_note(['id' => $replyToMessageId]);
     }
     crm_append_lead_note(
         $leadId,
