@@ -55,9 +55,9 @@ if ($lead === null) {
 if ($replyToMessageId !== '') {
     $leadNotes = (string) ($lead['notes'] ?? '');
     $replyIdIsValid = strlen($replyToMessageId) <= 255
-        && preg_match('/^[A-Za-z0-9._:\-]+$/D', $replyToMessageId) === 1
+        && preg_match('/[\x00-\x1F\x7F]/', $replyToMessageId) !== 1
         && (
-            preg_match('/^CRM (?:initial message ID|message ID):\s*' . preg_quote($replyToMessageId, '/') . '\s*$/mi', $leadNotes) === 1
+            preg_match('/^CRM (?:initial message ID|message ID):[ \t]*' . preg_quote($replyToMessageId, '/') . '[ \t]*$/mi', $leadNotes) === 1
             || str_contains($leadNotes, '"crm_message_id":' . json_encode($replyToMessageId, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE))
         );
     if (!$replyIdIsValid) {
