@@ -86,6 +86,23 @@ if (strcasecmp($leadSubmittedFields['Segmento'], 'WhatsApp') === 0) {
 if (strcasecmp($leadSubmittedFields['Como divulga/controla os leads'], 'whatsapp') === 0) {
   $leadSubmittedFields['Como divulga/controla os leads'] = '';
 }
+if (strcasecmp($leadSubmittedFields['Como divulga/controla os leads'], 'manual') === 0) {
+  $leadSubmittedFields['Como divulga/controla os leads'] = '';
+}
+$leadSourcePath = (string) ($lead['landing_path'] ?? '');
+$leadSourcePage = (string) ($lead['page'] ?? '');
+$isDirectWhatsappLead = in_array($leadSourcePath, [
+  'crm/api/meta-whatsapp-webhook.php',
+  'crm/api/pilot-status-webhook.php',
+], true) || in_array($leadSourcePage, [
+  'Meta WhatsApp Cloud API',
+  'Meta WhatsApp Business App (Coexistência)',
+  'Pilot Status',
+  'Pilot Status · WhatsApp Business App',
+], true);
+if ($isDirectWhatsappLead) {
+  $leadSubmittedFields['Mensagem ou necessidade'] = '';
+}
 $priorityLeadAnswers = ['interest' => [], 'email' => []];
 $otherLeadAnswers = [];
 foreach ($leadFormAnswers as $answer) {
@@ -111,7 +128,7 @@ foreach ($leadSubmittedFields as $label => $value) {
   }
 }
 $leadDisplayAnswers = array_merge($leadDisplayAnswers, $otherLeadAnswers);
-$hasLeadSubmissionData = count(array_filter($leadSubmittedFields, static fn(string $value): bool => $value !== '')) > 0 || count($leadFormAnswers) > 0;
+$hasLeadSubmissionData = count($leadDisplayAnswers) > 0;
 ?>
 <div class="lead-modal-card">
   <header class="lead-modal-header">
