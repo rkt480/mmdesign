@@ -2136,7 +2136,7 @@ function crm_read_lead_summaries(): array
                 leads.cpf, leads.message, leads.notes, leads.tags, leads.status,
                 leads.kanban_position, leads.assigned_user_id, leads.created_at,
                 leads.updated_at, leads.last_activity_at, leads.page,
-                leads.utm_source, leads.landing_path,
+                leads.utm_source, leads.referrer, leads.landing_path,
                 crm_users.name AS assigned_user_name, crm_users.username AS assigned_username
         FROM leads
         LEFT JOIN crm_users ON crm_users.id = leads.assigned_user_id

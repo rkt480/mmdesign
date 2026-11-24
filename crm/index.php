@@ -6,6 +6,7 @@ require_once __DIR__ . '/lib/auth.php';
 require_once __DIR__ . '/lib/storage.php';
 require_once __DIR__ . '/lib/settings.php';
 require_once __DIR__ . '/lib/forms.php';
+require_once __DIR__ . '/lib/lead-view.php';
 
 crm_require_login();
 
@@ -36,9 +37,25 @@ foreach ($kanbanColumns as $column) {
 }
 
 $availableTags = crm_read_available_tags($leads);
+$availableOrigins = [];
+foreach ($leads as $lead) {
+    if (trim((string) ($lead['utm_source'] ?? '')) === '' && trim((string) ($lead['referrer'] ?? '')) === '') {
+        continue;
+    }
+
+    $origin = lead_origin_channel_label($lead);
+    $key = 'source:' . (function_exists('mb_strtolower') ? mb_strtolower($origin, 'UTF-8') : strtolower($origin));
+    $availableOrigins[$key] = $origin;
+}
+natcasesort($availableOrigins);
 $filterQuery = trim((string) ($_GET['q'] ?? ''));
 $filterStatus = trim((string) ($_GET['status'] ?? ''));
 $filterTag = trim((string) ($_GET['tag'] ?? ''));
+$filterOrigin = trim((string) ($_GET['origin'] ?? ''));
+$originWithoutSource = '__without_origin__';
+if ($filterOrigin !== $originWithoutSource && !array_key_exists($filterOrigin, $availableOrigins)) {
+    $filterOrigin = '';
+}
 $filterSeller = trim((string) ($_GET['seller'] ?? ''));
 $filterSellerId = null;
 $filterUnassigned = false;
@@ -64,7 +81,7 @@ $normalizeFilterDate = static function (string $value): string {
 };
 $filterDateFrom = $normalizeFilterDate((string) ($_GET['date_from'] ?? ''));
 $filterDateTo = $normalizeFilterDate((string) ($_GET['date_to'] ?? ''));
-$filteredLeads = array_values(array_filter($leads, function (array $lead) use ($filterQuery, $filterStatus, $filterTag, $filterSellerId, $filterUnassigned, $filterDateFrom, $filterDateTo): bool {
+$filteredLeads = array_values(array_filter($leads, function (array $lead) use ($filterQuery, $filterStatus, $filterTag, $filterOrigin, $originWithoutSource, $filterSellerId, $filterUnassigned, $filterDateFrom, $filterDateTo): bool {
     $createdDate = substr(trim((string) ($lead['created_at'] ?? '')), 0, 10);
 
     if ($filterDateFrom !== '' && ($createdDate === '' || $createdDate < $filterDateFrom)) {
@@ -99,6 +116,22 @@ $filteredLeads = array_values(array_filter($leads, function (array $lead) use ($
         }
     }
 
+    if ($filterOrigin !== '') {
+        $withoutOrigin = trim((string) ($lead['utm_source'] ?? '')) === ''
+            && trim((string) ($lead['referrer'] ?? '')) === '';
+        if ($filterOrigin === $originWithoutSource) {
+            if (!$withoutOrigin) {
+                return false;
+            }
+        } else {
+            $origin = lead_origin_channel_label($lead);
+            $originKey = 'source:' . (function_exists('mb_strtolower') ? mb_strtolower($origin, 'UTF-8') : strtolower($origin));
+            if ($withoutOrigin || $originKey !== $filterOrigin) {
+                return false;
+            }
+        }
+    }
+
     if ($filterQuery === '') {
         return true;
     }
@@ -116,7 +149,7 @@ $filteredLeads = array_values(array_filter($leads, function (array $lead) use ($
 
     return str_contains($haystack, $needle);
 }));
-$filtersActive = $filterQuery !== '' || $filterStatus !== '' || $filterTag !== '' || $filterSeller !== '' || $filterDateFrom !== '' || $filterDateTo !== '';
+$filtersActive = $filterQuery !== '' || $filterStatus !== '' || $filterTag !== '' || $filterOrigin !== '' || $filterSeller !== '' || $filterDateFrom !== '' || $filterDateTo !== '';
 $leadsByStatus = array_fill_keys(array_keys($statusLabels), []);
 
 foreach ($filteredLeads as $lead) {
@@ -372,6 +405,16 @@ foreach ($filteredLeads as $lead) {
                 </select>
               </label>
             <?php endif; ?>
+            <label>
+              Origem
+              <select name="origin">
+                <option value="">Todas</option>
+                <?php foreach ($availableOrigins as $key => $origin): ?>
+                  <option value="<?= htmlspecialchars((string) $key) ?>" <?= $filterOrigin === $key ? 'selected' : '' ?>><?= htmlspecialchars($origin) ?></option>
+                <?php endforeach; ?>
+                <option value="<?= $originWithoutSource ?>" <?= $filterOrigin === $originWithoutSource ? 'selected' : '' ?>>Sem origem</option>
+              </select>
+            </label>
             <div class="form-actions field-wide">
               <button type="submit">Aplicar filtro</button>
               <a class="secondary-action" href="index.php">Limpar</a>
