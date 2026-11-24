@@ -444,19 +444,19 @@ foreach ($filteredLeads as $lead) {
       <section class="metrics">
         <article>
           <span>Total</span>
-          <strong data-dashboard-metric="total"><?= count($leads) ?></strong>
+          <strong data-dashboard-metric="total"><?= count($filteredLeads) ?></strong>
         </article>
         <article>
           <span>Novos</span>
-          <strong data-dashboard-metric="new"><?= count(array_filter($leads, fn(array $lead): bool => ($lead['status'] ?? '') === 'novo')) ?></strong>
+          <strong data-dashboard-metric="new"><?= count(array_filter($filteredLeads, fn(array $lead): bool => ($lead['status'] ?? '') === 'novo')) ?></strong>
         </article>
         <article>
           <span>Em contato</span>
-          <strong data-dashboard-metric="contact"><?= count(array_filter($leads, fn(array $lead): bool => in_array(($lead['status'] ?? ''), ['contatado', 'proposta'], true))) ?></strong>
+          <strong data-dashboard-metric="contact"><?= count(array_filter($filteredLeads, fn(array $lead): bool => in_array(($lead['status'] ?? ''), ['contatado', 'proposta'], true))) ?></strong>
         </article>
         <article>
           <span>Fechados</span>
-          <strong data-dashboard-metric="closed"><?= count(array_filter($leads, fn(array $lead): bool => ($lead['status'] ?? '') === 'fechado')) ?></strong>
+          <strong data-dashboard-metric="closed"><?= count(array_filter($filteredLeads, fn(array $lead): bool => ($lead['status'] ?? '') === 'fechado')) ?></strong>
         </article>
       </section>
 
