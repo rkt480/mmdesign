@@ -21,7 +21,7 @@ header('Content-Type: text/csv; charset=utf-8');
 header('Content-Disposition: attachment; filename="leads-publi-ai.csv"');
 
 $output = fopen('php://output', 'w');
-fputcsv($output, ['Nome', 'WhatsApp', 'E-mail', 'CPF', 'Lead Score', 'Temperatura', 'Respostas do formulário', 'Status', 'Tags', 'Observações', 'Origem', 'Recebido em']);
+fputcsv($output, ['Nome', 'WhatsApp', 'E-mail', 'CPF', 'Lead Score', 'Temperatura', 'Respostas do formulário', 'Status', 'Tags', 'Observações', 'Origem', 'Vendedor', 'Recebido em']);
 
 foreach ($leads as $lead) {
     $formAnswers = crm_decode_lead_form_answers($lead);
@@ -54,6 +54,7 @@ foreach ($leads as $lead) {
         implode(', ', crm_decode_lead_tags($lead)),
         $lead['commercial_notes'] ?? '',
         crm_lead_origin_key($lead) === '__without_origin__' ? 'Sem origem' : lead_origin_channel_label($lead),
+        trim((string) ($lead['assigned_user_name'] ?? '')) !== '' ? $lead['assigned_user_name'] : 'Sem vendedor',
         $lead['created_at'] ?? '',
     ]);
 }
