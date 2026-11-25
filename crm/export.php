@@ -5,16 +5,23 @@ declare(strict_types=1);
 require_once __DIR__ . '/lib/auth.php';
 require_once __DIR__ . '/lib/storage.php';
 require_once __DIR__ . '/lib/forms.php';
+require_once __DIR__ . '/lib/lead-filters.php';
 
 crm_require_admin();
 
 $leads = crm_read_leads();
+$statusLabels = [];
+foreach (crm_read_kanban_columns() as $column) {
+    $statusLabels[(string) $column['status']] = (string) $column['label'];
+}
+$filters = crm_normalize_lead_filters($_GET, $leads, $statusLabels, true);
+$leads = crm_filter_leads($leads, $filters);
 
 header('Content-Type: text/csv; charset=utf-8');
 header('Content-Disposition: attachment; filename="leads-publi-ai.csv"');
 
 $output = fopen('php://output', 'w');
-fputcsv($output, ['Nome', 'WhatsApp', 'E-mail', 'CPF', 'Lead Score', 'Temperatura', 'Respostas do formulário', 'Status', 'Tags', 'Observações', 'Recebido em']);
+fputcsv($output, ['Nome', 'WhatsApp', 'E-mail', 'CPF', 'Lead Score', 'Temperatura', 'Respostas do formulário', 'Status', 'Tags', 'Observações', 'Origem', 'Recebido em']);
 
 foreach ($leads as $lead) {
     $formAnswers = crm_decode_lead_form_answers($lead);
@@ -46,6 +53,7 @@ foreach ($leads as $lead) {
         $lead['status'] ?? '',
         implode(', ', crm_decode_lead_tags($lead)),
         $lead['commercial_notes'] ?? '',
+        crm_lead_origin_key($lead) === '__without_origin__' ? 'Sem origem' : lead_origin_channel_label($lead),
         $lead['created_at'] ?? '',
     ]);
 }

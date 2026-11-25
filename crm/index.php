@@ -6,7 +6,7 @@ require_once __DIR__ . '/lib/auth.php';
 require_once __DIR__ . '/lib/storage.php';
 require_once __DIR__ . '/lib/settings.php';
 require_once __DIR__ . '/lib/forms.php';
-require_once __DIR__ . '/lib/lead-view.php';
+require_once __DIR__ . '/lib/lead-filters.php';
 
 crm_require_login();
 
@@ -37,119 +37,22 @@ foreach ($kanbanColumns as $column) {
 }
 
 $availableTags = crm_read_available_tags($leads);
-$availableOrigins = [];
-foreach ($leads as $lead) {
-    if (trim((string) ($lead['utm_source'] ?? '')) === '' && trim((string) ($lead['referrer'] ?? '')) === '') {
-        continue;
-    }
-
-    $origin = lead_origin_channel_label($lead);
-    $key = 'source:' . (function_exists('mb_strtolower') ? mb_strtolower($origin, 'UTF-8') : strtolower($origin));
-    $availableOrigins[$key] = $origin;
-}
-natcasesort($availableOrigins);
-$filterQuery = trim((string) ($_GET['q'] ?? ''));
-$filterStatus = trim((string) ($_GET['status'] ?? ''));
-$filterTag = trim((string) ($_GET['tag'] ?? ''));
-$filterOrigin = trim((string) ($_GET['origin'] ?? ''));
+$availableOrigins = crm_available_lead_origins($leads);
+$filters = crm_normalize_lead_filters($_GET, $leads, $statusLabels, $canManageSales);
+$filterQuery = $filters['q'];
+$filterStatus = $filters['status'];
+$filterTag = $filters['tag'];
+$filterOrigin = $filters['origin'];
+$filterSeller = $filters['seller'];
+$filterSellerId = $filterSeller !== '' && $filterSeller !== 'unassigned' ? (int) $filterSeller : null;
+$filterUnassigned = $filterSeller === 'unassigned';
+$filterDateFrom = $filters['date_from'];
+$filterDateTo = $filters['date_to'];
+$filteredLeads = crm_filter_leads($leads, $filters);
+$filtersActive = count(array_filter($filters, static fn(string $value): bool => $value !== '')) > 0;
+$exportParams = array_filter($filters, static fn(string $value): bool => $value !== '');
+$exportUrl = 'export.php' . ($exportParams !== [] ? '?' . http_build_query($exportParams) : '');
 $originWithoutSource = '__without_origin__';
-if ($filterOrigin !== $originWithoutSource && !array_key_exists($filterOrigin, $availableOrigins)) {
-    $filterOrigin = '';
-}
-$filterSeller = trim((string) ($_GET['seller'] ?? ''));
-$filterSellerId = null;
-$filterUnassigned = false;
-
-if ($filterSeller === 'unassigned') {
-    $filterUnassigned = true;
-} elseif (preg_match('/^\d+$/', $filterSeller) === 1 && (int) $filterSeller > 0) {
-    $filterSellerId = (int) $filterSeller;
-} else {
-    $filterSeller = '';
-}
-
-$normalizeFilterDate = static function (string $value): string {
-    $value = trim($value);
-
-    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $value)) {
-        return '';
-    }
-
-    [$year, $month, $day] = array_map('intval', explode('-', $value));
-
-    return checkdate($month, $day, $year) ? $value : '';
-};
-$filterDateFrom = $normalizeFilterDate((string) ($_GET['date_from'] ?? ''));
-$filterDateTo = $normalizeFilterDate((string) ($_GET['date_to'] ?? ''));
-$filteredLeads = array_values(array_filter($leads, function (array $lead) use ($filterQuery, $filterStatus, $filterTag, $filterOrigin, $originWithoutSource, $filterSellerId, $filterUnassigned, $filterDateFrom, $filterDateTo): bool {
-    $createdDate = substr(trim((string) ($lead['created_at'] ?? '')), 0, 10);
-
-    if ($filterDateFrom !== '' && ($createdDate === '' || $createdDate < $filterDateFrom)) {
-        return false;
-    }
-
-    if ($filterDateTo !== '' && ($createdDate === '' || $createdDate > $filterDateTo)) {
-        return false;
-    }
-
-    if ($filterStatus !== '' && (string) ($lead['status'] ?? '') !== $filterStatus) {
-        return false;
-    }
-
-    if ($filterSellerId !== null && (int) ($lead['assigned_user_id'] ?? 0) !== $filterSellerId) {
-        return false;
-    }
-
-    if ($filterUnassigned && (int) ($lead['assigned_user_id'] ?? 0) !== 0) {
-        return false;
-    }
-
-    if ($filterTag !== '') {
-        $tagKeys = array_map(
-            static fn(string $tag): string => function_exists('mb_strtolower') ? mb_strtolower($tag, 'UTF-8') : strtolower($tag),
-            crm_decode_lead_tags($lead)
-        );
-        $filterTagKey = function_exists('mb_strtolower') ? mb_strtolower($filterTag, 'UTF-8') : strtolower($filterTag);
-
-        if (!in_array($filterTagKey, $tagKeys, true)) {
-            return false;
-        }
-    }
-
-    if ($filterOrigin !== '') {
-        $withoutOrigin = trim((string) ($lead['utm_source'] ?? '')) === ''
-            && trim((string) ($lead['referrer'] ?? '')) === '';
-        if ($filterOrigin === $originWithoutSource) {
-            if (!$withoutOrigin) {
-                return false;
-            }
-        } else {
-            $origin = lead_origin_channel_label($lead);
-            $originKey = 'source:' . (function_exists('mb_strtolower') ? mb_strtolower($origin, 'UTF-8') : strtolower($origin));
-            if ($withoutOrigin || $originKey !== $filterOrigin) {
-                return false;
-            }
-        }
-    }
-
-    if ($filterQuery === '') {
-        return true;
-    }
-
-    $haystack = implode(' ', [
-        $lead['name'] ?? '',
-        $lead['whatsapp'] ?? '',
-        $lead['cpf'] ?? '',
-        $lead['message'] ?? '',
-        $lead['notes'] ?? '',
-        implode(' ', crm_decode_lead_tags($lead)),
-    ]);
-    $haystack = function_exists('mb_strtolower') ? mb_strtolower($haystack, 'UTF-8') : strtolower($haystack);
-    $needle = function_exists('mb_strtolower') ? mb_strtolower($filterQuery, 'UTF-8') : strtolower($filterQuery);
-
-    return str_contains($haystack, $needle);
-}));
-$filtersActive = $filterQuery !== '' || $filterStatus !== '' || $filterTag !== '' || $filterOrigin !== '' || $filterSeller !== '' || $filterDateFrom !== '' || $filterDateTo !== '';
 $leadsByStatus = array_fill_keys(array_keys($statusLabels), []);
 
 foreach ($filteredLeads as $lead) {
@@ -255,7 +158,7 @@ foreach ($filteredLeads as $lead) {
             <button type="button" class="<?= $filtersActive ? 'is-active' : '' ?>" data-open-dialog="filters">Filtrar</button>
             <?php if ($canManageSettings): ?>
               <button type="button" data-open-dialog="kanban">Editar kanban</button>
-              <a href="export.php">Exportar CSV</a>
+              <a href="<?= htmlspecialchars($exportUrl, ENT_QUOTES, 'UTF-8') ?>">Exportar CSV</a>
             <?php endif; ?>
           </nav>
         </header>
