@@ -225,7 +225,7 @@ $overdueLeads = crm_read_sla_overdue_leads(20);
                         <option value="<?= htmlspecialchars($role) ?>" <?= $role === 'vendedor' ? 'selected' : '' ?>><?= htmlspecialchars($label) ?></option>
                       <?php endforeach; ?>
                     </select>
-                    <small class="commercial-help">O perfil Agência consulta todos os leads e conversas, sem editar ou mover cards.</small>
+                    <small class="commercial-help">Administrador básico atende e edita contatos de toda a equipe, sem acesso às configurações. Agência tem acesso somente para consulta.</small>
                   </label>
                   <label>
                     Senha inicial
@@ -329,7 +329,7 @@ $overdueLeads = crm_read_sla_overdue_leads(20);
                                 <option value="<?= htmlspecialchars($role) ?>" <?= (string) ($crmUser['role'] ?? '') === $role ? 'selected' : '' ?>><?= htmlspecialchars($label) ?></option>
                               <?php endforeach; ?>
                             </select>
-                            <small class="commercial-help">O perfil Agência consulta todos os leads e conversas, sem editar ou mover cards.</small>
+                            <small class="commercial-help">Administrador básico atende e edita contatos de toda a equipe, sem acesso às configurações. Agência tem acesso somente para consulta.</small>
                           </label>
                           <label>
                             Nova senha
@@ -487,7 +487,7 @@ $overdueLeads = crm_read_sla_overdue_leads(20);
         if (!role || !rotation) return;
 
         const syncRotationAccess = () => {
-          const isAgency = role.value === "agencia";
+          const isAgency = role.value === "agencia" || role.value === "admin_basico";
           rotation.disabled = isAgency;
 
           if (isAgency) rotation.checked = false;

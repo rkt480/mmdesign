@@ -176,7 +176,7 @@ crm_require_login();
           <dt>Vendedor</dt>
           <dd><?= htmlspecialchars(trim((string) ($activeLead['assigned_user_name'] ?? '')) !== '' ? (string) $activeLead['assigned_user_name'] : 'Sem vendedor') ?></dd>
         </div>
-        <?php if ($canManageSettings): ?>
+        <?php if ($canManageLeads): ?>
           <div>
             <dt>Origem</dt>
             <dd><?= htmlspecialchars(whatsapp_page_origin_summary($activeLead)) ?></dd>

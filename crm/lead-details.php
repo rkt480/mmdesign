@@ -339,7 +339,7 @@ $hasLeadSubmissionData = count($leadDisplayAnswers) > 0;
             <p class="message error-message field-wide"><?= htmlspecialchars((string) $lead['whatsapp_error']) ?></p>
           <?php endif; ?>
 
-          <?php if ($canManageSales): ?>
+          <?php if ($canManageLeads): ?>
             <section class="commercial-block">
               <h3>Responsável</h3>
               <form class="update-form" method="post" action="update.php">

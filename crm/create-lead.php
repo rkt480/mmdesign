@@ -14,7 +14,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $currentUser = crm_current_user();
     $assignedUserId = null;
 
-    if (crm_current_user_can_manage_sales()) {
+    if (crm_current_user_can_manage_leads()) {
         $assignedUserId = (int) ($_POST['assigned_user_id'] ?? 0);
     } elseif (is_array($currentUser)) {
         $assignedUserId = (int) ($currentUser['id'] ?? 0);

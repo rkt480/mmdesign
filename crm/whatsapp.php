@@ -16,6 +16,7 @@ crm_require_login();
 $currentUser = crm_current_user();
 $currentUserId = (int) ($currentUser['id'] ?? 0);
 $canManageSales = crm_current_user_can_manage_sales();
+$canManageLeads = crm_current_user_can_manage_leads();
 $canManageSettings = crm_current_user_is_admin();
 $isAgency = crm_current_user_is_agency();
 $csrfToken = crm_csrf_token();
@@ -1844,7 +1845,7 @@ if ($isWaConversationFragment) {
                 <dt>Vendedor</dt>
                 <dd><?= htmlspecialchars(trim((string) ($activeLead['assigned_user_name'] ?? '')) !== '' ? (string) $activeLead['assigned_user_name'] : 'Sem vendedor') ?></dd>
               </div>
-              <?php if ($canManageSettings): ?>
+              <?php if ($canManageLeads): ?>
                 <div>
                   <dt>Origem</dt>
                   <dd><?= htmlspecialchars(whatsapp_page_origin_summary($activeLead)) ?></dd>

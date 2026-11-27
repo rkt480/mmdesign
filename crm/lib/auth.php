@@ -431,6 +431,11 @@ function crm_current_user_can_manage_sales(): bool
     return in_array(crm_current_user_role(), ['admin', 'gestor'], true);
 }
 
+function crm_current_user_can_manage_leads(): bool
+{
+    return in_array(crm_current_user_role(), ['admin', 'admin_basico', 'gestor'], true);
+}
+
 function crm_current_user_is_admin(): bool
 {
     return crm_current_user_role() === 'admin';

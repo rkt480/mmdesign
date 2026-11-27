@@ -11,6 +11,7 @@ require_once __DIR__ . '/lib/lead-filters.php';
 crm_require_login();
 
 $canManageSales = crm_current_user_can_manage_sales();
+$canManageLeads = crm_current_user_can_manage_leads();
 $canManageSettings = crm_current_user_is_admin();
 $isAgency = crm_current_user_is_agency();
 $assignableUsers = crm_read_assignable_users(false);
@@ -38,7 +39,7 @@ foreach ($kanbanColumns as $column) {
 
 $availableTags = crm_read_available_tags($leads);
 $availableOrigins = crm_available_lead_origins($leads);
-$filters = crm_normalize_lead_filters($_GET, $leads, $statusLabels, $canManageSales);
+$filters = crm_normalize_lead_filters($_GET, $leads, $statusLabels, $canManageLeads);
 $filterQuery = $filters['q'];
 $filterStatus = $filters['status'];
 $filterTag = $filters['tag'];
@@ -218,7 +219,7 @@ foreach ($filteredLeads as $lead) {
                 <?php endforeach; ?>
               </select>
             </label>
-            <?php if ($canManageSales): ?>
+            <?php if ($canManageLeads): ?>
               <label>
                 Vendedor responsável
                 <select name="assigned_user_id">
@@ -296,7 +297,7 @@ foreach ($filteredLeads as $lead) {
                 <?php endforeach; ?>
               </select>
             </label>
-            <?php if ($canManageSales): ?>
+            <?php if ($canManageLeads): ?>
               <label>
                 Vendedor
                 <select name="seller">

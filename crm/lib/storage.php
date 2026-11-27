@@ -1153,6 +1153,7 @@ function crm_user_roles(): array
 {
     return [
         'admin' => 'Administrador',
+        'admin_basico' => 'Administrador básico',
         'gestor' => 'Gestor comercial',
         'vendedor' => 'Vendedor',
         'agencia' => 'Agência (somente leitura)',
@@ -1671,7 +1672,7 @@ function crm_read_lead_timeline(array $lead): array
 function crm_user_can_manage_lead_scope(?array $user): bool
 {
     $role = (string) ($user['role'] ?? '');
-    return in_array($role, ['admin', 'gestor', 'agencia'], true);
+    return in_array($role, ['admin', 'admin_basico', 'gestor', 'agencia'], true);
 }
 
 function crm_lead_access_sql(string $alias = 'leads', bool $applyAccess = true): array
@@ -1876,7 +1877,7 @@ function crm_save_user(array $payload): array
     $password = (string) ($payload['password'] ?? '');
     $role = crm_normalize_user_role((string) ($payload['role'] ?? 'vendedor'));
     $active = !empty($payload['active']) ? 1 : 0;
-    $participates = $role === 'agencia' ? 0 : (!empty($payload['participates_in_rotation']) ? 1 : 0);
+    $participates = in_array($role, ['agencia', 'admin_basico'], true) ? 0 : (!empty($payload['participates_in_rotation']) ? 1 : 0);
     $weight = max(1, min(10, (int) ($payload['rotation_weight'] ?? 1)));
     $accessScheduleEnabled = !empty($payload['access_schedule_enabled']) ? 1 : 0;
     $accessStartTime = crm_normalize_user_access_time((string) ($payload['access_start_time'] ?? ''), '09:00:00');
@@ -3180,7 +3181,7 @@ function crm_update_lead(string $id, array $updates): bool
     $assignedUserChanged = false;
     $assignedUserId = null;
 
-    if (array_key_exists('assigned_user_id', $updates) && function_exists('crm_current_user_can_manage_sales') && crm_current_user_can_manage_sales()) {
+    if (array_key_exists('assigned_user_id', $updates) && function_exists('crm_current_user_can_manage_leads') && crm_current_user_can_manage_leads()) {
         $assignedUserId = crm_validate_assignable_user_id((int) ($updates['assigned_user_id'] ?? 0));
         $currentAssignedUserId = isset($lead['assigned_user_id']) && $lead['assigned_user_id'] !== null ? (int) $lead['assigned_user_id'] : null;
         $assignedUserChanged = $currentAssignedUserId !== $assignedUserId;

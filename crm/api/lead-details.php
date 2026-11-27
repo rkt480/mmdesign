@@ -30,11 +30,12 @@ if (!is_array($lead)) {
 }
 
 $canManageSales = crm_current_user_can_manage_sales();
+$canManageLeads = crm_current_user_can_manage_leads();
 $canManageSettings = crm_current_user_is_admin();
 $isAgency = crm_current_user_is_agency();
-$canViewOrigin = $canManageSettings || $isAgency;
-$canViewTimeline = $canManageSales || $isAgency;
-$assignableUsers = $canManageSales ? crm_read_assignable_users(false) : [];
+$canViewOrigin = $canManageSettings || $isAgency || $canManageLeads;
+$canViewTimeline = $canManageLeads || $isAgency;
+$assignableUsers = $canManageLeads ? crm_read_assignable_users(false) : [];
 $followupFlows = $isAgency ? [] : crm_read_followup_flows(true);
 $googleCalendarConnected = crm_google_calendar_is_connected();
 $kanbanColumns = crm_read_kanban_columns();

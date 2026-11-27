@@ -68,7 +68,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
-    if (array_key_exists('assigned_user_id', $_POST) && crm_current_user_can_manage_sales()) {
+    if (array_key_exists('assigned_user_id', $_POST) && crm_current_user_can_manage_leads()) {
         $updates['assigned_user_id'] = $_POST['assigned_user_id'];
     }
 
